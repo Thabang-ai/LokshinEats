@@ -1,0 +1,52 @@
+// Firestore Security Rules for LokshinEats
+// These rules control who can read/write data in our database
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users collection - users can read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Stores collection - anyone can read, only store owners can write
+    match /stores/{storeId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.ownerId || 
+         request.resource.data.ownerId == request.auth.uid);
+    }
+    
+    // Products collection - anyone can read, only store owners can write
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/stores/$(request.resource.data.storeId)).data.ownerId == request.auth.uid;
+    }
+    
+    // Orders collection - users can read their own orders, drivers can read assigned orders
+    match /orders/{orderId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.customerId ||
+         request.auth.uid == resource.data.driverId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.customerId;
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.customerId ||
+         request.auth.uid == resource.data.driverId ||
+         get(/databases/$(database)/documents/stores/$(resource.data.storeId)).data.ownerId == request.auth.uid);
+    }
+    
+    // Reviews collection - anyone can read, only customers who ordered can write
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.customerId;
+    }
+    
+    // Drivers collection - anyone can read, only drivers can write their own data
+    match /drivers/{driverId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == driverId;
+    }
+  }
+}
