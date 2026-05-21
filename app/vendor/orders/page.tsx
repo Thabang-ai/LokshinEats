@@ -5,7 +5,7 @@
 
 import RoleGuard from '../../../components/RoleGuard';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle,
   XCircle,
@@ -23,7 +23,7 @@ import toast from 'react-hot-toast';
 import {
   collection,
   doc,
-  getDocs,
+  onSnapshot,
   orderBy,
   query,
   Timestamp,
@@ -87,6 +87,11 @@ export default function VendorOrdersPage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
+  // Track previously-seen order IDs across snapshots so we can fire a toast
+  // when a brand-new order arrives (but not on the initial load).
+  const seenOrderIds = useRef<Set<string>>(new Set());
+  const hasInitialized = useRef(false);
+
   useEffect(() => {
     if (!store) {
       setOrders([]);
@@ -94,20 +99,18 @@ export default function VendorOrdersPage() {
       return;
     }
 
-    let cancelled = false;
     setAreOrdersLoading(true);
     setOrdersError(null);
+    hasInitialized.current = false;
+    seenOrderIds.current = new Set();
 
-    (async () => {
-      try {
-        const snapshot = await getDocs(
-          query(
-            collection(db, 'orders'),
-            where('storeId', '==', store.id),
-            orderBy('createdAt', 'desc'),
-          ),
-        );
-
+    const unsub = onSnapshot(
+      query(
+        collection(db, 'orders'),
+        where('storeId', '==', store.id),
+        orderBy('createdAt', 'desc'),
+      ),
+      (snapshot) => {
         const rows: VendorOrder[] = snapshot.docs.map((d) => {
           const data = d.data();
           const created =
@@ -142,21 +145,29 @@ export default function VendorOrdersPage() {
           };
         });
 
-        if (!cancelled) {
-          setOrders(rows);
-          setAreOrdersLoading(false);
+        // Detect brand-new orders that weren't in the last snapshot.
+        // Only toast AFTER the initial snapshot (otherwise every order is "new").
+        if (hasInitialized.current) {
+          const trulyNew = rows.filter((r) => !seenOrderIds.current.has(r.id));
+          if (trulyNew.length === 1) {
+            toast.success(`New order from ${trulyNew[0].customerName}! 🔔`);
+          } else if (trulyNew.length > 1) {
+            toast.success(`${trulyNew.length} new orders! 🔔`);
+          }
         }
-      } catch (err) {
-        if (!cancelled) {
-          setOrdersError(err instanceof Error ? err.message : String(err));
-          setAreOrdersLoading(false);
-        }
-      }
-    })();
+        seenOrderIds.current = new Set(rows.map((r) => r.id));
+        hasInitialized.current = true;
 
-    return () => {
-      cancelled = true;
-    };
+        setOrders(rows);
+        setAreOrdersLoading(false);
+      },
+      (err) => {
+        setOrdersError(err instanceof Error ? err.message : String(err));
+        setAreOrdersLoading(false);
+      },
+    );
+
+    return unsub;
   }, [store]);
 
   // Optimistic status update with rollback on error.

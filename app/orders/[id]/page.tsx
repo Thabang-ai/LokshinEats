@@ -1,8 +1,9 @@
 'use client';
 
 // Order Tracking Page
-// Customer's view of a single order. Reads the order doc from Firestore.
-// One-shot fetch for now — real-time tracking (onSnapshot) is Phase 3.
+// Customer's view of a single order. Subscribes to the order doc via
+// onSnapshot so the status tracker updates live as the vendor + driver
+// advance the order.
 // Live map will be wired up in Phase 5 (driver location tracking).
 
 import { use, useEffect, useState } from 'react';
@@ -19,7 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuthUser } from '../../../hooks/useAuthUser';
 
@@ -106,14 +107,14 @@ export default function OrderTrackingPage({
       return;
     }
 
-    let cancelled = false;
     setIsLoading(true);
     setErrorMessage(null);
 
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, 'orders', id));
-        if (cancelled) return;
+    // Live subscription — order doc updates re-render automatically as the
+    // vendor + driver advance the status.
+    const unsub = onSnapshot(
+      doc(db, 'orders', id),
+      (snap) => {
         if (!snap.exists()) {
           setOrder(null);
           setIsLoading(false);
@@ -148,17 +149,14 @@ export default function OrderTrackingPage({
           paymentStatus: data.paymentStatus ?? 'pending',
         });
         setIsLoading(false);
-      } catch (err) {
-        if (!cancelled) {
-          setErrorMessage(err instanceof Error ? err.message : String(err));
-          setIsLoading(false);
-        }
-      }
-    })();
+      },
+      (err) => {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setIsLoading(false);
+      },
+    );
 
-    return () => {
-      cancelled = true;
-    };
+    return unsub;
   }, [id, user, authReady]);
 
   // ---- Render branches ----------------------------------------------------
@@ -318,7 +316,7 @@ export default function OrderTrackingPage({
                 </div>
 
                 <p className="mt-4 text-xs text-gray-500">
-                  Page is one-shot for now — refresh to see latest status. Live tracking lands in Phase 3.
+                  Live — status updates appear automatically as your order progresses.
                 </p>
               </motion.div>
             )}

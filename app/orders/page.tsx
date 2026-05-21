@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { collection, getDocs, query, Timestamp, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
 
@@ -80,16 +80,14 @@ export default function OrdersPage() {
       return;
     }
 
-    let cancelled = false;
     setIsLoading(true);
     setErrorMessage(null);
 
-    (async () => {
-      try {
-        // Single equality filter — no composite index needed.
-        const snapshot = await getDocs(
-          query(collection(db, 'orders'), where('customerId', '==', user.uid)),
-        );
+    // Live subscription so status badges update without page reload.
+    // Single equality filter — no composite index needed.
+    const unsub = onSnapshot(
+      query(collection(db, 'orders'), where('customerId', '==', user.uid)),
+      (snapshot) => {
         const rows: CustomerOrder[] = snapshot.docs.map((d) => {
           const data = d.data();
           const items = Array.isArray(data.items)
@@ -109,21 +107,16 @@ export default function OrdersPage() {
           };
         });
         rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        if (!cancelled) {
-          setOrders(rows);
-          setIsLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setErrorMessage(err instanceof Error ? err.message : String(err));
-          setIsLoading(false);
-        }
-      }
-    })();
+        setOrders(rows);
+        setIsLoading(false);
+      },
+      (err) => {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setIsLoading(false);
+      },
+    );
 
-    return () => {
-      cancelled = true;
-    };
+    return unsub;
   }, [user, authReady]);
 
   const filteredOrders = useMemo(() => {

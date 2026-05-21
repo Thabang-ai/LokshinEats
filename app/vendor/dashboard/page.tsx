@@ -24,7 +24,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { collection, doc, getDocs, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 
@@ -118,19 +118,18 @@ export default function VendorDashboard() {
       return;
     }
 
-    let cancelled = false;
     setAreOrdersLoading(true);
     setOrdersError(null);
 
-    (async () => {
-      try {
-        const snapshot = await getDocs(
-          query(
-            collection(db, 'orders'),
-            where('storeId', '==', store.id),
-            orderBy('createdAt', 'desc'),
-          ),
-        );
+    // Live subscription so stats + recent orders + pending bell badge stay
+    // current as new orders arrive and statuses advance.
+    const unsub = onSnapshot(
+      query(
+        collection(db, 'orders'),
+        where('storeId', '==', store.id),
+        orderBy('createdAt', 'desc'),
+      ),
+      (snapshot) => {
         const rows: VendorOrder[] = snapshot.docs.map((d) => {
           const data = d.data();
           const created = data.createdAt instanceof Timestamp
@@ -151,21 +150,16 @@ export default function VendorDashboard() {
             createdAt: created,
           };
         });
-        if (!cancelled) {
-          setOrders(rows);
-          setAreOrdersLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setOrdersError(err instanceof Error ? err.message : String(err));
-          setAreOrdersLoading(false);
-        }
-      }
-    })();
+        setOrders(rows);
+        setAreOrdersLoading(false);
+      },
+      (err) => {
+        setOrdersError(err instanceof Error ? err.message : String(err));
+        setAreOrdersLoading(false);
+      },
+    );
 
-    return () => {
-      cancelled = true;
-    };
+    return unsub;
   }, [store]);
 
   const stats = useMemo(() => {
