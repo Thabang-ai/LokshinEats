@@ -1,7 +1,7 @@
 {
-  "name": "Lokshin Eats",
-  "short_name": "Lokshin",
-  "description": "Township food delivery app",
+  "name": "LokshinEats",
+  "short_name": "LokshinEats",
+  "description": "Township food. Delivered.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

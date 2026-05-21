@@ -4,12 +4,17 @@
 // Shows items in the shopping cart and checkout options
 
 import { useCart } from '../../context/CartContext';
-import { Plus, Minus, Trash2, ShoppingBag } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingBag, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
 export default function CartPage() {
-  const { cart, removeFromCart, updateQuantity, clearCart } = useCart();
+  const { cart, storeMeta, removeFromCart, updateQuantity, clearCart } = useCart();
+
+  const isStoreClosed = storeMeta ? !storeMeta.isOpen : false;
+  const minOrderAmount = storeMeta?.minOrderAmount ?? 0;
+  const belowMinOrder = cart.subtotal > 0 && cart.subtotal < minOrderAmount;
+  const checkoutDisabled = isStoreClosed || belowMinOrder;
 
   if (cart.items.length === 0) {
     return (
@@ -32,7 +37,40 @@ export default function CartPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">Your Cart</h1>
+        <h1 className="text-3xl font-bold mb-2">Your Cart</h1>
+        {storeMeta && (
+          <p className="text-sm text-gray-500 mb-6">From {storeMeta.name}</p>
+        )}
+        {!storeMeta && <div className="mb-6" />}
+
+        {/* Store closed warning */}
+        {isStoreClosed && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-800">This restaurant is currently closed</p>
+              <p className="text-sm text-red-700">
+                You can't place an order right now. Try again later, or clear your cart to order from a different
+                restaurant.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Min order warning */}
+        {belowMinOrder && !isStoreClosed && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-800">
+                Add R{(minOrderAmount - cart.subtotal).toFixed(2)} more to checkout
+              </p>
+              <p className="text-sm text-amber-700">
+                {storeMeta?.name} has a minimum order of R{minOrderAmount}.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Cart Items */}
@@ -120,12 +158,21 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Link
-                href="/checkout"
-                className="block w-full bg-primary text-white text-center py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
-              >
-                Proceed to Checkout
-              </Link>
+              {checkoutDisabled ? (
+                <button
+                  disabled
+                  className="block w-full bg-gray-300 text-white text-center py-3 rounded-xl font-semibold cursor-not-allowed"
+                >
+                  {isStoreClosed ? 'Restaurant Closed' : `Add R${(minOrderAmount - cart.subtotal).toFixed(2)} more`}
+                </button>
+              ) : (
+                <Link
+                  href="/checkout"
+                  className="block w-full bg-primary text-white text-center py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
+                >
+                  Proceed to Checkout
+                </Link>
+              )}
 
               <Link
                 href="/restaurants"
@@ -133,12 +180,6 @@ export default function CartPage() {
               >
                 Continue Shopping
               </Link>
-
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-600">
-                  <span className="font-semibold">🎁 Promo Code:</span> Enter at checkout
-                </p>
-              </div>
             </div>
           </div>
         </div>

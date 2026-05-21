@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "../layout/Header";
@@ -18,21 +18,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#ff6600",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: "LokshinEats - Township Food Delivery",
   description: "Order food from your favorite township restaurants, spaza shops, and local food businesses",
   manifest: "/manifest.json",
-  themeColor: "#ff6600",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "LokshinEats",
-  },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
   },
 };
 

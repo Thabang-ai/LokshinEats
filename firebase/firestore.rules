@@ -1,49 +1,88 @@
 // Firestore Security Rules for LokshinEats
-// These rules control who can read/write data in our database
+// These rules control who can read/write data in our database.
+//
+// IMPORTANT: this file is the source of truth in the repo, but Firestore only
+// enforces what's deployed. Push changes with:
+//   firebase deploy --only firestore:rules
+// or paste into the Firebase console.
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
+    // -----------------------------------------------------------------------
+    // Helper to read another user's role.
+    // (Inline get() works fine; this is just a readability convenience.)
+    // -----------------------------------------------------------------------
+    function userRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    function isStoreOwner(storeId) {
+      return get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
+    }
+
     // Users collection - users can read/write their own data
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
+
     // Stores collection - anyone can read, only store owners can write
     match /stores/{storeId} {
       allow read: if true;
-      allow write: if request.auth != null && 
-        (request.auth.uid == resource.data.ownerId || 
+      allow write: if request.auth != null &&
+        (request.auth.uid == resource.data.ownerId ||
          request.resource.data.ownerId == request.auth.uid);
     }
-    
+
     // Products collection - anyone can read, only store owners can write
     match /products/{productId} {
       allow read: if true;
-      allow write: if request.auth != null && 
+      allow write: if request.auth != null &&
         get(/databases/$(database)/documents/stores/$(request.resource.data.storeId)).data.ownerId == request.auth.uid;
     }
-    
-    // Orders collection - users can read their own orders, drivers can read assigned orders
+
+    // Orders collection
+    // Reads: customer, assigned driver, store owner, and any driver looking at
+    // available (ready + unclaimed) orders.
+    // Writes: customer create their own; updates by customer, assigned driver,
+    // store owner, OR any driver claiming an available order.
     match /orders/{orderId} {
-      allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.customerId ||
-         request.auth.uid == resource.data.driverId);
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.customerId;
-      allow update: if request.auth != null && 
-        (request.auth.uid == resource.data.customerId ||
-         request.auth.uid == resource.data.driverId ||
-         get(/databases/$(database)/documents/stores/$(resource.data.storeId)).data.ownerId == request.auth.uid);
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.driverId ||
+        isStoreOwner(resource.data.storeId) ||
+        // any driver browsing available deliveries
+        (resource.data.status == 'ready' &&
+         resource.data.driverId == null &&
+         userRole(request.auth.uid) == 'driver')
+      );
+
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.customerId;
+
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.driverId ||
+        isStoreOwner(resource.data.storeId) ||
+        // driver claiming an available order: must be a driver, must be
+        // claiming for themselves, order must be ready + unclaimed
+        (resource.data.status == 'ready' &&
+         resource.data.driverId == null &&
+         request.resource.data.driverId == request.auth.uid &&
+         userRole(request.auth.uid) == 'driver')
+      );
     }
-    
+
     // Reviews collection - anyone can read, only customers who ordered can write
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.customerId;
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.customerId;
     }
-    
-    // Drivers collection - anyone can read, only drivers can write their own data
+
+    // Drivers collection - anyone can read (so customers can see who's bringing
+    // their food), only drivers can write their own profile
     match /drivers/{driverId} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == driverId;

@@ -6,12 +6,13 @@
 import { useState } from 'react';
 import { User, Mail, Lock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../../../firebase/config';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,27 +26,33 @@ export default function LoginPage() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
       toast.success('Login successful! Welcome back 👋');
 
-      // Fetch user role from Firestore
-      if (userCredential.user) {
-        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const role = userData.role;
+      // Fetch user profile from Firestore. If it's missing (Firebase-console user,
+      // partial signup, etc.), backfill as customer so we never bounce back to signup.
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
 
-          // Redirect based on role
-          if (role === 'vendor') {
-            router.push('/vendor/dashboard');
-          } else if (role === 'driver') {
-            router.push('/driver/dashboard');
-          } else {
-            router.push('/');
-          }
-        } else {
-          // User document doesn't exist, redirect to signup
-          router.push('/auth/signup');
-        }
+      let role: string;
+      if (userDoc.exists()) {
+        role = userDoc.data().role;
+      } else {
+        await setDoc(userRef, {
+          email: user.email ?? email,
+          displayName: user.displayName ?? email.split('@')[0],
+          role: 'customer',
+          createdAt: serverTimestamp(),
+        });
+        role = 'customer';
+      }
+
+      if (role === 'vendor') {
+        router.push('/vendor/dashboard');
+      } else if (role === 'driver') {
+        router.push('/driver/dashboard');
+      } else {
+        router.push('/restaurants');
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -64,11 +71,17 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-3xl">K</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="LokshinEats"
+            width={120}
+            height={120}
+            className="mx-auto mb-4 object-contain"
+            priority
+          />
           <h1 className="text-2xl font-bold">Welcome Back!</h1>
           <p className="text-gray-600">Sign in to your LokshinEats account</p>
+          <p className="text-xs text-gray-500 mt-1">Township Food. Delivered.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

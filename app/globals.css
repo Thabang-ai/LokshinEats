@@ -1,18 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  /* LokshinEats Theme Colors */
-  --background: #ffffff;
-  --foreground: #171717;
-  --primary: #FF6B35; /* Orange - main brand color */
-  --primary-dark: #E55A2B;
-  --primary-light: #FF8B5A;
-  --accent: #FFD700; /* Warm yellow accent */
-  --black: #1a1a1a;
+  /* Hunger-Activating Color Palette - Based on Color Psychology */
+  --background: #FFF8F0; /* Warm cream - stimulates appetite */
+  --foreground: #1a1a1a;
+  --primary: #FF4500; /* Red-orange - strongest appetite stimulator */
+  --primary-dark: #CC3700;
+  --primary-light: #FF6B35;
+  --primary-gradient: linear-gradient(135deg, #FF4500 0%, #FF6B35 50%, #FF8B5A 100%);
+  --accent: #FFD700; /* Gold/yellow - stimulates appetite */
+  --hunger-red: #DC143C; /* Deep red - activates hunger */
+  --warm-orange: #FF8C00; /* Warm orange - friendly, energetic */
+  --appetite-yellow: #FFB347; /* Soft yellow - cheerful, appetizing */
+  --black: #0a0a0a;
   --gray: #6B7280;
-  --light-gray: #F3F4F6;
+  --light-gray: #FFF3E0; /* Warm light gray */
   --success: #10B981;
-  --error: #EF4444;
+  --error: #DC143C; /* Red for errors */
+  --warning: #FF8C00;
+  --info: #FF6B35;
+  
+  /* Premium shadows with warm tones */
+  --shadow-sm: 0 1px 2px 0 rgba(255, 69, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(255, 69, 0, 0.1), 0 2px 4px -1px rgba(255, 69, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(255, 69, 0, 0.1), 0 4px 6px -2px rgba(255, 69, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(255, 69, 0, 0.1), 0 10px 10px -5px rgba(255, 69, 0, 0.04);
+  --shadow-premium: 0 25px 50px -12px rgba(255, 69, 0, 0.25);
+  
+  /* Glassmorphism with warm tones */
+  --glass-bg: rgba(255, 248, 240, 0.8);
+  --glass-border: rgba(255, 69, 0, 0.15);
 }
 
 @theme inline {
@@ -27,6 +44,8 @@
   --color-light-gray: var(--light-gray);
   --color-success: var(--success);
   --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -35,6 +54,8 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --glass-bg: rgba(10, 10, 10, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.1);
   }
 }
 
@@ -42,6 +63,79 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Premium button styles */
+.premium-button {
+  background: var(--primary-gradient);
+  box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+  transition: all 0.3s ease;
+}
+
+.premium-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(255, 107, 53, 0.4);
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Premium card */
+.premium-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  transition: all 0.3s ease;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.premium-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Premium gradient text */
+.gradient-text {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Smooth animations */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Premium input styles */
+.premium-input {
+  border: 2px solid transparent;
+  background: linear-gradient(white, white) padding-box,
+              linear-gradient(135deg, #FF6B35, #FF8B5A) border-box;
+  transition: all 0.3s ease;
+}
+
+.premium-input:focus {
+  box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.1);
 }
 
 /* Smooth scrolling */
@@ -51,18 +145,25 @@ html {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
 }
 
 ::-webkit-scrollbar-track {
   background: var(--light-gray);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--primary);
-  border-radius: 4px;
+  background: var(--primary-gradient);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--primary-dark);
+}
+
+/* Selection styling */
+::selection {
+  background: var(--primary);
+  color: white;
 }

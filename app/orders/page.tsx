@@ -1,59 +1,49 @@
 'use client';
 
-// Orders Listing Page
-// Shows all user's orders with their status
+// Customer's Orders List
+// All orders this customer has placed.
 
-import { useState } from 'react';
-import { Clock, CheckCircle, XCircle, Package, Truck, ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Clock,
+  CheckCircle,
+  XCircle,
+  Package,
+  Truck,
+  ArrowLeft,
+} from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { collection, getDocs, query, Timestamp, where } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+import { useAuthUser } from '../../hooks/useAuthUser';
 
-// Mock orders data (will be replaced with Firebase)
-const mockOrders = [
-  {
-    id: 'ORD-12345',
-    status: 'preparing',
-    createdAt: new Date(Date.now() - 30 * 60 * 1000),
-    total: 175,
-    store: {
-      name: "Mama's Kitchen",
-      image: '🍲',
-    },
-    items: [
-      { name: 'Pap & Vleis Combo', quantity: 2 },
-      { name: 'Chicken Kota', quantity: 1 },
-    ],
-  },
-  {
-    id: 'ORD-12344',
-    status: 'delivered',
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    total: 85,
-    store: {
-      name: 'Kota King',
-      image: '🍔',
-    },
-    items: [
-      { name: 'Chicken Kota', quantity: 1 },
-      { name: 'Chips & Russian', quantity: 1 },
-    ],
-  },
-  {
-    id: 'ORD-12343',
-    status: 'cancelled',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-    total: 120,
-    store: {
-      name: 'Braai Master',
-      image: '🍖',
-    },
-    items: [
-      { name: 'Braai Platter', quantity: 1 },
-    ],
-  },
-];
+// ---------------------------------------------------------------------------
+// Types
 
-const statusConfig = {
+type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'picked_up'
+  | 'delivered'
+  | 'cancelled';
+
+type CustomerOrder = {
+  id: string;
+  storeName: string;
+  storeImage: string;
+  status: OrderStatus | string;
+  total: number;
+  items: { name: string; quantity: number }[];
+  createdAt: Date;
+};
+
+const statusConfig: Record<
+  string,
+  { label: string; icon: React.ComponentType<{ className?: string }>; color: string; bgColor: string }
+> = {
   pending: { label: 'Pending', icon: Clock, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
   confirmed: { label: 'Confirmed', icon: CheckCircle, color: 'text-blue-600', bgColor: 'bg-blue-100' },
   preparing: { label: 'Preparing', icon: Package, color: 'text-orange-600', bgColor: 'bg-orange-100' },
@@ -63,15 +53,135 @@ const statusConfig = {
   cancelled: { label: 'Cancelled', icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100' },
 };
 
-export default function OrdersPage() {
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+type Filter = 'all' | 'active' | 'completed';
 
-  const filteredOrders = mockOrders.filter(order => {
-    if (filter === 'all') return true;
-    if (filter === 'active') return ['pending', 'confirmed', 'preparing', 'ready', 'picked_up'].includes(order.status);
-    if (filter === 'completed') return ['delivered', 'cancelled'].includes(order.status);
-    return true;
-  });
+// ---------------------------------------------------------------------------
+
+function tsToDate(v: any): Date {
+  if (!v) return new Date();
+  if (v instanceof Timestamp) return v.toDate();
+  if (typeof v.toDate === 'function') return v.toDate();
+  return new Date();
+}
+
+export default function OrdersPage() {
+  const { user, authReady } = useAuthUser();
+
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    (async () => {
+      try {
+        // Single equality filter — no composite index needed.
+        const snapshot = await getDocs(
+          query(collection(db, 'orders'), where('customerId', '==', user.uid)),
+        );
+        const rows: CustomerOrder[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          const items = Array.isArray(data.items)
+            ? data.items.map((it: any) => ({
+                name: it.product?.name ?? 'Item',
+                quantity: typeof it.quantity === 'number' ? it.quantity : 1,
+              }))
+            : [];
+          return {
+            id: d.id,
+            storeName: data.storeName ?? 'Unknown',
+            storeImage: '🍲',
+            status: data.status ?? 'pending',
+            total: typeof data.total === 'number' ? data.total : 0,
+            items,
+            createdAt: tsToDate(data.createdAt),
+          };
+        });
+        rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        if (!cancelled) {
+          setOrders(rows);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : String(err));
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authReady]);
+
+  const filteredOrders = useMemo(() => {
+    if (filter === 'all') return orders;
+    if (filter === 'active') {
+      return orders.filter((o) =>
+        ['pending', 'confirmed', 'preparing', 'ready', 'picked_up'].includes(o.status),
+      );
+    }
+    return orders.filter((o) => ['delivered', 'cancelled'].includes(o.status));
+  }, [orders, filter]);
+
+  // ---- Render branches ----------------------------------------------------
+
+  if (!authReady || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-8">
+          <div className="h-4 w-24 bg-gray-200 rounded mb-4 animate-pulse" />
+          <div className="h-9 w-48 bg-gray-200 rounded mb-6 animate-pulse" />
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl shadow-md p-4 animate-pulse">
+                <div className="flex justify-between mb-3">
+                  <div className="flex gap-3">
+                    <div className="w-12 h-12 bg-gray-200 rounded-lg" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-gray-200 rounded" />
+                      <div className="h-3 w-24 bg-gray-200 rounded" />
+                    </div>
+                  </div>
+                  <div className="h-7 w-24 bg-gray-200 rounded-full" />
+                </div>
+                <div className="border-t border-gray-100 pt-3 h-10 bg-gray-100 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">Sign in to see your orders</h2>
+          <Link
+            href="/auth/login"
+            className="inline-block mt-4 px-6 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark"
+          >
+            Go to login
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -85,10 +195,10 @@ export default function OrdersPage() {
 
         {/* Filter Tabs */}
         <div className="flex gap-2 mb-6">
-          {['all', 'active', 'completed'].map((tab) => (
+          {(['all', 'active', 'completed'] as Filter[]).map((tab) => (
             <button
               key={tab}
-              onClick={() => setFilter(tab as 'all' | 'active' | 'completed')}
+              onClick={() => setFilter(tab)}
               className={`px-4 py-2 rounded-lg font-semibold capitalize transition-colors ${
                 filter === tab
                   ? 'bg-primary text-white'
@@ -100,14 +210,16 @@ export default function OrdersPage() {
           ))}
         </div>
 
-        {/* Orders List */}
-        {filteredOrders.length === 0 ? (
+        {errorMessage ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+            <p className="font-semibold mb-1">Could not load orders</p>
+            <p className="font-mono break-all">{errorMessage}</p>
+          </div>
+        ) : orders.length === 0 ? (
           <div className="bg-white rounded-xl shadow-md p-12 text-center">
             <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">No orders found</h2>
-            <p className="text-gray-600 mb-6">
-              {filter === 'active' ? 'You have no active orders' : 'Start ordering to see your history'}
-            </p>
+            <h2 className="text-xl font-bold mb-2">No orders yet</h2>
+            <p className="text-gray-600 mb-6">Start ordering to see your history here.</p>
             <Link
               href="/restaurants"
               className="inline-block bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
@@ -115,10 +227,17 @@ export default function OrdersPage() {
               Browse Restaurants
             </Link>
           </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-md p-12 text-center">
+            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">
+              {filter === 'active' ? 'No active orders right now.' : 'No completed orders yet.'}
+            </p>
+          </div>
         ) : (
           <div className="space-y-4">
             {filteredOrders.map((order, index) => {
-              const config = statusConfig[order.status as keyof typeof statusConfig];
+              const config = statusConfig[order.status] ?? statusConfig.pending;
               const StatusIcon = config.icon;
 
               return (
@@ -134,11 +253,11 @@ export default function OrdersPage() {
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 bg-gradient-to-br from-primary-light to-primary rounded-lg flex items-center justify-center text-2xl">
-                            {order.store.image}
+                            {order.storeImage}
                           </div>
                           <div>
-                            <h3 className="font-bold">{order.store.name}</h3>
-                            <p className="text-sm text-gray-600">Order #{order.id}</p>
+                            <h3 className="font-bold">{order.storeName}</h3>
+                            <p className="text-sm text-gray-600">#{order.id}</p>
                           </div>
                         </div>
 
@@ -150,20 +269,28 @@ export default function OrdersPage() {
 
                       <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
                         <Clock className="w-4 h-4" />
-                        <span>{order.createdAt.toLocaleDateString()} at {order.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>
+                          {order.createdAt.toLocaleDateString()} at{' '}
+                          {order.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
 
                       <div className="border-t border-gray-200 pt-3">
                         <div className="flex flex-wrap gap-2 mb-2">
-                          {order.items.map((item, idx) => (
+                          {order.items.slice(0, 3).map((item, idx) => (
                             <span key={idx} className="text-sm text-gray-600">
                               {item.quantity}x {item.name}
-                              {idx < order.items.length - 1 && ','}
+                              {idx < Math.min(order.items.length, 3) - 1 && ','}
                             </span>
                           ))}
+                          {order.items.length > 3 && (
+                            <span className="text-sm text-gray-500">
+                              +{order.items.length - 3} more
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-lg">R{order.total}</span>
+                          <span className="font-bold text-lg">R{order.total.toFixed(2)}</span>
                           <span className="text-primary text-sm font-semibold">View Details →</span>
                         </div>
                       </div>

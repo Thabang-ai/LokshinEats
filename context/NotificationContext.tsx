@@ -72,18 +72,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setUnreadCount(0);
     };
 
-    window.addEventListener('kLokshinEats-notification', handleNewNotification as EventListener);
-    window.addEventListener('kLokshinEats-notification-read', handleNotificationRead as EventListener);
-    window.addEventListener('kLokshinEats-notifications-read-all', handleNotificationsReadAll);
-    window.addEventListener('kLokshinEats-notification-deleted', handleNotificationDeleted as EventListener);
-    window.addEventListener('kLokshinEats-notifications-cleared', handleNotificationsCleared);
+    window.addEventListener('lokshineats-notification', handleNewNotification as EventListener);
+    window.addEventListener('lokshineats-notification-read', handleNotificationRead as EventListener);
+    window.addEventListener('lokshineats-notifications-read-all', handleNotificationsReadAll);
+    window.addEventListener('lokshineats-notification-deleted', handleNotificationDeleted as EventListener);
+    window.addEventListener('lokshineats-notifications-cleared', handleNotificationsCleared);
 
     return () => {
-      window.removeEventListener('kLokshinEats-notification', handleNewNotification as EventListener);
-      window.removeEventListener('kLokshinEats-notification-read', handleNotificationRead as EventListener);
-      window.removeEventListener('kLokshinEats-notifications-read-all', handleNotificationsReadAll);
-      window.removeEventListener('kLokshinEats-notification-deleted', handleNotificationDeleted as EventListener);
-      window.removeEventListener('kLokshinEats-notifications-cleared', handleNotificationsCleared);
+      window.removeEventListener('lokshineats-notification', handleNewNotification as EventListener);
+      window.removeEventListener('lokshineats-notification-read', handleNotificationRead as EventListener);
+      window.removeEventListener('lokshineats-notifications-read-all', handleNotificationsReadAll);
+      window.removeEventListener('lokshineats-notification-deleted', handleNotificationDeleted as EventListener);
+      window.removeEventListener('lokshineats-notifications-cleared', handleNotificationsCleared);
     };
   }, []);
 

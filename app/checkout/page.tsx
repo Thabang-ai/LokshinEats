@@ -1,20 +1,26 @@
 'use client';
 
 // Checkout Page
-// Handles order placement and payment
+// Writes a real order document to Firestore on submit.
+// Payment processing still goes through paymentService (Yoco/Ozow stubs +
+// real-ish cash flow) — real gateway integration is Phase 4.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCart } from '../../context/CartContext';
-import { CreditCard, Smartphone, DollarSign, MapPin, Clock } from 'lucide-react';
+import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { processPayment, getPaymentMethodInfo } from '../../services/paymentService';
+import { processPayment } from '../../services/paymentService';
 import { useRouter } from 'next/navigation';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+import { useAuthUser } from '../../hooks/useAuthUser';
 
 export default function CheckoutPage() {
-  const { cart, clearCart } = useCart();
+  const { cart, storeMeta, clearCart } = useCart();
   const router = useRouter();
+  const { user, authReady } = useAuthUser();
   const [selectedPayment, setSelectedPayment] = useState<'cash' | 'yoco' | 'ozow'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -25,8 +31,23 @@ export default function CheckoutPage() {
     instructions: '',
     phone: '',
     email: '',
-    promoCode: '',
   });
+
+  // Pre-fill email from authenticated user once auth resolves
+  useEffect(() => {
+    if (user?.email && !formData.email) {
+      setFormData((prev) => ({ ...prev, email: user.email ?? '' }));
+    }
+  }, [user]);
+
+  // Redirect to login if not authenticated. Firestore rules require
+  // request.auth.uid == request.resource.data.customerId on order create.
+  useEffect(() => {
+    if (authReady && !user) {
+      toast.error('Please log in to checkout');
+      router.push('/auth/login');
+    }
+  }, [authReady, user, router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
@@ -37,17 +58,34 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!user) {
+      toast.error('Please log in to checkout');
+      router.push('/auth/login');
+      return;
+    }
+    if (!storeMeta) {
+      toast.error('Cart is missing restaurant info — try refreshing');
+      return;
+    }
+    if (!storeMeta.isOpen) {
+      toast.error(`${storeMeta.name} is currently closed`);
+      return;
+    }
+    if (cart.subtotal < storeMeta.minOrderAmount) {
+      toast.error(`Minimum order is R${storeMeta.minOrderAmount}`);
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      // Generate order ID
-      const orderId = `ORD-${Date.now()}`;
-
-      // Process payment
+      // Step 1: Process payment (stubbed — Phase 4 will plug in real gateways)
+      // We pass a temporary id; the real Firestore doc ID is generated below.
       const paymentResponse = await processPayment({
         amount: cart.total,
         paymentMethod: selectedPayment,
-        orderId,
+        orderId: `pending-${Date.now()}`,
         customerEmail: formData.email,
         customerPhone: formData.phone,
         description: `Order for ${cart.items.length} items`,
@@ -59,19 +97,54 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Payment successful
+      // Step 2: Write real order to Firestore.
+      // Fields are denormalized so other roles (vendor, driver) can render
+      // them without reading users/{customerId} (rules block cross-user reads).
+      const docRef = await addDoc(collection(db, 'orders'), {
+        customerId: user.uid,
+        customerName: user.displayName ?? user.email ?? 'Customer',
+        customerEmail: formData.email,
+        customerPhone: formData.phone,
+        storeId: storeMeta.id,
+        storeName: storeMeta.name,
+        driverId: null, // explicit null so `where driverId == null` matches
+        items: cart.items,
+        status: 'pending' as const,
+        subtotal: cart.subtotal,
+        deliveryFee: cart.deliveryFee,
+        total: cart.total,
+        paymentMethod: selectedPayment,
+        paymentStatus: selectedPayment === 'cash' ? ('pending' as const) : ('paid' as const),
+        paymentTransactionId: paymentResponse.transactionId ?? null,
+        deliveryAddress: {
+          street: formData.street,
+          city: formData.city,
+          postalCode: formData.postalCode,
+          instructions: formData.instructions || null,
+        },
+        createdAt: serverTimestamp(),
+      });
+
       toast.success('Order placed successfully! 🎉');
       clearCart();
-
-      // Redirect to order tracking
-      router.push(`/orders/${orderId}`);
+      router.push(`/orders/${docRef.id}`);
     } catch (error) {
-      toast.error('An error occurred. Please try again.');
-      console.error('Payment error:', error);
-    } finally {
+      const msg = error instanceof Error ? error.message : 'An error occurred. Please try again.';
+      toast.error(msg);
+      console.error('Checkout error:', error);
       setIsProcessing(false);
     }
   };
+
+  // ---- Render branches ----------------------------------------------------
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading…</p>
+      </div>
+    );
+  }
 
   if (cart.items.length === 0) {
     return (
@@ -89,10 +162,43 @@ export default function CheckoutPage() {
     );
   }
 
+  const storeClosed = storeMeta ? !storeMeta.isOpen : false;
+  const belowMin = storeMeta ? cart.subtotal < storeMeta.minOrderAmount : false;
+  const canSubmit = !!storeMeta && !storeClosed && !belowMin && !isProcessing;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">Checkout</h1>
+        <h1 className="text-3xl font-bold mb-2">Checkout</h1>
+        {storeMeta && (
+          <p className="text-sm text-gray-500 mb-6">From {storeMeta.name}</p>
+        )}
+
+        {storeClosed && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-800">{storeMeta?.name} is currently closed</p>
+              <p className="text-sm text-red-700">
+                You can't place this order right now. Come back when they're open.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {belowMin && !storeClosed && storeMeta && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-800">
+                Add R{(storeMeta.minOrderAmount - cart.subtotal).toFixed(2)} more to checkout
+              </p>
+              <p className="text-sm text-amber-700">
+                Minimum order at {storeMeta.name} is R{storeMeta.minOrderAmount}.
+              </p>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Checkout Form */}
@@ -185,6 +291,9 @@ export default function CheckoutPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="+27 83 123 4567"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Your driver may call you with delivery questions.
+                  </p>
                 </div>
 
                 <div>
@@ -282,26 +391,6 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
-              {/* Promo Code */}
-              <div className="mb-4">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    name="promoCode"
-                    value={formData.promoCode}
-                    onChange={handleInputChange}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
-                    placeholder="Promo code"
-                  />
-                  <button
-                    type="button"
-                    className="px-4 py-2 bg-gray-200 rounded-lg font-semibold text-sm hover:bg-gray-300"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-
               {/* Totals */}
               <div className="border-t border-gray-200 pt-4 space-y-2">
                 <div className="flex justify-between text-gray-600">
@@ -311,10 +400,6 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-gray-600">
                   <span>Delivery Fee</span>
                   <span>R{cart.deliveryFee.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Discount</span>
-                  <span className="text-green-600">-R0.00</span>
                 </div>
                 <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-xl">
                   <span>Total</span>
@@ -330,10 +415,16 @@ export default function CheckoutPage() {
 
               <button
                 type="submit"
-                disabled={isProcessing}
+                disabled={!canSubmit}
                 className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-4"
               >
-                {isProcessing ? 'Processing...' : `Pay R${cart.total.toFixed(2)}`}
+                {isProcessing
+                  ? 'Placing order…'
+                  : storeClosed
+                  ? 'Restaurant closed'
+                  : belowMin && storeMeta
+                  ? `Add R${(storeMeta.minOrderAmount - cart.subtotal).toFixed(2)} more`
+                  : `Place order · R${cart.total.toFixed(2)}`}
               </button>
 
               <Link

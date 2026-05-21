@@ -4,14 +4,32 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, ShoppingCart, User, Menu, X } from 'lucide-react';
+import { Search, ShoppingCart, User, Menu, X, LogOut } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import Link from 'next/link';
+import Image from 'next/image';
 import Notifications from '../components/Notifications';
+import { auth } from '../firebase/config';
+import { signOut } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 export default function Header() {
   const { cartItemCount } = useCart();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast.success('Logged out successfully');
+      router.push('/auth/login');
+      setIsMobileMenuOpen(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-md">
@@ -28,9 +46,14 @@ export default function Header() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-xl">L</span>
-            </div>
+            <Image
+              src="/logo.png"
+              alt="LokshinEats"
+              width={40}
+              height={40}
+              className="object-contain"
+              priority
+            />
             <h1 className="text-2xl font-bold text-black hidden sm:block">
               Lokshin<span className="text-primary">Eats</span>
             </h1>
@@ -140,6 +163,13 @@ export default function Header() {
               >
                 Driver
               </Link>
+              <button
+                onClick={handleLogout}
+                className="w-full text-left py-3 text-red-600 hover:text-red-700 font-semibold flex items-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Logout
+              </button>
             </nav>
           </div>
         </div>

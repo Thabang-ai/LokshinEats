@@ -4,7 +4,7 @@
 // Allows users to view and edit their profile, including profile picture
 
 import { useState, useEffect } from 'react';
-import { User, Camera, ArrowLeft, Mail, Phone, MapPin, Save } from 'lucide-react';
+import { User, Camera, ArrowLeft, Mail, Phone, MapPin, Save, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -12,6 +12,8 @@ import { auth } from '../../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../firebase/config';
 import { updateProfile } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
 
 export default function ProfilePage() {
   const [formData, setFormData] = useState({
@@ -24,6 +26,18 @@ export default function ProfilePage() {
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast.success('Logged out successfully');
+      router.push('/auth/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
+  };
 
   useEffect(() => {
     // Load user data from Firebase Auth (can be extended to load from Firestore)
@@ -232,6 +246,16 @@ export default function ProfilePage() {
               >
                 <Save className="w-5 h-5" />
                 {isLoading ? 'Saving...' : 'Save Changes'}
+              </button>
+
+              {/* Logout Button */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full bg-red-100 text-red-600 py-4 rounded-xl font-bold text-lg hover:bg-red-200 transition-colors flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Logout
               </button>
             </form>
           </div>

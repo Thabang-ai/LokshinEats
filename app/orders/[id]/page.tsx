@@ -1,59 +1,66 @@
 'use client';
 
 // Order Tracking Page
-// Shows real-time order status and delivery tracking
+// Customer's view of a single order. Reads the order doc from Firestore.
+// One-shot fetch for now — real-time tracking (onSnapshot) is Phase 3.
+// Live map will be wired up in Phase 5 (driver location tracking).
 
-import { useState } from 'react';
-import { CheckCircle, Clock, Package, Truck, MapPin, Phone, Star, ArrowLeft } from 'lucide-react';
+import { use, useEffect, useState } from 'react';
+import {
+  CheckCircle,
+  Clock,
+  Package,
+  Truck,
+  MapPin,
+  Phone,
+  Star,
+  ArrowLeft,
+  Navigation,
+} from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import Map from '../../../components/Map';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../../firebase/config';
+import { useAuthUser } from '../../../hooks/useAuthUser';
 
-// Mock order data (will be replaced with Firebase)
-const mockOrder = {
-  id: 'ORD-12345',
-  status: 'preparing',
-  createdAt: new Date(),
-  estimatedDeliveryTime: new Date(Date.now() + 30 * 60 * 1000),
-  items: [
-    {
-      product: {
-        id: '1',
-        name: 'Pap & Vleis Combo',
-        price: 65,
-      },
-      quantity: 2,
-    },
-    {
-      product: {
-        id: '2',
-        name: 'Chicken Kota',
-        price: 45,
-      },
-      quantity: 1,
-    },
-  ],
-  total: 175,
-  deliveryFee: 15,
-  store: {
-    name: "Mama's Kitchen",
-    address: '123 Main Street, Soweto',
-    phone: '+27 83 123 4567',
-  },
+// ---------------------------------------------------------------------------
+// Types
+
+type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'picked_up'
+  | 'delivered'
+  | 'cancelled';
+
+type OrderView = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string | null;
+  storeId: string;
+  storeName: string;
+  driverId: string | null;
+  status: OrderStatus;
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  items: { name: string; price: number; quantity: number }[];
   deliveryAddress: {
-    street: '456 Oak Avenue',
-    city: 'Soweto',
-    postalCode: '1800',
-  },
-  driver: {
-    name: 'Thabo Mokoena',
-    phone: '+27 82 987 6543',
-    vehicle: 'Motorbike',
-    rating: 4.8,
-  },
+    street: string;
+    city: string;
+    postalCode: string;
+    instructions?: string;
+  } | null;
+  createdAt: Date;
+  estimatedDeliveryTime: Date | null;
+  paymentMethod: string;
+  paymentStatus: string;
 };
 
-const orderSteps = [
+const orderSteps: { key: OrderStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'pending', label: 'Order Placed', icon: CheckCircle },
   { key: 'confirmed', label: 'Confirmed', icon: CheckCircle },
   { key: 'preparing', label: 'Preparing', icon: Package },
@@ -62,115 +69,275 @@ const orderSteps = [
   { key: 'delivered', label: 'Delivered', icon: CheckCircle },
 ];
 
-const statusOrder = ['pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'delivered'];
+const statusOrder: OrderStatus[] = [
+  'pending',
+  'confirmed',
+  'preparing',
+  'ready',
+  'picked_up',
+  'delivered',
+];
 
-export default function OrderTrackingPage({ params }: { params: { id: string } }) {
-  const [orderStatus, setOrderStatus] = useState(mockOrder.status);
-  const [showRating, setShowRating] = useState(false);
-  const [rating, setRating] = useState(0);
+function tsToDate(v: any): Date | null {
+  if (!v) return null;
+  if (v instanceof Timestamp) return v.toDate();
+  if (typeof v.toDate === 'function') return v.toDate();
+  return null;
+}
 
-  const currentStepIndex = statusOrder.indexOf(orderStatus);
+// ---------------------------------------------------------------------------
 
-  const handleRateOrder = () => {
-    // Will implement with Firebase
-    console.log('Rating:', rating);
-    setShowRating(false);
-  };
+export default function OrderTrackingPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const { user, authReady } = useAuthUser();
+
+  const [order, setOrder] = useState<OrderView | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'orders', id));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setOrder(null);
+          setIsLoading(false);
+          return;
+        }
+        const data = snap.data();
+        const items = Array.isArray(data.items)
+          ? data.items.map((it: any) => ({
+              name: it.product?.name ?? 'Item',
+              price: typeof it.product?.price === 'number' ? it.product.price : 0,
+              quantity: typeof it.quantity === 'number' ? it.quantity : 1,
+            }))
+          : [];
+
+        setOrder({
+          id: snap.id,
+          customerId: data.customerId,
+          customerName: data.customerName ?? 'Customer',
+          customerPhone: typeof data.customerPhone === 'string' ? data.customerPhone : null,
+          storeId: data.storeId,
+          storeName: data.storeName ?? 'Unknown store',
+          driverId: data.driverId ?? null,
+          status: (data.status as OrderStatus) ?? 'pending',
+          subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
+          deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
+          total: typeof data.total === 'number' ? data.total : 0,
+          items,
+          deliveryAddress: data.deliveryAddress ?? null,
+          createdAt: tsToDate(data.createdAt) ?? new Date(),
+          estimatedDeliveryTime: tsToDate(data.estimatedDeliveryTime),
+          paymentMethod: data.paymentMethod ?? 'cash',
+          paymentStatus: data.paymentStatus ?? 'pending',
+        });
+        setIsLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : String(err));
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user, authReady]);
+
+  // ---- Render branches ----------------------------------------------------
+
+  if (!authReady || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-8">
+          <div className="h-4 w-24 bg-gray-200 rounded mb-4 animate-pulse" />
+          <div className="h-9 w-64 bg-gray-200 rounded mb-6 animate-pulse" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-xl shadow-md p-6 animate-pulse">
+                <div className="h-6 w-32 bg-gray-200 rounded mb-6" />
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 mb-4">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                    <div className="h-4 bg-gray-200 rounded w-1/3" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <p className="font-semibold mb-2">Sign in to view your order</p>
+          <Link href="/auth/login" className="text-primary underline">Go to login</Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <p className="text-red-600 font-semibold mb-2">Could not load order</p>
+          <p className="text-gray-500 text-sm font-mono break-all mb-4">{errorMessage}</p>
+          <Link href="/orders" className="text-primary underline">Back to orders</Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <p className="font-semibold text-gray-700 mb-2">Order not found</p>
+          <p className="text-gray-500 mb-4">No order exists with id <span className="font-mono">{id}</span>.</p>
+          <Link href="/orders" className="text-primary underline">Back to orders</Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Defense in depth: rules already restrict reads, but if somehow another
+  // user's order leaks through, refuse to render it.
+  if (order.customerId !== user.uid) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <p className="font-semibold text-gray-700 mb-2">Not your order</p>
+          <Link href="/orders" className="text-primary underline">Back to your orders</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const isCancelled = order.status === 'cancelled';
+  const currentStepIndex = isCancelled ? -1 : statusOrder.indexOf(order.status);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <Link href="/orders" className="inline-flex items-center gap-2 text-gray-600 hover:text-primary mb-4">
           <ArrowLeft className="w-5 h-5" />
           Back to Orders
         </Link>
 
-        <h1 className="text-3xl font-bold mb-6">Track Your Order</h1>
+        <h1 className="text-3xl font-bold mb-1">Track Your Order</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          #{order.id} · {order.createdAt.toLocaleDateString()}{' '}
+          {order.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Order Status */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Progress Tracker */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-md p-6"
-            >
-              <h2 className="text-xl font-bold mb-6">Order Status</h2>
-
-              <div className="space-y-4">
-                {orderSteps.map((step, index) => {
-                  const Icon = step.icon;
-                  const isCompleted = index <= currentStepIndex;
-                  const isCurrent = index === currentStepIndex;
-
-                  return (
-                    <div key={step.key} className="flex items-center gap-4">
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          isCompleted ? 'bg-primary text-white' : 'bg-gray-200 text-gray-400'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p
-                          className={`font-semibold ${
-                            isCurrent ? 'text-primary' : isCompleted ? 'text-gray-900' : 'text-gray-400'
-                          }`}
-                        >
-                          {step.label}
-                        </p>
-                      </div>
-                      {isCurrent && (
-                        <div className="flex items-center gap-2 text-primary">
-                          <Clock className="w-4 h-4" />
-                          <span className="text-sm font-semibold">In Progress</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+            {/* Cancelled Banner */}
+            {isCancelled && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="font-semibold text-red-800">This order was cancelled</p>
+                <p className="text-sm text-red-700">
+                  Contact the restaurant or your driver if you have questions.
+                </p>
               </div>
-            </motion.div>
+            )}
 
-            {/* Driver Info (only show if picked up) */}
-            {currentStepIndex >= 4 && (
+            {/* Progress Tracker */}
+            {!isCancelled && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white rounded-xl shadow-md p-6"
               >
-                <h2 className="text-xl font-bold mb-4">Your Driver</h2>
+                <h2 className="text-xl font-bold mb-6">Order Status</h2>
 
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-light rounded-full flex items-center justify-center text-2xl">
-                    👨‍✈️
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg">{mockOrder.driver.name}</h3>
-                    <div className="flex items-center gap-1 text-sm text-gray-600">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span>{mockOrder.driver.rating}</span>
-                    </div>
-                    <p className="text-sm text-gray-600">{mockOrder.driver.vehicle}</p>
-                  </div>
-                  <a
-                    href={`tel:${mockOrder.driver.phone}`}
-                    className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark"
-                  >
-                    <Phone className="w-6 h-6" />
-                  </a>
+                <div className="space-y-4">
+                  {orderSteps.map((step, index) => {
+                    const Icon = step.icon;
+                    const isCompleted = index <= currentStepIndex;
+                    const isCurrent = index === currentStepIndex;
+                    const isFinalDelivered = isCurrent && step.key === 'delivered';
+
+                    return (
+                      <div key={step.key} className="flex items-center gap-4">
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            isCompleted ? 'bg-primary text-white' : 'bg-gray-200 text-gray-400'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                          <p
+                            className={`font-semibold ${
+                              isCurrent ? 'text-primary' : isCompleted ? 'text-gray-900' : 'text-gray-400'
+                            }`}
+                          >
+                            {step.label}
+                          </p>
+                        </div>
+                        {isFinalDelivered ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle className="w-4 h-4" />
+                            <span className="text-sm font-semibold">Completed</span>
+                          </div>
+                        ) : (
+                          isCurrent && (
+                            <div className="flex items-center gap-2 text-primary">
+                              <Clock className="w-4 h-4" />
+                              <span className="text-sm font-semibold">In Progress</span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Live Map */}
-                <Map
-                  origin={{ lat: -26.2675, lng: 27.8585 }} // Store location (Soweto)
-                  destination={{ lat: -26.2700, lng: 27.8600 }} // Delivery address
-                  driverLocation={{ lat: -26.2685, lng: 27.8590 }} // Driver location
-                  height="300px"
-                />
+                <p className="mt-4 text-xs text-gray-500">
+                  Page is one-shot for now — refresh to see latest status. Live tracking lands in Phase 3.
+                </p>
+              </motion.div>
+            )}
+
+            {/* Driver assigned — placeholder for Phase 5 live map */}
+            {order.driverId && !isCancelled && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold mb-4">Driver assigned</h2>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+                  <Navigation className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                  <p className="font-semibold text-gray-700">Live map tracking coming soon</p>
+                  <p className="text-sm text-gray-500">
+                    Once we wire driver location updates (Phase 5), you'll see your courier moving on a map here.
+                  </p>
+                </div>
               </motion.div>
             )}
 
@@ -184,10 +351,12 @@ export default function OrderTrackingPage({ params }: { params: { id: string } }
               <h2 className="text-xl font-bold mb-4">Order Details</h2>
 
               <div className="space-y-3 mb-4">
-                {mockOrder.items.map((item) => (
-                  <div key={item.product.id} className="flex justify-between">
-                    <span>{item.quantity}x {item.product.name}</span>
-                    <span className="font-semibold">R{item.product.price * item.quantity}</span>
+                {order.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between">
+                    <span>
+                      {item.quantity}x {item.name}
+                    </span>
+                    <span className="font-semibold">R{(item.price * item.quantity).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -195,16 +364,21 @@ export default function OrderTrackingPage({ params }: { params: { id: string } }
               <div className="border-t border-gray-200 pt-4 space-y-2">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
-                  <span>R{mockOrder.total - mockOrder.deliveryFee}</span>
+                  <span>R{order.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Delivery Fee</span>
-                  <span>R{mockOrder.deliveryFee}</span>
+                  <span>R{order.deliveryFee.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span className="text-primary">R{mockOrder.total}</span>
+                  <span className="text-primary">R{order.total.toFixed(2)}</span>
                 </div>
+              </div>
+
+              <div className="mt-4 text-sm text-gray-600">
+                <span className="font-semibold capitalize">{order.paymentMethod}</span>{' '}
+                · <span className="capitalize">{order.paymentStatus}</span>
               </div>
             </motion.div>
           </div>
@@ -220,120 +394,72 @@ export default function OrderTrackingPage({ params }: { params: { id: string } }
               <h2 className="text-xl font-bold mb-4">Restaurant</h2>
 
               <div className="space-y-3">
-                <div>
-                  <p className="font-semibold">{mockOrder.store.name}</p>
-                  <p className="text-sm text-gray-600">{mockOrder.store.address}</p>
-                </div>
-
-                <a
-                  href={`tel:${mockOrder.store.phone}`}
-                  className="flex items-center gap-2 text-primary hover:underline"
+                <p className="font-semibold">{order.storeName}</p>
+                <Link
+                  href={`/restaurants/${order.storeId}`}
+                  className="text-sm text-primary hover:underline"
                 >
-                  <Phone className="w-4 h-4" />
-                  <span className="text-sm">{mockOrder.store.phone}</span>
-                </a>
+                  View menu
+                </Link>
               </div>
             </motion.div>
 
             {/* Delivery Address */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl shadow-md p-6"
-            >
-              <h2 className="text-xl font-bold mb-4">Delivery Address</h2>
+            {order.deliveryAddress && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-white rounded-xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold mb-4">Delivery Address</h2>
 
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-primary mt-1" />
-                <div>
-                  <p className="font-semibold">{mockOrder.deliveryAddress.street}</p>
-                  <p className="text-sm text-gray-600">
-                    {mockOrder.deliveryAddress.city}, {mockOrder.deliveryAddress.postalCode}
-                  </p>
+                <div className="flex items-start gap-3">
+                  <MapPin className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold">{order.deliveryAddress.street}</p>
+                    <p className="text-sm text-gray-600">
+                      {order.deliveryAddress.city}, {order.deliveryAddress.postalCode}
+                    </p>
+                    {order.deliveryAddress.instructions && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Instructions: {order.deliveryAddress.instructions}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            )}
 
-            {/* Estimated Delivery */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-primary/10 rounded-xl p-6"
-            >
-              <div className="flex items-center gap-3">
-                <Clock className="w-6 h-6 text-primary" />
-                <div>
-                  <p className="text-sm text-gray-600">Estimated Delivery</p>
-                  <p className="font-bold text-lg">
-                    {mockOrder.estimatedDeliveryTime.toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
+            {/* Customer contact (driver/store would call this) */}
+            {order.customerPhone && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.15 }}
+                className="bg-white rounded-xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold mb-4">Contact</h2>
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-primary" />
+                  <span className="text-sm">{order.customerPhone}</span>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            )}
 
-            {/* Rate Order (only show if delivered) */}
-            {currentStepIndex === 5 && !showRating && (
+            {/* Rate Order placeholder (Phase 7 will wire reviews) */}
+            {order.status === 'delivered' && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
+                className="bg-white rounded-xl shadow-md p-6 text-center"
               >
-                <button
-                  onClick={() => setShowRating(true)}
-                  className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
-                >
-                  Rate Your Order
-                </button>
-              </motion.div>
-            )}
-
-            {/* Rating Modal */}
-            {showRating && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="bg-white rounded-xl shadow-md p-6"
-              >
-                <h2 className="text-xl font-bold mb-4">Rate Your Order</h2>
-
-                <div className="flex justify-center gap-2 mb-4">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => setRating(star)}
-                      className="text-3xl hover:scale-110 transition-transform"
-                    >
-                      {star <= rating ? '⭐' : '☆'}
-                    </button>
-                  ))}
-                </div>
-
-                <textarea
-                  placeholder="Leave a review (optional)"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary mb-4"
-                  rows={3}
-                />
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowRating(false)}
-                    className="flex-1 bg-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleRateOrder}
-                    disabled={rating === 0}
-                    className="flex-1 bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Submit
-                  </button>
-                </div>
+                <Star className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                <p className="font-semibold mb-1">Rate your order</p>
+                <p className="text-sm text-gray-500">
+                  Reviews coming soon (Phase 7).
+                </p>
               </motion.div>
             )}
           </div>

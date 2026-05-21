@@ -1,13 +1,15 @@
 // TypeScript types for LokshinEats data models
 
 // User types
+// `role` matches what the runtime writes (signup form + RoleGuard use 'vendor').
+// `phone` matches what signup writes to the user doc.
 export interface User {
   id: string;
   email: string;
   displayName: string;
-  phoneNumber?: string;
+  phone?: string;
   address?: string;
-  role: 'customer' | 'driver' | 'store_owner' | 'admin';
+  role: 'customer' | 'driver' | 'vendor' | 'admin';
   createdAt: Date;
 }
 

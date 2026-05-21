@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { sendPasswordResetEmail } from 'firebase/auth';
@@ -47,15 +48,19 @@ export default function ResetPasswordPage() {
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-3xl">L</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="LokshinEats"
+            width={120}
+            height={120}
+            className="mx-auto mb-4 object-contain"
+            priority
+          />
           <h1 className="text-2xl font-bold">Reset Password</h1>
           <p className="text-gray-600">
-            {emailSent 
-              ? 'Check your email for reset instructions' 
-              : 'Enter your email to receive password reset instructions'
-            }
+            {emailSent
+              ? 'Check your email for reset instructions'
+              : 'Enter your email to receive password reset instructions'}
           </p>
         </div>
 

@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { User, Mail, Lock, Phone, MapPin, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -68,13 +69,15 @@ export default function SignupPage() {
       
       toast.success('Account created successfully! Welcome to LokshinEats 🎉');
       
-      // Redirect based on role
+      // Redirect based on role.
+      // Vendors and drivers go through onboarding first, then their dashboards.
+      // Customers go straight to browsing restaurants.
       if (formData.role === 'vendor') {
         router.push('/vendor/register');
       } else if (formData.role === 'driver') {
         router.push('/driver/register');
       } else {
-        router.push('/');
+        router.push('/restaurants');
       }
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -93,11 +96,17 @@ export default function SignupPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-3xl">K</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="LokshinEats"
+            width={120}
+            height={120}
+            className="mx-auto mb-4 object-contain"
+            priority
+          />
           <h1 className="text-2xl font-bold">Create Account</h1>
           <p className="text-gray-600">Join LokshinEats and start ordering</p>
+          <p className="text-xs text-gray-500 mt-1">Township Food. Delivered.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

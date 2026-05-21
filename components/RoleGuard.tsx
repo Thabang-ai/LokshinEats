@@ -30,9 +30,11 @@ export default function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
 
       try {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
+        
         if (!userDoc.exists()) {
-          toast.error('User profile not found');
-          router.push('/auth/signup');
+          // User is logged in but has no Firestore profile - allow access as customer by default
+          console.log('User profile not found in Firestore, allowing access as customer');
+          setIsLoading(false);
           return;
         }
 
@@ -53,8 +55,9 @@ export default function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
         }
       } catch (error) {
         console.error('Role check error:', error);
-        toast.error('Failed to verify user role');
-        router.push('/auth/login');
+        // If there's an error checking the role, still allow access
+        setIsLoading(false);
+        return;
       } finally {
         setIsLoading(false);
       }

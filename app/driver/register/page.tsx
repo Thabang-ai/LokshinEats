@@ -218,31 +218,39 @@ export default function DriverRegistrationPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2">Vehicle Registration</label>
-                <input
-                  type="text"
-                  name="vehicleRegistration"
-                  value={formData.vehicleRegistration}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="CA 123 456"
-                />
-              </div>
+              {formData.vehicleType === 'bicycle' ? (
+                <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
+                  No license or vehicle registration needed for a bicycle. Skip ahead.
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Vehicle Registration</label>
+                    <input
+                      type="text"
+                      name="vehicleRegistration"
+                      value={formData.vehicleRegistration}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="CA 123 456"
+                    />
+                  </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-semibold mb-2">Driver's License Number</label>
-                <input
-                  type="text"
-                  name="licenseNumber"
-                  value={formData.licenseNumber}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="License Number"
-                />
-              </div>
+                  <div className="mt-4">
+                    <label className="block text-sm font-semibold mb-2">Driver's License Number</label>
+                    <input
+                      type="text"
+                      name="licenseNumber"
+                      value={formData.licenseNumber}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="License Number"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Bank Information */}
@@ -321,47 +329,53 @@ export default function DriverRegistrationPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Driver's License</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setLicenseDocument(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="license-upload"
-                    />
-                    <label htmlFor="license-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">
-                        {licenseDocument ? licenseDocument.name : 'Tap to take photo or upload driver\'s license'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                    </label>
-                  </div>
-                </div>
+                {formData.vehicleType !== 'bicycle' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2">Driver's License</label>
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) => setLicenseDocument(e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="license-upload"
+                        />
+                        <label htmlFor="license-upload" className="cursor-pointer">
+                          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-600">
+                            {licenseDocument ? licenseDocument.name : "Tap to take photo or upload driver's license"}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
+                        </label>
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Vehicle Registration</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setVehicleRegistrationDocument(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="vehicle-upload"
-                    />
-                    <label htmlFor="vehicle-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">
-                        {vehicleRegistrationDocument ? vehicleRegistrationDocument.name : 'Tap to take photo or upload vehicle registration'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                    </label>
-                  </div>
-                </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2">Vehicle Registration</label>
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) => setVehicleRegistrationDocument(e.target.files?.[0] || null)}
+                          className="hidden"
+                          id="vehicle-upload"
+                        />
+                        <label htmlFor="vehicle-upload" className="cursor-pointer">
+                          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-600">
+                            {vehicleRegistrationDocument
+                              ? vehicleRegistrationDocument.name
+                              : 'Tap to take photo or upload vehicle registration'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold mb-2">Proof of Address</label>

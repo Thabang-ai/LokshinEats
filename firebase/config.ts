@@ -14,7 +14,7 @@ const firebaseConfig = {
   storageBucket: "kasieats-34391.firebasestorage.app",
   messagingSenderId: "741301128340",
   appId: "1:741301128340:web:4837774d16c47668c5b881",
-  measurementId: "G-8JX4VCNK3T"
+  measurementId: "741301128340"
 };
 
 // Initialize Firebase

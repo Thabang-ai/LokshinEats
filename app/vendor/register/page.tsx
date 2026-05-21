@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../../firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 export default function StoreRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -73,22 +73,51 @@ export default function StoreRegistrationPage() {
       return;
     }
 
+    if (!auth.currentUser) {
+      toast.error('You must be logged in to register a store');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      // Update user role to vendor in Firestore
-      if (auth.currentUser) {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), {
+      // Mark the user as a vendor (merge so we don't clobber existing fields)
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid),
+        {
           role: 'vendor',
           email: formData.email,
           phone: formData.phone,
           storeName: formData.storeName,
-          updatedAt: new Date(),
-        }, { merge: true });
-      }
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
 
-      // Simulate store registration (will be replaced with Firebase)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Actually create the store doc. Auto-generated id so future-proof for multi-store.
+      // File uploads (logo/banner/business docs) remain stubbed — Phase 6 will wire Firebase Storage.
+      await addDoc(collection(db, 'stores'), {
+        name: formData.storeName,
+        cuisine: formData.cuisine,
+        description: formData.description,
+        ownerId: auth.currentUser.uid,
+        address: formData.address,
+        city: formData.city,
+        phone: formData.phone,
+        email: formData.email,
+        openingTime: formData.openingTime,
+        closingTime: formData.closingTime,
+        categories: formData.categories,
+        // Sensible defaults for a brand-new store
+        image: '🍽️',
+        rating: 0,
+        reviewCount: 0,
+        deliveryTime: '30-45 min',
+        deliveryFee: 15,
+        minOrderAmount: 30,
+        isOpen: false, // vendor opens manually from the dashboard
+        createdAt: serverTimestamp(),
+      });
 
       toast.success('Store registered successfully! 🎉');
       setIsLoading(false);
@@ -97,7 +126,7 @@ export default function StoreRegistrationPage() {
       window.location.href = '/vendor/dashboard';
     } catch (error) {
       console.error('Registration error:', error);
-      toast.error('Failed to register store');
+      toast.error(error instanceof Error ? error.message : 'Failed to register store');
       setIsLoading(false);
     }
   };

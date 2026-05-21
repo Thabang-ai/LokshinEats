@@ -1,6 +1,8 @@
 // Footer component for LokshinEats
 // This appears at the bottom of the page (hidden on mobile where bottom nav is used)
 
+import Image from 'next/image';
+
 export default function Footer() {
   return (
     <footer className="bg-black text-white py-12 hidden lg:block">
@@ -9,15 +11,19 @@ export default function Footer() {
           {/* Brand section */}
           <div>
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-xl">K</span>
-              </div>
+              <Image
+                src="/logo.png"
+                alt="LokshinEats"
+                width={40}
+                height={40}
+                className="object-contain rounded-full bg-white"
+              />
               <h2 className="text-2xl font-bold">
-                Kasi<span className="text-primary">Eats</span>
+                Lokshin<span className="text-primary">Eats</span>
               </h2>
             </div>
             <p className="text-gray-400">
-              Bringing township flavors to your doorstep. Support local businesses, enjoy great food.
+              Township food. Delivered. Support local businesses, enjoy great food.
             </p>
           </div>
 
@@ -47,7 +53,7 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Contact</h3>
             <ul className="space-y-2 text-gray-400">
-              <li>Email: support@kasieats.co.za</li>
+              <li>Email: support@lokshineats.co.za</li>
               <li>Phone: +27 11 123 4567</li>
               <li>Based in South Africa</li>
             </ul>
@@ -55,7 +61,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; 2024 LokshinEats. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} LokshinEats. All rights reserved.</p>
         </div>
       </div>
     </footer>
