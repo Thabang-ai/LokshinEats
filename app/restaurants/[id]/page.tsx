@@ -4,7 +4,17 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { Star, Clock, Motorbike, Heart, Plus, Minus, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useCart } from '../../../context/CartContext';
 import type { Product } from '../../../types';
@@ -27,6 +37,35 @@ type StoreView = {
 
 type MenuItem = Product & { image: string };
 
+type ReviewView = {
+  id: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  createdAt: Date;
+};
+
+function tsToDate(v: any): Date {
+  if (!v) return new Date();
+  if (v instanceof Timestamp) return v.toDate();
+  if (typeof v.toDate === 'function') return v.toDate();
+  return new Date();
+}
+
+function relativeDate(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (days < 1) return 'today';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+function firstName(full: string): string {
+  return full.split(/\s+/)[0] || full;
+}
+
 export default function RestaurantDetailPage({
   params,
 }: {
@@ -37,6 +76,7 @@ export default function RestaurantDetailPage({
 
   const [store, setStore] = useState<StoreView | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [reviews, setReviews] = useState<ReviewView[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -49,9 +89,17 @@ export default function RestaurantDetailPage({
 
     (async () => {
       try {
-        const [storeSnap, productsSnap] = await Promise.all([
+        const [storeSnap, productsSnap, reviewsSnap] = await Promise.all([
           getDoc(doc(db, 'stores', id)),
           getDocs(query(collection(db, 'products'), where('storeId', '==', id))),
+          getDocs(
+            query(
+              collection(db, 'reviews'),
+              where('storeId', '==', id),
+              orderBy('createdAt', 'desc'),
+              limit(5),
+            ),
+          ),
         ]);
 
         if (cancelled) return;
@@ -97,6 +145,19 @@ export default function RestaurantDetailPage({
           };
         });
         setMenu(items);
+
+        const reviewRows: ReviewView[] = reviewsSnap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            customerName: data.customerName ?? 'Customer',
+            rating: typeof data.rating === 'number' ? data.rating : 0,
+            comment: typeof data.comment === 'string' ? data.comment : '',
+            createdAt: tsToDate(data.createdAt),
+          };
+        });
+        setReviews(reviewRows);
+
         setIsLoading(false);
       } catch (err) {
         if (!cancelled) {
@@ -352,6 +413,60 @@ export default function RestaurantDetailPage({
             </div>
           </>
         )}
+
+        {/* Reviews Section */}
+        <div className="mt-12">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-2xl font-bold">Recent Reviews</h2>
+            {store.reviewCount > 0 && (
+              <span className="text-sm text-gray-500">
+                {store.reviewCount} review{store.reviewCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
+
+          {reviews.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-md p-8 text-center">
+              <Star className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="font-semibold text-gray-700">No reviews yet</p>
+              <p className="text-sm text-gray-500">Be the first to rate this restaurant.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reviews.map((review, index) => (
+                <motion.div
+                  key={review.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-white rounded-xl shadow-md p-4"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold">{firstName(review.customerName)}</p>
+                      <div className="flex gap-0.5 mt-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`w-4 h-4 ${
+                              star <= review.rating
+                                ? 'fill-yellow-400 text-yellow-400'
+                                : 'text-gray-300'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-500">{relativeDate(review.createdAt)}</span>
+                  </div>
+                  {review.comment && (
+                    <p className="text-sm text-gray-700">{review.comment}</p>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -20,7 +20,15 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { doc, onSnapshot, Timestamp } from 'firebase/firestore';
+import toast from 'react-hot-toast';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+} from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuthUser } from '../../../hooks/useAuthUser';
 
@@ -59,6 +67,8 @@ type OrderView = {
   estimatedDeliveryTime: Date | null;
   paymentMethod: string;
   paymentStatus: string;
+  reviewed: boolean;
+  ratingGiven: number | null;
 };
 
 const orderSteps: { key: OrderStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -99,6 +109,69 @@ export default function OrderTrackingPage({
   const [order, setOrder] = useState<OrderView | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Review submission UI state
+  const [reviewStars, setReviewStars] = useState(0);
+  const [reviewHover, setReviewHover] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const submitReview = async () => {
+    if (!order || !user) return;
+    if (reviewStars < 1 || reviewStars > 5) {
+      toast.error('Pick a star rating from 1 to 5');
+      return;
+    }
+    setIsSubmittingReview(true);
+
+    try {
+      const reviewRef = doc(collection(db, 'reviews'));
+      const storeRef = doc(db, 'stores', order.storeId);
+      const orderRef = doc(db, 'orders', order.id);
+
+      // Atomic: read store, recompute average, write review + order + store.
+      await runTransaction(db, async (tx) => {
+        const storeSnap = await tx.get(storeRef);
+        if (!storeSnap.exists()) throw new Error('Restaurant no longer exists');
+
+        const sd = storeSnap.data();
+        const prevRating = typeof sd.rating === 'number' ? sd.rating : 0;
+        const prevCount = typeof sd.reviewCount === 'number' ? sd.reviewCount : 0;
+        const newCount = prevCount + 1;
+        // Running average: rounded to 1 decimal place for display
+        const newRating = Math.round(((prevRating * prevCount + reviewStars) / newCount) * 10) / 10;
+
+        tx.set(reviewRef, {
+          customerId: user.uid,
+          customerName: order.customerName,
+          storeId: order.storeId,
+          orderId: order.id,
+          rating: reviewStars,
+          comment: reviewComment.trim(),
+          createdAt: serverTimestamp(),
+        });
+
+        tx.update(orderRef, {
+          reviewed: true,
+          ratingGiven: reviewStars,
+        });
+
+        tx.update(storeRef, {
+          rating: newRating,
+          reviewCount: newCount,
+        });
+      });
+
+      toast.success('Thanks for the review! ⭐');
+      // The onSnapshot listener on this page will refresh `order.reviewed`
+      // automatically, so the UI flips to "You rated X" without manual state work.
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not submit review';
+      toast.error(msg);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     if (!authReady) return;
@@ -147,6 +220,8 @@ export default function OrderTrackingPage({
           estimatedDeliveryTime: tsToDate(data.estimatedDeliveryTime),
           paymentMethod: data.paymentMethod ?? 'cash',
           paymentStatus: data.paymentStatus ?? 'pending',
+          reviewed: data.reviewed === true,
+          ratingGiven: typeof data.ratingGiven === 'number' ? data.ratingGiven : null,
         });
         setIsLoading(false);
       },
@@ -445,19 +520,80 @@ export default function OrderTrackingPage({
               </motion.div>
             )}
 
-            {/* Rate Order placeholder (Phase 7 will wire reviews) */}
+            {/* Rate Order */}
             {order.status === 'delivered' && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
-                className="bg-white rounded-xl shadow-md p-6 text-center"
+                className="bg-white rounded-xl shadow-md p-6"
               >
-                <Star className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
-                <p className="font-semibold mb-1">Rate your order</p>
-                <p className="text-sm text-gray-500">
-                  Reviews coming soon (Phase 7).
-                </p>
+                {order.reviewed ? (
+                  <div className="text-center">
+                    <div className="flex justify-center gap-1 mb-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-6 h-6 ${
+                            star <= (order.ratingGiven ?? 0)
+                              ? 'fill-yellow-400 text-yellow-400'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="font-semibold">You rated this {order.ratingGiven} / 5</p>
+                    <p className="text-sm text-gray-500 mt-1">Thanks for the feedback!</p>
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-bold mb-1">Rate your order</h2>
+                    <p className="text-sm text-gray-500 mb-4">
+                      How was the food from {order.storeName}?
+                    </p>
+
+                    <div
+                      className="flex justify-center gap-2 mb-4"
+                      onMouseLeave={() => setReviewHover(0)}
+                    >
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const active = star <= (reviewHover || reviewStars);
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReviewStars(star)}
+                            onMouseEnter={() => setReviewHover(star)}
+                            className="transition-transform hover:scale-110"
+                            aria-label={`Rate ${star} stars`}
+                          >
+                            <Star
+                              className={`w-8 h-8 ${
+                                active ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Leave a comment (optional)"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary mb-3"
+                    />
+
+                    <button
+                      onClick={submitReview}
+                      disabled={reviewStars === 0 || isSubmittingReview}
+                      className="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingReview ? 'Submitting…' : 'Submit Rating'}
+                    </button>
+                  </>
+                )}
               </motion.div>
             )}
           </div>
