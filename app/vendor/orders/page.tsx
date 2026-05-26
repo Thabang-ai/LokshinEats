@@ -32,6 +32,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
+import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
+import { Bell } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,6 +82,7 @@ type Filter = 'all' | 'pending' | 'active' | 'completed';
 
 export default function VendorOrdersPage() {
   const { store, isLoading: isStoreLoading, error: storeError } = useVendorStore();
+  const { permission: notifPermission, request: requestNotifications, notify } = useBrowserNotifications();
 
   const [orders, setOrders] = useState<VendorOrder[]>([]);
   const [areOrdersLoading, setAreOrdersLoading] = useState(true);
@@ -146,13 +149,24 @@ export default function VendorOrdersPage() {
         });
 
         // Detect brand-new orders that weren't in the last snapshot.
-        // Only toast AFTER the initial snapshot (otherwise every order is "new").
+        // Only notify AFTER the initial snapshot (otherwise every order is "new").
         if (hasInitialized.current) {
           const trulyNew = rows.filter((r) => !seenOrderIds.current.has(r.id));
           if (trulyNew.length === 1) {
-            toast.success(`New order from ${trulyNew[0].customerName}! 🔔`);
+            const o = trulyNew[0];
+            toast.success(`New order from ${o.customerName}! 🔔`);
+            notify(`New order: ${o.customerName}`, {
+              body: `R${o.total.toFixed(2)} · ${o.items.map((it) => `${it.quantity}x ${it.name}`).join(', ')}`,
+              tag: o.id, // tag de-dupes if the same notification fires twice
+              onClickUrl: '/vendor/orders',
+            });
           } else if (trulyNew.length > 1) {
             toast.success(`${trulyNew.length} new orders! 🔔`);
+            notify(`${trulyNew.length} new orders`, {
+              body: 'Tap to review your orders queue.',
+              tag: 'vendor-new-orders-batch',
+              onClickUrl: '/vendor/orders',
+            });
           }
         }
         seenOrderIds.current = new Set(rows.map((r) => r.id));
@@ -279,6 +293,27 @@ export default function VendorOrdersPage() {
               <p className="text-sm text-gray-500 mt-1">{store.name}</p>
             </div>
           </div>
+
+          {/* Enable notifications banner — only shows when permission is 'default' */}
+          {notifPermission === 'default' && (
+            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Bell className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-blue-900">Get notified of new orders</p>
+                  <p className="text-sm text-blue-800">
+                    Allow browser notifications so you hear about orders even when this tab is in the background.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={requestNotifications}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex-shrink-0"
+              >
+                Enable
+              </button>
+            </div>
+          )}
 
           {/* Filter Tabs */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">

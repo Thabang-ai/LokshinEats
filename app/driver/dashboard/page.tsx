@@ -7,7 +7,7 @@
 
 import RoleGuard from '../../../components/RoleGuard';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Package,
   TrendingUp,
@@ -40,6 +40,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
+import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +109,12 @@ export default function DriverDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const { permission: notifPermission, request: requestNotifications, notify } = useBrowserNotifications();
+
+  // Track previously-seen available order IDs across snapshots so we can
+  // fire a notification when a brand-new delivery shows up.
+  const seenAvailableIds = useRef<Set<string>>(new Set());
+  const hasInitializedAvailable = useRef(false);
 
   const handleLogout = async () => {
     try {
@@ -160,7 +167,30 @@ export default function DriverDashboard() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setAvailable(snap.docs.map(mapOrderDoc));
+        const rows = snap.docs.map(mapOrderDoc);
+
+        // Notify on truly-new orders (skip the initial snapshot).
+        if (hasInitializedAvailable.current) {
+          const trulyNew = rows.filter((r) => !seenAvailableIds.current.has(r.id));
+          if (trulyNew.length === 1) {
+            const o = trulyNew[0];
+            notify(`New delivery available: ${o.storeName}`, {
+              body: `R${o.deliveryFee} delivery fee. Tap to claim.`,
+              tag: o.id,
+              onClickUrl: '/driver/dashboard',
+            });
+          } else if (trulyNew.length > 1) {
+            notify(`${trulyNew.length} new deliveries available`, {
+              body: 'Tap to view the available feed.',
+              tag: 'driver-new-available-batch',
+              onClickUrl: '/driver/dashboard',
+            });
+          }
+        }
+        seenAvailableIds.current = new Set(rows.map((r) => r.id));
+        hasInitializedAvailable.current = true;
+
+        setAvailable(rows);
         setIsAvailableLoading(false);
       },
       (err) => {
@@ -169,7 +199,7 @@ export default function DriverDashboard() {
       },
     );
     return unsub;
-  }, [user]);
+  }, [user, notify]);
 
   // Subscribe to this driver's active deliveries (driverId=uid, status=picked_up)
   useEffect(() => {
@@ -399,6 +429,27 @@ export default function DriverDashboard() {
                   it, then refresh.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Enable notifications banner — only when permission is 'default' */}
+          {notifPermission === 'default' && (
+            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Bell className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-blue-900">Get notified of new deliveries</p>
+                  <p className="text-sm text-blue-800">
+                    Allow browser notifications so you hear about available orders even when this tab is in the background.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={requestNotifications}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex-shrink-0"
+              >
+                Enable
+              </button>
             </div>
           )}
 
