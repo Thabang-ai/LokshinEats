@@ -133,7 +133,7 @@ export default function Home() {
             ].map((category, index) => (
               <Link
                 key={category.name}
-                href="/restaurants"
+                href={`/restaurants?category=${encodeURIComponent(category.name)}`}
                 className="block"
               >
                 <motion.div

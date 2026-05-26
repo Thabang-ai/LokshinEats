@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Star, Clock, Motorbike, Filter } from 'lucide-react';
+import { Search, Star, Clock, Motorbike, Filter, ArrowUpDown, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
+import { useFavorites } from '../../hooks/useFavorites';
+
+type SortMode = 'rating' | 'fee' | 'minOrder' | 'name';
 
 type RestaurantCard = {
   id: string;
@@ -22,12 +26,26 @@ type RestaurantCard = {
 };
 
 export default function RestaurantsPage() {
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search') ?? '';
+  const initialCategory = searchParams.get('category') ?? 'All';
+
+  const { isFavorite, toggleFavorite, isSignedIn } = useFavorites();
+
   const [restaurants, setRestaurants] = useState<RestaurantCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [sortMode, setSortMode] = useState<SortMode>('rating');
   const [showFilter, setShowFilter] = useState(false);
+
+  // Keep state in sync with URL when the user navigates here from elsewhere
+  // (header search, home category tiles) without unmounting this component.
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') ?? '');
+    setSelectedCategory(searchParams.get('category') ?? 'All');
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,14 +93,31 @@ export default function RestaurantsPage() {
 
   const filteredRestaurants = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return restaurants.filter((restaurant) => {
+    const filtered = restaurants.filter((restaurant) => {
       const matchesSearch =
         restaurant.name.toLowerCase().includes(q) || restaurant.cuisine.toLowerCase().includes(q);
       const matchesCategory =
         selectedCategory === 'All' || restaurant.categories.includes(selectedCategory);
       return matchesSearch && matchesCategory;
     });
-  }, [restaurants, searchQuery, selectedCategory]);
+
+    const sorted = [...filtered];
+    switch (sortMode) {
+      case 'rating':
+        sorted.sort((a, b) => b.rating - a.rating);
+        break;
+      case 'fee':
+        sorted.sort((a, b) => a.deliveryFee - b.deliveryFee);
+        break;
+      case 'minOrder':
+        sorted.sort((a, b) => a.minOrderAmount - b.minOrderAmount);
+        break;
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+    }
+    return sorted;
+  }, [restaurants, searchQuery, selectedCategory, sortMode]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -125,6 +160,25 @@ export default function RestaurantsPage() {
                 {category}
               </button>
             ))}
+          </div>
+
+          {/* Sort row */}
+          <div className="flex items-center gap-2 mt-3 text-sm">
+            <ArrowUpDown className="w-4 h-4 text-gray-400" />
+            <label htmlFor="sort-mode" className="text-gray-600">
+              Sort by:
+            </label>
+            <select
+              id="sort-mode"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="px-3 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="rating">Rating (high → low)</option>
+              <option value="fee">Delivery fee (low → high)</option>
+              <option value="minOrder">Min order (low → high)</option>
+              <option value="name">Name (A → Z)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -174,7 +228,29 @@ export default function RestaurantsPage() {
                 transition={{ delay: index * 0.1 }}
               >
                 <Link href={`/restaurants/${restaurant.id}`}>
-                  <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer relative">
+                    {/* Favorite button (sits on top of the image, not the link target) */}
+                    {isSignedIn && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleFavorite(restaurant.id);
+                        }}
+                        className="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                        aria-label={isFavorite(restaurant.id) ? 'Remove favorite' : 'Add favorite'}
+                      >
+                        <Heart
+                          className={`w-5 h-5 ${
+                            isFavorite(restaurant.id)
+                              ? 'fill-red-500 text-red-500'
+                              : 'text-gray-500'
+                          }`}
+                        />
+                      </button>
+                    )}
+
                     {/* Restaurant Image */}
                     <div className="h-48 bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-7xl relative">
                       {restaurant.image}

@@ -1,45 +1,85 @@
 'use client';
 
 // Favorites Page
-// Shows user's favorite restaurants and items
+// Reads favorited store IDs from users/{uid}.favorites, then fetches each
+// store doc in parallel. Toggle still uses the same useFavorites hook so
+// optimistic updates show instantly.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Heart, Star, Clock, Motorbike, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+import { useFavorites } from '../../hooks/useFavorites';
 
-// Mock favorite restaurants (will be replaced with Firebase)
-const mockFavorites = [
-  {
-    id: '1',
-    name: "Mama's Kitchen",
-    cuisine: "Traditional Township Food",
-    rating: 4.8,
-    reviewCount: 234,
-    deliveryTime: "25-35 min",
-    deliveryFee: 15,
-    image: '🍲',
-    isOpen: true,
-  },
-  {
-    id: '3',
-    name: 'Braai Master',
-    cuisine: 'Braai & Grills',
-    rating: 4.9,
-    reviewCount: 312,
-    deliveryTime: '30-45 min',
-    deliveryFee: 20,
-    image: '🍖',
-    isOpen: true,
-  },
-];
+type RestaurantCard = {
+  id: string;
+  name: string;
+  cuisine: string;
+  rating: number;
+  reviewCount: number;
+  deliveryTime: string;
+  deliveryFee: number;
+  image: string;
+  isOpen: boolean;
+};
 
 export default function FavoritesPage() {
-  const [favorites, setFavorites] = useState(mockFavorites);
+  const { favorites, toggleFavorite, isSignedIn, isLoading: isFavoritesLoading } = useFavorites();
+  const [stores, setStores] = useState<RestaurantCard[]>([]);
+  const [isStoresLoading, setIsStoresLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const removeFavorite = (id: string) => {
-    setFavorites(prev => prev.filter(f => f.id !== id));
-  };
+  useEffect(() => {
+    if (isFavoritesLoading) return;
+    if (favorites.length === 0) {
+      setStores([]);
+      setIsStoresLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsStoresLoading(true);
+    setErrorMessage(null);
+
+    (async () => {
+      try {
+        const snaps = await Promise.all(
+          favorites.map((id) => getDoc(doc(db, 'stores', id))),
+        );
+        const rows: RestaurantCard[] = snaps
+          .filter((s) => s.exists())
+          .map((s) => {
+            const data = s.data()!;
+            return {
+              id: s.id,
+              name: data.name ?? 'Unnamed',
+              cuisine: data.cuisine ?? '',
+              rating: typeof data.rating === 'number' ? data.rating : 0,
+              reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : 0,
+              deliveryTime: data.deliveryTime ?? '—',
+              deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
+              image: data.image ?? '🍽️',
+              isOpen: data.isOpen !== false,
+            };
+          });
+        if (!cancelled) {
+          setStores(rows);
+          setIsStoresLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : String(err));
+          setIsStoresLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [favorites, isFavoritesLoading]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,12 +94,43 @@ export default function FavoritesPage() {
           Your Favorites
         </h1>
 
-        {favorites.length === 0 ? (
+        {!isSignedIn ? (
+          <div className="bg-white rounded-xl shadow-md p-12 text-center">
+            <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">Sign in to save favorites</h2>
+            <p className="text-gray-600 mb-6">
+              Heart your favorite restaurants once you're logged in.
+            </p>
+            <Link
+              href="/auth/login"
+              className="inline-block bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
+            >
+              Go to login
+            </Link>
+          </div>
+        ) : isFavoritesLoading || isStoresLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl shadow-md overflow-hidden animate-pulse">
+                <div className="h-48 bg-gray-200" />
+                <div className="p-4 space-y-2">
+                  <div className="h-5 bg-gray-200 rounded w-2/3" />
+                  <div className="h-4 bg-gray-200 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : errorMessage ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+            <p className="font-semibold mb-1">Could not load favorites</p>
+            <p className="font-mono break-all">{errorMessage}</p>
+          </div>
+        ) : stores.length === 0 ? (
           <div className="bg-white rounded-xl shadow-md p-12 text-center">
             <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h2 className="text-xl font-bold mb-2">No favorites yet</h2>
             <p className="text-gray-600 mb-6">
-              Start adding restaurants to your favorites by clicking the heart icon
+              Browse restaurants and tap the heart on any you'd like to save.
             </p>
             <Link
               href="/restaurants"
@@ -70,26 +141,35 @@ export default function FavoritesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {favorites.map((restaurant, index) => (
+            {stores.map((restaurant, index) => (
               <motion.div
                 key={restaurant.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
+                transition={{ delay: index * 0.05 }}
+                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow relative"
               >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleFavorite(restaurant.id);
+                  }}
+                  className="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                  aria-label="Remove favorite"
+                >
+                  <Heart className="w-5 h-5 fill-red-500 text-red-500" />
+                </button>
+
                 <Link href={`/restaurants/${restaurant.id}`}>
                   <div className="h-48 bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-7xl relative">
                     {restaurant.image}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        removeFavorite(restaurant.id);
-                      }}
-                      className="absolute top-4 right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md hover:bg-gray-100"
-                    >
-                      <Heart className="w-5 h-5 text-primary fill-primary" />
-                    </button>
+                    {!restaurant.isOpen && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">Closed</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4">

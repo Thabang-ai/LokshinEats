@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useCart } from '../../../context/CartContext';
+import { useFavorites } from '../../../hooks/useFavorites';
 import type { Product } from '../../../types';
 
 type StoreView = {
@@ -73,6 +74,7 @@ export default function RestaurantDetailPage({
 }) {
   const { id } = use(params);
   const { addToCart } = useCart();
+  const { isFavorite, toggleFavorite, isSignedIn } = useFavorites();
 
   const [store, setStore] = useState<StoreView | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
@@ -277,7 +279,23 @@ export default function RestaurantDetailPage({
 
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1">
-              <h1 className="text-3xl md:text-4xl font-bold mb-2">{store.name}</h1>
+              <div className="flex items-start gap-3 mb-2">
+                <h1 className="text-3xl md:text-4xl font-bold">{store.name}</h1>
+                {isSignedIn && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(store.id)}
+                    className="mt-1 w-10 h-10 bg-white/15 hover:bg-white/25 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                    aria-label={isFavorite(store.id) ? 'Remove favorite' : 'Add favorite'}
+                  >
+                    <Heart
+                      className={`w-5 h-5 ${
+                        isFavorite(store.id) ? 'fill-red-500 text-red-500' : 'text-white'
+                      }`}
+                    />
+                  </button>
+                )}
+              </div>
               <p className="text-white/90 mb-4">{store.cuisine}</p>
               {store.description && <p className="text-white/80 mb-4">{store.description}</p>}
 
