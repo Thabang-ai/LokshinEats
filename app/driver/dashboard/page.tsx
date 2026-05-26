@@ -122,6 +122,8 @@ export default function DriverDashboard() {
   const [available, setAvailable] = useState<DriverOrder[]>([]);
   const [active, setActive] = useState<DriverOrder[]>([]);
   const [delivered, setDelivered] = useState<DeliveredOrder[]>([]);
+  const [ratingTotal, setRatingTotal] = useState(0);
+  const [ratingCount, setRatingCount] = useState(0);
 
   const [isAvailableLoading, setIsAvailableLoading] = useState(true);
   const [isActiveLoading, setIsActiveLoading] = useState(true);
@@ -219,6 +221,31 @@ export default function DriverDashboard() {
           };
         });
         setDelivered(rows);
+      },
+      (err) => setErrorMessage(err.message),
+    );
+    return unsub;
+  }, [user]);
+
+  // Subscribe to my driver ratings (computed on-the-fly from driverReviews docs
+  // rather than denormalized to drivers/{uid} — keeps writes simple and avoids
+  // having to bootstrap a drivers doc).
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'driverReviews'),
+      where('driverId', '==', user.uid),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        let total = 0;
+        snap.docs.forEach((d) => {
+          const r = d.data().rating;
+          if (typeof r === 'number') total += r;
+        });
+        setRatingTotal(total);
+        setRatingCount(snap.size);
       },
       (err) => setErrorMessage(err.message),
     );
@@ -398,10 +425,10 @@ export default function DriverDashboard() {
             />
             <StatCard
               icon={<Star className="w-5 h-5 text-primary" />}
-              value="—"
+              value={ratingCount > 0 ? (ratingTotal / ratingCount).toFixed(1) : '—'}
               label="Driver Rating"
               delay={0.3}
-              tag="Coming soon"
+              tag={ratingCount > 0 ? `${ratingCount} rating${ratingCount === 1 ? '' : 's'}` : 'No ratings yet'}
             />
           </div>
 

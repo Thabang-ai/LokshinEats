@@ -69,6 +69,8 @@ type OrderView = {
   paymentStatus: string;
   reviewed: boolean;
   ratingGiven: number | null;
+  driverRated: boolean;
+  driverRatingGiven: number | null;
 };
 
 const orderSteps: { key: OrderStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -110,11 +112,17 @@ export default function OrderTrackingPage({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Review submission UI state
+  // Store-review submission UI state
   const [reviewStars, setReviewStars] = useState(0);
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Driver-review submission UI state
+  const [driverStars, setDriverStars] = useState(0);
+  const [driverHover, setDriverHover] = useState(0);
+  const [driverComment, setDriverComment] = useState('');
+  const [isSubmittingDriverReview, setIsSubmittingDriverReview] = useState(false);
 
   const submitReview = async () => {
     if (!order || !user) return;
@@ -173,6 +181,48 @@ export default function OrderTrackingPage({
     }
   };
 
+  const submitDriverReview = async () => {
+    if (!order || !user || !order.driverId) return;
+    if (driverStars < 1 || driverStars > 5) {
+      toast.error('Pick a star rating from 1 to 5');
+      return;
+    }
+    setIsSubmittingDriverReview(true);
+
+    try {
+      // Driver-rating aggregates are computed on read from driverReviews docs
+      // (cheaper than maintaining a denormalized counter and avoids the
+      // create-vs-update rule complication on drivers/{uid}). So this
+      // transaction only needs to write the review + mark the order rated.
+      const reviewRef = doc(collection(db, 'driverReviews'));
+      const orderRef = doc(db, 'orders', order.id);
+
+      await runTransaction(db, async (tx) => {
+        tx.set(reviewRef, {
+          customerId: user.uid,
+          customerName: order.customerName,
+          driverId: order.driverId,
+          orderId: order.id,
+          rating: driverStars,
+          comment: driverComment.trim(),
+          createdAt: serverTimestamp(),
+        });
+
+        tx.update(orderRef, {
+          driverRated: true,
+          driverRatingGiven: driverStars,
+        });
+      });
+
+      toast.success('Driver rated. Thanks! 🚴');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not submit driver rating';
+      toast.error(msg);
+    } finally {
+      setIsSubmittingDriverReview(false);
+    }
+  };
+
   useEffect(() => {
     if (!authReady) return;
     if (!user) {
@@ -222,6 +272,8 @@ export default function OrderTrackingPage({
           paymentStatus: data.paymentStatus ?? 'pending',
           reviewed: data.reviewed === true,
           ratingGiven: typeof data.ratingGiven === 'number' ? data.ratingGiven : null,
+          driverRated: data.driverRated === true,
+          driverRatingGiven: typeof data.driverRatingGiven === 'number' ? data.driverRatingGiven : null,
         });
         setIsLoading(false);
       },
@@ -591,6 +643,83 @@ export default function OrderTrackingPage({
                       className="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSubmittingReview ? 'Submitting…' : 'Submit Rating'}
+                    </button>
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {/* Rate Driver (only if delivered AND driver was assigned) */}
+            {order.status === 'delivered' && order.driverId && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.35 }}
+                className="bg-white rounded-xl shadow-md p-6"
+              >
+                {order.driverRated ? (
+                  <div className="text-center">
+                    <div className="flex justify-center gap-1 mb-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-6 h-6 ${
+                            star <= (order.driverRatingGiven ?? 0)
+                              ? 'fill-yellow-400 text-yellow-400'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="font-semibold">You rated your driver {order.driverRatingGiven} / 5</p>
+                    <p className="text-sm text-gray-500 mt-1">Thanks for the feedback!</p>
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-bold mb-1">Rate your driver</h2>
+                    <p className="text-sm text-gray-500 mb-4">
+                      How was your delivery experience?
+                    </p>
+
+                    <div
+                      className="flex justify-center gap-2 mb-4"
+                      onMouseLeave={() => setDriverHover(0)}
+                    >
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const active = star <= (driverHover || driverStars);
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setDriverStars(star)}
+                            onMouseEnter={() => setDriverHover(star)}
+                            className="transition-transform hover:scale-110"
+                            aria-label={`Rate driver ${star} stars`}
+                          >
+                            <Star
+                              className={`w-8 h-8 ${
+                                active ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <textarea
+                      value={driverComment}
+                      onChange={(e) => setDriverComment(e.target.value)}
+                      placeholder="Leave a comment about your driver (optional)"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary mb-3"
+                    />
+
+                    <button
+                      onClick={submitDriverReview}
+                      disabled={driverStars === 0 || isSubmittingDriverReview}
+                      className="w-full bg-primary text-white py-2 rounded-lg font-semibold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingDriverReview ? 'Submitting…' : 'Submit Driver Rating'}
                     </button>
                   </>
                 )}
