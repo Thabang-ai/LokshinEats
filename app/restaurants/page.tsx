@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Search, Star, Clock, Motorbike, Filter, ArrowUpDown, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
@@ -10,6 +10,29 @@ import { db } from '../../firebase/config';
 import { useFavorites } from '../../hooks/useFavorites';
 
 type SortMode = 'rating' | 'fee' | 'minOrder' | 'name';
+
+// useSearchParams() must be wrapped in a Suspense boundary for the production
+// build (Next 15+/16 requirement). The actual page logic lives in
+// RestaurantsContent below; the default export just wraps it.
+export default function RestaurantsPage() {
+  return (
+    <Suspense fallback={<RestaurantsFallback />}>
+      <RestaurantsContent />
+    </Suspense>
+  );
+}
+
+function RestaurantsFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-6">
+          <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type RestaurantCard = {
   id: string;
@@ -25,7 +48,7 @@ type RestaurantCard = {
   image: string;
 };
 
-export default function RestaurantsPage() {
+function RestaurantsContent() {
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search') ?? '';
   const initialCategory = searchParams.get('category') ?? 'All';
