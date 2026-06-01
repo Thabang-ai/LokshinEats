@@ -71,6 +71,8 @@ type OrderView = {
   ratingGiven: number | null;
   driverRated: boolean;
   driverRatingGiven: number | null;
+  deliveryOTP: string | null;
+  deliveryOTPVerified: boolean;
 };
 
 const orderSteps: { key: OrderStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -274,6 +276,8 @@ export default function OrderTrackingPage({
           ratingGiven: typeof data.ratingGiven === 'number' ? data.ratingGiven : null,
           driverRated: data.driverRated === true,
           driverRatingGiven: typeof data.driverRatingGiven === 'number' ? data.driverRatingGiven : null,
+          deliveryOTP: typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null,
+          deliveryOTPVerified: data.deliveryOTPVerified === true,
         });
         setIsLoading(false);
       },
@@ -444,6 +448,30 @@ export default function OrderTrackingPage({
 
                 <p className="mt-4 text-xs text-gray-500">
                   Live — status updates appear automatically as your order progresses.
+                </p>
+              </motion.div>
+            )}
+
+            {/* Delivery OTP — shown while order is in transit (picked_up).
+                Hidden before pickup (not needed yet) and after delivery. */}
+            {order.status === 'picked_up' && order.deliveryOTP && !order.deliveryOTPVerified && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-br from-primary to-primary-dark text-white rounded-xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold mb-2">Your delivery code</h2>
+                <p className="text-white/80 text-sm mb-4">
+                  Read this code to your driver when they arrive with your food. Don't share it
+                  before they hand over your order.
+                </p>
+                <div className="bg-white/15 rounded-2xl py-6 text-center">
+                  <p className="text-5xl md:text-6xl font-bold tracking-widest font-mono">
+                    {order.deliveryOTP}
+                  </p>
+                </div>
+                <p className="text-xs text-white/70 mt-3">
+                  The driver enters this in their app to confirm delivery and payment received.
                 </p>
               </motion.div>
             )}

@@ -30,6 +30,7 @@ import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -315,18 +316,42 @@ export default function DriverDashboard() {
     }
   };
 
-  const markDelivered = async (orderId: string) => {
-    if (!user) return;
+  // markDelivered now optionally accepts an OTP. If the order has a
+  // deliveryOTP, the OTP must match before status flips. Orders created
+  // before the OTP feature have no deliveryOTP and skip verification
+  // (backward compat). Returns true on success so the caller can dismiss
+  // any inline OTP entry UI.
+  const markDelivered = async (orderId: string, otp?: string): Promise<boolean> => {
+    if (!user) return false;
     setCompletingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      const ref = doc(db, 'orders', orderId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        toast.error('Order no longer exists');
+        return false;
+      }
+      const data = snap.data();
+      const expectedOTP = typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null;
+
+      if (expectedOTP) {
+        if (!otp || otp.trim() !== expectedOTP) {
+          toast.error('Wrong code. Ask the customer to check their order page.');
+          return false;
+        }
+      }
+
+      await updateDoc(ref, {
         status: 'delivered',
         actualDeliveryTime: serverTimestamp(),
+        ...(expectedOTP ? { deliveryOTPVerified: true } : {}),
       });
       toast.success('Delivery completed');
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
+      return false;
     } finally {
       setCompletingId(null);
     }
@@ -501,7 +526,7 @@ export default function DriverDashboard() {
                     index={index}
                     variant="active"
                     isBusy={completingId === order.id}
-                    onComplete={() => markDelivered(order.id)}
+                    onComplete={(otp) => markDelivered(order.id, otp)}
                   />
                 ))}
               </div>
@@ -605,8 +630,20 @@ function OrderCard({
   variant: 'available' | 'active';
   isBusy: boolean;
   onAccept?: () => void;
-  onComplete?: () => void;
+  onComplete?: (otp?: string) => Promise<boolean>;
 }) {
+  const [otpMode, setOtpMode] = useState(false);
+  const [otp, setOtp] = useState('');
+
+  const handleSubmitOTP = async () => {
+    if (!onComplete) return;
+    const ok = await onComplete(otp);
+    if (ok) {
+      setOtpMode(false);
+      setOtp('');
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -663,15 +700,56 @@ function OrderCard({
         </button>
       )}
 
-      {variant === 'active' && onComplete && (
+      {variant === 'active' && onComplete && !otpMode && (
         <button
-          onClick={onComplete}
+          onClick={() => setOtpMode(true)}
           disabled={isBusy}
           className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           <CheckCircle className="w-5 h-5" />
-          {isBusy ? 'Completing…' : 'Mark as Delivered'}
+          Mark as Delivered
         </button>
+      )}
+
+      {variant === 'active' && onComplete && otpMode && (
+        <div className="border-t border-gray-200 pt-4">
+          <p className="text-sm font-semibold text-gray-700 mb-1">
+            Ask the customer for their 4-digit code
+          </p>
+          <p className="text-xs text-gray-500 mb-3">
+            It's shown in their order tracking page. The order won't complete without it.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="0000"
+              autoFocus
+              className="flex-1 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-lg py-2 focus:outline-none focus:border-primary"
+            />
+            <button
+              onClick={handleSubmitOTP}
+              disabled={isBusy || otp.length !== 4}
+              className="px-5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBusy ? '…' : 'Confirm'}
+            </button>
+            <button
+              onClick={() => {
+                setOtpMode(false);
+                setOtp('');
+              }}
+              disabled={isBusy}
+              className="px-4 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </motion.div>
   );

@@ -21,6 +21,7 @@ import toast from 'react-hot-toast';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
@@ -77,6 +78,17 @@ export default function DriverOrdersPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [completingId, setCompletingId] = useState<string | null>(null);
+  // OTP entry state — only one order can be in entry mode at a time.
+  const [otpModeOrderId, setOtpModeOrderId] = useState<string | null>(null);
+  const [otpInput, setOtpInput] = useState('');
+
+  const handleSubmitOTP = async (orderId: string) => {
+    const ok = await markDelivered(orderId, otpInput);
+    if (ok) {
+      setOtpModeOrderId(null);
+      setOtpInput('');
+    }
+  };
 
   // Fetch all orders this driver is/was assigned to.
   // Single-field equality on driverId — auto-indexed, no composite needed.
@@ -151,20 +163,43 @@ export default function DriverOrdersPage() {
     [orders],
   );
 
-  const markDelivered = async (orderId: string) => {
+  // Verifies the order's deliveryOTP against the entered value before
+  // flipping status. Orders created before the OTP feature have no
+  // deliveryOTP and skip verification. Returns true on success so the
+  // caller can dismiss any inline OTP entry UI.
+  const markDelivered = async (orderId: string, otp?: string): Promise<boolean> => {
     setCompletingId(orderId);
-    // Optimistic update
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId ? { ...o, status: 'delivered', actualDeliveryTime: new Date() } : o,
-      ),
-    );
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
+      const ref = doc(db, 'orders', orderId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        toast.error('Order no longer exists');
+        return false;
+      }
+      const data = snap.data();
+      const expectedOTP = typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null;
+
+      if (expectedOTP) {
+        if (!otp || otp.trim() !== expectedOTP) {
+          toast.error('Wrong code. Ask the customer to check their order page.');
+          return false;
+        }
+      }
+
+      // Optimistic update (after OTP check passes)
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, status: 'delivered', actualDeliveryTime: new Date() } : o,
+        ),
+      );
+
+      await updateDoc(ref, {
         status: 'delivered',
         actualDeliveryTime: serverTimestamp(),
+        ...(expectedOTP ? { deliveryOTPVerified: true } : {}),
       });
       toast.success('Delivery completed');
+      return true;
     } catch (err) {
       // Rollback
       setOrders((prev) =>
@@ -173,6 +208,7 @@ export default function DriverOrdersPage() {
         ),
       );
       toast.error(err instanceof Error ? err.message : 'Failed to update');
+      return false;
     } finally {
       setCompletingId(null);
     }
@@ -313,15 +349,62 @@ export default function DriverOrdersPage() {
                       </div>
 
                       {/* Action Button (only for picked_up) */}
-                      {order.status === 'picked_up' && (
+                      {order.status === 'picked_up' && otpModeOrderId !== order.id && (
                         <button
-                          onClick={() => markDelivered(order.id)}
+                          onClick={() => {
+                            setOtpModeOrderId(order.id);
+                            setOtpInput('');
+                          }}
                           disabled={isCompleting}
                           className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
                           <CheckCircle className="w-5 h-5" />
-                          {isCompleting ? 'Completing…' : 'Mark as Delivered'}
+                          Mark as Delivered
                         </button>
+                      )}
+
+                      {/* Inline OTP entry */}
+                      {order.status === 'picked_up' && otpModeOrderId === order.id && (
+                        <div className="border-t border-gray-200 pt-4">
+                          <p className="text-sm font-semibold text-gray-700 mb-1">
+                            Ask the customer for their 4-digit code
+                          </p>
+                          <p className="text-xs text-gray-500 mb-3">
+                            It's shown in their order tracking page. The order won't complete without it.
+                          </p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={4}
+                              value={otpInput}
+                              onChange={(e) =>
+                                setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))
+                              }
+                              placeholder="0000"
+                              autoFocus
+                              className="flex-1 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-lg py-2 focus:outline-none focus:border-primary"
+                            />
+                            <button
+                              onClick={() => handleSubmitOTP(order.id)}
+                              disabled={isCompleting || otpInput.length !== 4}
+                              className="px-5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {isCompleting ? '…' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setOtpModeOrderId(null);
+                                setOtpInput('');
+                              }}
+                              disabled={isCompleting}
+                              className="px-4 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
                       )}
 
                       {/* Delivered Info */}

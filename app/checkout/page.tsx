@@ -97,6 +97,15 @@ export default function CheckoutPage() {
         return;
       }
 
+      // 4-digit OTP that the customer reads to the driver at handoff.
+      // Driver enters it in their app to mark delivery + payment received.
+      // KNOWN LIMITATION: drivers technically have read access to assigned
+      // orders, so a determined driver could read this from Firestore via
+      // dev tools and bypass the verification. Proper fix is server-side
+      // verification via Cloud Functions (Blaze plan). For now this is a
+      // good-fences/casual-fraud deterrent.
+      const deliveryOTP = String(Math.floor(1000 + Math.random() * 9000));
+
       // Step 2: Write real order to Firestore.
       // Fields are denormalized so other roles (vendor, driver) can render
       // them without reading users/{customerId} (rules block cross-user reads).
@@ -122,6 +131,8 @@ export default function CheckoutPage() {
           postalCode: formData.postalCode,
           instructions: formData.instructions || null,
         },
+        deliveryOTP,
+        deliveryOTPVerified: false,
         createdAt: serverTimestamp(),
       });
 
