@@ -230,11 +230,11 @@ function RestaurantsContent() {
           <div className="text-center py-12">
             <p className="text-gray-700 text-lg font-semibold mb-2">No restaurants yet</p>
             <p className="text-gray-500 mb-4">
-              Firestore has no stores. Visit{' '}
-              <Link href="/seed" className="text-primary underline">
-                /seed
-              </Link>{' '}
-              to populate sample data.
+              No restaurants are open in your area right now. Check back soon, or{' '}
+              <Link href="/auth/signup" className="text-primary underline">
+                register your own
+              </Link>
+              .
             </p>
           </div>
         ) : filteredRestaurants.length === 0 ? (

@@ -27,13 +27,37 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "LokshinEats - Township Food Delivery",
-  description: "Order food from your favorite township restaurants, spaza shops, and local food businesses",
+  title: "LokshinEats — Township Food. Delivered.",
+  description:
+    "Order food from your favourite township restaurants, spaza shops, and local food businesses. Real-time tracking from kitchen to your door.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "LokshinEats",
+  },
+  openGraph: {
+    title: "LokshinEats — Township Food. Delivered.",
+    description:
+      "Order food from your favourite township restaurants, spaza shops, and local food businesses.",
+    siteName: "LokshinEats",
+    type: "website",
+    locale: "en_ZA",
+    images: [
+      {
+        url: "/logo.png",
+        width: 1240,
+        height: 1240,
+        alt: "LokshinEats — Township Food. Delivered.",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LokshinEats — Township Food. Delivered.",
+    description:
+      "Order food from your favourite township restaurants, spaza shops, and local food businesses.",
+    images: ["/logo.png"],
   },
 };
 

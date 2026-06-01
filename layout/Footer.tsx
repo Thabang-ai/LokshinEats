@@ -2,6 +2,7 @@
 // This appears at the bottom of the page (hidden on mobile where bottom nav is used)
 
 import Image from 'next/image';
+import Link from 'next/link';
 
 export default function Footer() {
   return (
@@ -31,10 +32,10 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2 text-gray-400">
-              <li><a href="#" className="hover:text-primary transition-colors">About Us</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">How It Works</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Become a Driver</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Partner With Us</a></li>
+              <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
+              <li><Link href="/about" className="hover:text-primary transition-colors">How It Works</Link></li>
+              <li><Link href="/auth/signup" className="hover:text-primary transition-colors">Become a Driver</Link></li>
+              <li><Link href="/auth/signup" className="hover:text-primary transition-colors">Partner With Us</Link></li>
             </ul>
           </div>
 
@@ -42,10 +43,9 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Support</h3>
             <ul className="space-y-2 text-gray-400">
-              <li><a href="#" className="hover:text-primary transition-colors">Help Center</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Contact Us</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">FAQ</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Terms of Service</a></li>
+              <li><a href="mailto:support@lokshineats.co.za" className="hover:text-primary transition-colors">Contact Us</a></li>
+              <li><Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
             </ul>
           </div>
 

@@ -186,9 +186,7 @@ export default function Home() {
             <div className="text-center py-8">
               <p className="text-gray-700 text-lg font-semibold mb-2">No restaurants yet</p>
               <p className="text-gray-500">
-                Firestore has no stores. Visit{' '}
-                <Link href="/seed" className="text-primary underline">/seed</Link>{' '}
-                to populate sample data.
+                No restaurants are open in your area yet. Check back soon!
               </p>
             </div>
           ) : (
