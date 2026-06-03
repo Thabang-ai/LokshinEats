@@ -24,7 +24,7 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { readVendorPayout } from '../../../services/economics';
@@ -40,6 +40,13 @@ type VendorOrder = {
   /** Vendor's actual take after platform commission. */
   vendorPayout: number;
   status: OrderStatus;
+  paymentMethod: string;
+  subtotal: number;
+  // Cash handoff state — driver claims they paid, vendor confirms or disputes.
+  cashGivenToVendor: boolean;
+  cashGivenAmount: number | null;
+  vendorCashConfirmed: boolean;
+  vendorCashDisputed: boolean;
   createdAt: Date;
 };
 
@@ -152,6 +159,12 @@ export default function VendorDashboard() {
             total: typeof data.total === 'number' ? data.total : 0,
             vendorPayout: readVendorPayout(data),
             status: (data.status as OrderStatus) ?? 'pending',
+            paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
+            subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
+            cashGivenToVendor: data.cashGivenToVendor === true,
+            cashGivenAmount: typeof data.cashGivenAmount === 'number' ? data.cashGivenAmount : null,
+            vendorCashConfirmed: data.vendorCashConfirmed === true,
+            vendorCashDisputed: data.vendorCashDisputed === true,
             createdAt: created,
           };
         });
@@ -185,6 +198,54 @@ export default function VendorDashboard() {
   }, [orders]);
 
   const recentOrders = useMemo(() => orders.slice(0, 5), [orders]);
+
+  // Cash claims awaiting vendor confirmation — drivers said they paid,
+  // vendor hasn't confirmed or disputed yet.
+  const pendingCashReceipts = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.paymentMethod === 'cash' &&
+          o.cashGivenToVendor &&
+          !o.vendorCashConfirmed &&
+          !o.vendorCashDisputed,
+      ),
+    [orders],
+  );
+
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const handleConfirmCashReceipt = async (orderId: string) => {
+    setConfirmingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        vendorCashConfirmed: true,
+        vendorCashConfirmedAt: serverTimestamp(),
+      });
+      toast.success('Cash receipt confirmed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to confirm');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  const handleDisputeCashReceipt = async (orderId: string) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm("Dispute this cash receipt? Only do this if the driver actually didn't give you the money.")) return;
+    setConfirmingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        vendorCashDisputed: true,
+        vendorCashDisputedAt: serverTimestamp(),
+      });
+      toast.success('Receipt disputed — driver has been notified');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to dispute');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   // ---- Render branches ----------------------------------------------------
 
@@ -293,6 +354,59 @@ export default function VendorDashboard() {
         </div>
 
         <div className="container mx-auto px-4 py-8">
+          {/* Cash receipts to confirm — surfaced prominently at top of dashboard
+              because this is the vendor's main landing page. */}
+          {pendingCashReceipts.length > 0 && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <h3 className="font-bold text-amber-900 mb-1">
+                💵 Cash receipts to confirm ({pendingCashReceipts.length})
+              </h3>
+              <p className="text-sm text-amber-800 mb-4">
+                Drivers say they've handed you these amounts. Confirm if you received the cash,
+                or dispute if you didn't.
+              </p>
+              <div className="space-y-2">
+                {pendingCashReceipts.map((o) => {
+                  const claimedAmount =
+                    o.cashGivenAmount ?? (o.subtotal > 0 ? o.subtotal : o.total);
+                  const isThisConfirming = confirmingId === o.id;
+                  return (
+                    <div
+                      key={o.id}
+                      className="bg-white rounded-lg p-3 flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          R{claimedAmount.toFixed(2)} from {o.customerName}'s order
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          #{o.id.slice(0, 6)} · delivered{' '}
+                          {o.createdAt.toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConfirmCashReceipt(o.id)}
+                          disabled={isThisConfirming}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {isThisConfirming ? '…' : 'Confirm received'}
+                        </button>
+                        <button
+                          onClick={() => handleDisputeCashReceipt(o.id)}
+                          disabled={isThisConfirming}
+                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 disabled:opacity-50"
+                        >
+                          Dispute
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Quick Actions */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <Link
