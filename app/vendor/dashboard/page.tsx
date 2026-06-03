@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation';
 import { collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
+import { readVendorPayout } from '../../../services/economics';
 
 type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled';
 
@@ -34,7 +35,10 @@ type VendorOrder = {
   id: string;
   customerName: string;
   items: { name: string; quantity: number }[];
+  /** What customer paid (food + delivery). Shown to vendor for context. */
   total: number;
+  /** Vendor's actual take after platform commission. */
+  vendorPayout: number;
   status: OrderStatus;
   createdAt: Date;
 };
@@ -146,6 +150,7 @@ export default function VendorDashboard() {
             customerName: data.customerName ?? 'Customer',
             items,
             total: typeof data.total === 'number' ? data.total : 0,
+            vendorPayout: readVendorPayout(data),
             status: (data.status as OrderStatus) ?? 'pending',
             createdAt: created,
           };
@@ -170,8 +175,10 @@ export default function VendorDashboard() {
     return {
       totalOrders,
       todayOrders: todays.length,
-      totalRevenue: delivered.reduce((sum, o) => sum + o.total, 0),
-      todayRevenue: deliveredToday.reduce((sum, o) => sum + o.total, 0),
+      // Revenue = vendor's actual take after platform commission, not gross.
+      // We surface this to the vendor as "your earnings".
+      totalRevenue: delivered.reduce((sum, o) => sum + o.vendorPayout, 0),
+      todayRevenue: deliveredToday.reduce((sum, o) => sum + o.vendorPayout, 0),
       pendingOrders: orders.filter((o) => o.status === 'pending').length,
       preparingOrders: orders.filter((o) => o.status === 'preparing').length,
     };

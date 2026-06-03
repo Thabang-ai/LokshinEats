@@ -73,6 +73,7 @@ type OrderView = {
   driverRatingGiven: number | null;
   deliveryOTP: string | null;
   deliveryOTPVerified: boolean;
+  cashAmount: number | null;
 };
 
 const orderSteps: { key: OrderStatus; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -278,6 +279,7 @@ export default function OrderTrackingPage({
           driverRatingGiven: typeof data.driverRatingGiven === 'number' ? data.driverRatingGiven : null,
           deliveryOTP: typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null,
           deliveryOTPVerified: data.deliveryOTPVerified === true,
+          cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
         });
         setIsLoading(false);
       },
@@ -475,6 +477,39 @@ export default function OrderTrackingPage({
                 </p>
               </motion.div>
             )}
+
+            {/* Cash payment reminder — shown for cash orders once the kitchen is preparing,
+                so the customer has time to find the right notes before the driver arrives. */}
+            {order.paymentMethod === 'cash' && !isCancelled &&
+              ['preparing', 'ready', 'picked_up'].includes(order.status) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-amber-50 border border-amber-200 rounded-xl shadow-md p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-3xl">💵</div>
+                    <div className="flex-1">
+                      <h2 className="text-lg font-bold text-amber-900 mb-1">
+                        {order.cashAmount && order.cashAmount > order.total
+                          ? `Have R${order.cashAmount.toFixed(2)} ready`
+                          : `Have R${order.total.toFixed(2)} ready`}
+                      </h2>
+                      <p className="text-sm text-amber-800">
+                        {order.cashAmount && order.cashAmount > order.total ? (
+                          <>
+                            Driver will bring{' '}
+                            <strong>R{(order.cashAmount - order.total).toFixed(2)}</strong> in
+                            change.
+                          </>
+                        ) : (
+                          <>Exact amount — no change needed.</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
 
             {/* Driver assigned — placeholder for Phase 5 live map */}
             {order.driverId && !isCancelled && (

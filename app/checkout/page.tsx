@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
+import { computeOrderEconomics } from '../../services/economics';
 
 export default function CheckoutPage() {
   const { cart, storeMeta, clearCart } = useCart();
@@ -23,6 +24,9 @@ export default function CheckoutPage() {
   const { user, authReady } = useAuthUser();
   const [selectedPayment, setSelectedPayment] = useState<'cash' | 'yoco' | 'ozow'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
+  // For cash payments — customer can declare which note they'll pay with so
+  // the driver knows whether to bring change. Defaults to exact total.
+  const [cashAmount, setCashAmount] = useState<number | ''>('');
 
   const [formData, setFormData] = useState({
     street: '',
@@ -77,6 +81,18 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Cash amount validation — must be at least the order total if set
+    const cashAmountEffective =
+      selectedPayment === 'cash'
+        ? typeof cashAmount === 'number' && cashAmount > 0
+          ? cashAmount
+          : cart.total
+        : null;
+    if (cashAmountEffective !== null && cashAmountEffective < cart.total) {
+      toast.error(`Cash amount must be at least R${cart.total.toFixed(2)}`);
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -96,6 +112,10 @@ export default function CheckoutPage() {
         setIsProcessing(false);
         return;
       }
+
+      // Compute platform economics at write time. These get frozen on the
+      // order so historical numbers don't shift if rates change later.
+      const economics = computeOrderEconomics(cart.subtotal, cart.deliveryFee);
 
       // 4-digit OTP that the customer reads to the driver at handoff.
       // Driver enters it in their app to mark delivery + payment received.
@@ -133,6 +153,15 @@ export default function CheckoutPage() {
         },
         deliveryOTP,
         deliveryOTPVerified: false,
+        // Cash logistics — null for card/Ozow, customer's declared note for cash
+        cashAmount: cashAmountEffective,
+        // Platform economics — frozen at the rate this order was placed
+        vendorPayout: economics.vendorPayout,
+        driverPayout: economics.driverPayout,
+        platformEarnings: economics.platformEarnings,
+        platformCommission: economics.platformCommission,
+        commissionRate: economics.commissionRate,
+        driverDeliveryShare: economics.driverDeliveryShare,
         createdAt: serverTimestamp(),
       });
 
@@ -381,6 +410,61 @@ export default function CheckoutPage() {
                 </button>
               </div>
             </motion.div>
+
+            {/* Cash details — only when cash is selected. Helps driver plan change. */}
+            {selectedPayment === 'cash' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="bg-white rounded-xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold mb-2">Cash payment</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Your driver will collect{' '}
+                  <span className="font-bold text-gray-900">R{cart.total.toFixed(2)}</span> when
+                  they arrive.
+                </p>
+                <label htmlFor="cash-amount" className="block text-sm font-semibold mb-2">
+                  Paying with a different note?
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-semibold">R</span>
+                  <input
+                    id="cash-amount"
+                    type="number"
+                    min={cart.total}
+                    step="1"
+                    inputMode="numeric"
+                    value={cashAmount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCashAmount(v === '' ? '' : Math.max(0, parseFloat(v) || 0));
+                    }}
+                    placeholder={`${cart.total.toFixed(0)} (exact)`}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <p className="text-sm mt-2">
+                  {typeof cashAmount !== 'number' || cashAmount === 0 ? (
+                    <span className="text-gray-500">
+                      Default: have exact <strong>R{cart.total.toFixed(2)}</strong> ready.
+                    </span>
+                  ) : cashAmount < cart.total ? (
+                    <span className="text-red-600 font-semibold">
+                      Must be at least R{cart.total.toFixed(2)}
+                    </span>
+                  ) : cashAmount === cart.total ? (
+                    <span className="text-green-700">No change needed — exact payment.</span>
+                  ) : (
+                    <span className="text-green-700">
+                      Driver will bring{' '}
+                      <strong>R{(cashAmount - cart.total).toFixed(2)}</strong> change.
+                    </span>
+                  )}
+                </p>
+              </motion.div>
+            )}
           </div>
 
           {/* Order Summary */}

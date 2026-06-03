@@ -26,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuthUser } from '../../../hooks/useAuthUser';
+import { readDriverPayout } from '../../../services/economics';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,7 +35,8 @@ type DeliveredOrder = {
   id: string;
   storeName: string;
   customerName: string;
-  deliveryFee: number;
+  /** Driver's actual cut of the delivery fee (was: gross deliveryFee). */
+  driverPayout: number;
   actualDeliveryTime: Date;
   createdAt: Date;
 };
@@ -114,7 +116,7 @@ export default function DriverEarningsPage() {
             id: d.id,
             storeName: data.storeName ?? 'Unknown store',
             customerName: data.customerName ?? 'Customer',
-            deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
+            driverPayout: readDriverPayout(data),
             actualDeliveryTime: delivered,
             createdAt: created,
           };
@@ -143,7 +145,8 @@ export default function DriverEarningsPage() {
     const today = orders.filter((o) => isToday(o.actualDeliveryTime));
     const week = orders.filter((o) => isWithinDays(o.actualDeliveryTime, 7));
     const month = orders.filter((o) => isWithinDays(o.actualDeliveryTime, 30));
-    const sum = (arr: DeliveredOrder[]) => arr.reduce((s, o) => s + o.deliveryFee, 0);
+    const sum = (arr: DeliveredOrder[]) => arr.reduce((s, o) => s + o.driverPayout, 0);
+    // Round to 2 decimals to avoid R12.749999 artifacts
     return {
       totalEarnings: sum(orders),
       totalDeliveries: orders.length,
@@ -183,7 +186,7 @@ export default function DriverEarningsPage() {
     for (const order of orders) {
       const day = startOfDay(order.actualDeliveryTime);
       const bucket = days.find((d) => d.date.getTime() === day.getTime());
-      if (bucket) bucket.earnings += order.deliveryFee;
+      if (bucket) bucket.earnings += order.driverPayout;
     }
     return days;
   }, [orders]);
@@ -352,7 +355,7 @@ export default function DriverEarningsPage() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0 ml-2">
-                          <p className="font-bold text-green-600">+R{order.deliveryFee}</p>
+                          <p className="font-bold text-green-600">+R{order.driverPayout.toFixed(2)}</p>
                           <p className="text-xs text-gray-500">{relativeTime(order.actualDeliveryTime)}</p>
                         </div>
                       </div>

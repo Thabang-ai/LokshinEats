@@ -43,8 +43,11 @@ type DriverOrder = {
   customerName: string;
   deliveryAddress: { street: string; city: string; postalCode: string } | null;
   deliveryFee: number;
+  total: number;
   items: { name: string; quantity: number }[];
   status: OrderStatus | string;
+  paymentMethod: string;
+  cashAmount: number | null;
   createdAt: Date;
   pickedUpAt: Date | null;
   actualDeliveryTime: Date | null;
@@ -123,8 +126,11 @@ export default function DriverOrdersPage() {
             customerName: data.customerName ?? 'Customer',
             deliveryAddress: data.deliveryAddress ?? null,
             deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
+            total: typeof data.total === 'number' ? data.total : 0,
             items,
             status: data.status ?? 'picked_up',
+            paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
+            cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
             createdAt: tsToDate(data.createdAt) ?? new Date(),
             pickedUpAt: tsToDate(data.pickedUpAt),
             actualDeliveryTime: tsToDate(data.actualDeliveryTime),
@@ -347,6 +353,31 @@ export default function DriverOrdersPage() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Cash coordination — only for active cash orders */}
+                      {order.status === 'picked_up' && order.paymentMethod === 'cash' && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                          <div className="flex items-start gap-2">
+                            <div className="text-2xl">💵</div>
+                            <div className="flex-1">
+                              <p className="font-bold text-amber-900">
+                                Collect R{order.total.toFixed(2)} cash
+                              </p>
+                              {order.cashAmount && order.cashAmount > order.total ? (
+                                <p className="text-sm text-amber-800">
+                                  Customer paying with R{order.cashAmount.toFixed(2)} — bring{' '}
+                                  <strong>R{(order.cashAmount - order.total).toFixed(2)}</strong>{' '}
+                                  change
+                                </p>
+                              ) : (
+                                <p className="text-sm text-amber-800">
+                                  Customer has exact amount — no change needed
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Action Button (only for picked_up) */}
                       {order.status === 'picked_up' && otpModeOrderId !== order.id && (

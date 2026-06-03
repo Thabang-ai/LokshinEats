@@ -41,6 +41,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
+import { readDriverPayout } from '../../../services/economics';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 
 // ---------------------------------------------------------------------------
@@ -60,12 +61,22 @@ type DriverOrder = {
   deliveryFee: number;
   total: number;
   items: { name: string; quantity: number }[];
+  paymentMethod: string;
+  cashAmount: number | null;
   createdAt: Date;
 };
 
 type DeliveredOrder = {
   id: string;
+  storeName: string;
+  subtotal: number;
   deliveryFee: number;
+  driverPayout: number;
+  total: number;
+  paymentMethod: string;
+  cashGivenToVendor: boolean;
+  vendorCashConfirmed: boolean;
+  vendorCashDisputed: boolean;
   createdAt: Date;
 };
 
@@ -91,6 +102,8 @@ function mapOrderDoc(d: any): DriverOrder {
     deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
     total: typeof data.total === 'number' ? data.total : 0,
     items,
+    paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
+    cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
     createdAt: created,
   };
 }
@@ -247,7 +260,15 @@ export default function DriverDashboard() {
               : data.createdAt?.toDate?.() ?? new Date();
           return {
             id: d.id,
+            storeName: typeof data.storeName === 'string' ? data.storeName : 'Unknown',
+            subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
             deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
+            driverPayout: readDriverPayout(data),
+            total: typeof data.total === 'number' ? data.total : 0,
+            paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
+            cashGivenToVendor: data.cashGivenToVendor === true,
+            vendorCashConfirmed: data.vendorCashConfirmed === true,
+            vendorCashDisputed: data.vendorCashDisputed === true,
             createdAt: created,
           };
         });
@@ -361,13 +382,76 @@ export default function DriverDashboard() {
 
   const stats = useMemo(() => {
     const todayDelivered = delivered.filter((o) => isToday(o.createdAt));
+    // Cash held on platform's behalf = total customer paid minus driver's
+    // own cut, summed across CASH orders where the driver hasn't yet
+    // recorded the handover to the vendor.
+    const cashOrdersStillOwed = delivered.filter(
+      (o) => o.paymentMethod === 'cash' && !o.cashGivenToVendor,
+    );
+    const cashToSettle = cashOrdersStillOwed.reduce(
+      (sum, o) => sum + Math.max(0, o.total - o.driverPayout),
+      0,
+    );
     return {
       totalDeliveries: delivered.length,
       todayDeliveries: todayDelivered.length,
-      totalEarnings: delivered.reduce((sum, o) => sum + o.deliveryFee, 0),
-      todayEarnings: todayDelivered.reduce((sum, o) => sum + o.deliveryFee, 0),
+      totalEarnings: delivered.reduce((sum, o) => sum + o.driverPayout, 0),
+      todayEarnings: todayDelivered.reduce((sum, o) => sum + o.driverPayout, 0),
+      cashToSettle,
     };
   }, [delivered]);
+
+  // Cash orders that still need to be handed over to the vendor.
+  const pendingHandovers = useMemo(
+    () =>
+      delivered
+        .filter((o) => o.paymentMethod === 'cash' && !o.cashGivenToVendor)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    [delivered],
+  );
+
+  // Cash orders we've claimed to settle, awaiting vendor confirmation.
+  const awaitingConfirmation = useMemo(
+    () =>
+      delivered
+        .filter(
+          (o) =>
+            o.paymentMethod === 'cash' &&
+            o.cashGivenToVendor &&
+            !o.vendorCashConfirmed &&
+            !o.vendorCashDisputed,
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    [delivered],
+  );
+
+  // Disputed cash orders — vendor said they didn't receive the cash.
+  const disputedHandovers = useMemo(
+    () => delivered.filter((o) => o.paymentMethod === 'cash' && o.vendorCashDisputed),
+    [delivered],
+  );
+
+  const [settlingId, setSettlingId] = useState<string | null>(null);
+
+  const markCashGivenToVendor = async (order: DeliveredOrder) => {
+    if (!user) return;
+    setSettlingId(order.id);
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        cashGivenToVendor: true,
+        cashGivenToVendorAt: serverTimestamp(),
+        // Record what the driver claims they gave — typically the food
+        // subtotal (vendor's full take pre-commission; vendor settles
+        // commission with platform separately).
+        cashGivenAmount: order.subtotal > 0 ? order.subtotal : order.total - order.driverPayout,
+      });
+      toast.success(`Marked R${(order.subtotal || order.total - order.driverPayout).toFixed(2)} as paid to ${order.storeName}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
+    } finally {
+      setSettlingId(null);
+    }
+  };
 
   // ---- Render branches ----------------------------------------------------
 
@@ -507,6 +591,103 @@ export default function DriverDashboard() {
               tag={ratingCount > 0 ? `${ratingCount} rating${ratingCount === 1 ? '' : 's'}` : 'No ratings yet'}
             />
           </div>
+
+          {/* Cash to settle banner — only show if there's actual cash held */}
+          {stats.cashToSettle > 0 && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <p className="font-bold text-amber-900 text-lg">
+                Cash to hand to vendors: R{stats.cashToSettle.toLocaleString()}
+              </p>
+              <p className="text-sm text-amber-700">
+                You're holding this much customer cash from {pendingHandovers.length} unsettled
+                order{pendingHandovers.length === 1 ? '' : 's'}. Hand it over at your next pickup,
+                then mark it given so the vendor can confirm.
+              </p>
+            </div>
+          )}
+
+          {/* Pending vendor handovers list */}
+          {pendingHandovers.length > 0 && (
+            <div className="mb-4 bg-white rounded-xl shadow-md p-5">
+              <h3 className="font-bold mb-3">Mark cash given to vendor</h3>
+              <div className="divide-y divide-gray-100">
+                {pendingHandovers.map((o) => {
+                  const amountOwed = o.subtotal > 0 ? o.subtotal : o.total - o.driverPayout;
+                  const isSettling = settlingId === o.id;
+                  return (
+                    <div
+                      key={o.id}
+                      className="py-3 flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{o.storeName}</p>
+                        <p className="text-xs text-gray-500">
+                          #{o.id.slice(0, 6)} · {o.createdAt.toLocaleDateString()}{' '}
+                          {o.createdAt.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-amber-900">
+                          R{amountOwed.toFixed(2)}
+                        </span>
+                        <button
+                          onClick={() => markCashGivenToVendor(o)}
+                          disabled={isSettling}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {isSettling ? 'Saving…' : 'Mark cash given'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Awaiting vendor confirmation */}
+          {awaitingConfirmation.length > 0 && (
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-5">
+              <p className="font-semibold text-blue-900 mb-2">
+                Awaiting vendor confirmation ({awaitingConfirmation.length})
+              </p>
+              <p className="text-sm text-blue-700 mb-2">
+                You've marked these as paid. The vendor needs to confirm in their app.
+              </p>
+              <div className="text-xs text-blue-800 space-y-1">
+                {awaitingConfirmation.slice(0, 5).map((o) => (
+                  <div key={o.id}>
+                    {o.storeName} — R
+                    {(o.subtotal || o.total - o.driverPayout).toFixed(2)} (#{o.id.slice(0, 6)})
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Disputed handovers */}
+          {disputedHandovers.length > 0 && (
+            <div className="mb-8 bg-red-50 border border-red-200 rounded-xl p-5">
+              <p className="font-semibold text-red-900 mb-1">
+                ⚠️ Disputed cash handovers ({disputedHandovers.length})
+              </p>
+              <p className="text-sm text-red-700 mb-2">
+                A vendor says they didn't receive the cash you marked given. Contact them to
+                resolve, then re-submit if needed.
+              </p>
+              <div className="text-xs text-red-800 space-y-1">
+                {disputedHandovers.map((o) => (
+                  <div key={o.id}>
+                    {o.storeName} — R
+                    {(o.subtotal || o.total - o.driverPayout).toFixed(2)} (#{o.id.slice(0, 6)})
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* My Active Deliveries */}
           <section className="mb-8">
@@ -673,6 +854,30 @@ function OrderCard({
                 {order.deliveryAddress.street}, {order.deliveryAddress.city},{' '}
                 {order.deliveryAddress.postalCode}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash coordination — only for active cash orders */}
+      {variant === 'active' && order.paymentMethod === 'cash' && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+          <div className="flex items-start gap-2">
+            <div className="text-2xl">💵</div>
+            <div className="flex-1">
+              <p className="font-bold text-amber-900">
+                Collect R{order.total.toFixed(2)} cash
+              </p>
+              {order.cashAmount && order.cashAmount > order.total ? (
+                <p className="text-sm text-amber-800">
+                  Customer paying with R{order.cashAmount.toFixed(2)} — bring{' '}
+                  <strong>R{(order.cashAmount - order.total).toFixed(2)}</strong> change
+                </p>
+              ) : (
+                <p className="text-sm text-amber-800">
+                  Customer has exact amount — no change needed
+                </p>
+              )}
             </div>
           </div>
         </div>

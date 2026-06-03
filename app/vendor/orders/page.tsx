@@ -26,6 +26,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   Timestamp,
   updateDoc,
   where,
@@ -52,6 +53,7 @@ type VendorOrder = {
   customerName: string;
   phone: string | null;
   items: { name: string; quantity: number; price: number }[];
+  subtotal: number;
   total: number;
   status: OrderStatus;
   createdAt: Date;
@@ -61,6 +63,11 @@ type VendorOrder = {
     postalCode: string;
   } | null;
   paymentMethod: string;
+  // Cash handoff state (only meaningful for delivered cash orders)
+  cashGivenToVendor: boolean;
+  cashGivenAmount: number | null;
+  vendorCashConfirmed: boolean;
+  vendorCashDisputed: boolean;
 };
 
 const statusConfig: Record<
@@ -140,11 +147,16 @@ export default function VendorOrdersPage() {
                 ? data.phone
                 : null,
             items,
+            subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
             total: typeof data.total === 'number' ? data.total : 0,
             status: (data.status as OrderStatus) ?? 'pending',
             createdAt: created,
             deliveryAddress: data.deliveryAddress ?? null,
             paymentMethod: data.paymentMethod ?? 'cash',
+            cashGivenToVendor: data.cashGivenToVendor === true,
+            cashGivenAmount: typeof data.cashGivenAmount === 'number' ? data.cashGivenAmount : null,
+            vendorCashConfirmed: data.vendorCashConfirmed === true,
+            vendorCashDisputed: data.vendorCashDisputed === true,
           };
         });
 
@@ -234,6 +246,54 @@ export default function VendorOrdersPage() {
     };
   }, [orders]);
 
+  // Cash claims awaiting confirmation: driver said they handed over the
+  // cash, vendor hasn't confirmed or disputed yet.
+  const pendingCashReceipts = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.paymentMethod === 'cash' &&
+          o.cashGivenToVendor &&
+          !o.vendorCashConfirmed &&
+          !o.vendorCashDisputed,
+      ),
+    [orders],
+  );
+
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const handleConfirmCashReceipt = async (orderId: string) => {
+    setConfirmingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        vendorCashConfirmed: true,
+        vendorCashConfirmedAt: serverTimestamp(),
+      });
+      toast.success('Cash receipt confirmed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to confirm');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  const handleDisputeCashReceipt = async (orderId: string) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm("Dispute this cash receipt? Only do this if the driver actually didn't give you the money.")) return;
+    setConfirmingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        vendorCashDisputed: true,
+        vendorCashDisputedAt: serverTimestamp(),
+      });
+      toast.success('Receipt disputed — driver has been notified');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to dispute');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
   // ---- Render branches ----------------------------------------------------
 
   if (isStoreLoading) {
@@ -312,6 +372,58 @@ export default function VendorOrdersPage() {
               >
                 Enable
               </button>
+            </div>
+          )}
+
+          {/* Cash receipts awaiting confirmation */}
+          {pendingCashReceipts.length > 0 && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <h3 className="font-bold text-amber-900 mb-1">
+                💵 Cash receipts to confirm ({pendingCashReceipts.length})
+              </h3>
+              <p className="text-sm text-amber-800 mb-4">
+                Drivers say they've handed you these amounts. Confirm if you received the cash,
+                or dispute if you didn't.
+              </p>
+              <div className="space-y-2">
+                {pendingCashReceipts.map((o) => {
+                  const claimedAmount =
+                    o.cashGivenAmount ?? (o.subtotal > 0 ? o.subtotal : o.total);
+                  const isThisConfirming = confirmingId === o.id;
+                  return (
+                    <div
+                      key={o.id}
+                      className="bg-white rounded-lg p-3 flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          R{claimedAmount.toFixed(2)} from {o.customerName}'s order
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          #{o.id.slice(0, 6)} · delivered{' '}
+                          {o.createdAt.toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConfirmCashReceipt(o.id)}
+                          disabled={isThisConfirming}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {isThisConfirming ? '…' : 'Confirm received'}
+                        </button>
+                        <button
+                          onClick={() => handleDisputeCashReceipt(o.id)}
+                          disabled={isThisConfirming}
+                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 disabled:opacity-50"
+                        >
+                          Dispute
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

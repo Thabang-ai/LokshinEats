@@ -22,13 +22,17 @@ import { motion } from 'framer-motion';
 import { collection, getDocs, query, Timestamp, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
+import { readVendorPayout } from '../../../services/economics';
 
 // ---------------------------------------------------------------------------
 // Types
 
 type DeliveredOrder = {
   id: string;
+  /** What customer paid (food + delivery). */
   total: number;
+  /** Vendor's actual take after platform commission. */
+  vendorPayout: number;
   items: { name: string; quantity: number; price: number }[];
   createdAt: Date;
 };
@@ -104,6 +108,7 @@ export default function EarningsPage() {
           return {
             id: d.id,
             total: typeof data.total === 'number' ? data.total : 0,
+            vendorPayout: readVendorPayout(data),
             items,
             createdAt: created,
           };
@@ -131,7 +136,8 @@ export default function EarningsPage() {
     const todayOrders = orders.filter((o) => isToday(o.createdAt));
     const weekOrders = orders.filter((o) => isWithinDays(o.createdAt, 7));
     const monthOrders = orders.filter((o) => isWithinDays(o.createdAt, 30));
-    const sum = (arr: DeliveredOrder[]) => arr.reduce((s, o) => s + o.total, 0);
+    // Sum vendor's actual take (post-commission), not gross order total.
+    const sum = (arr: DeliveredOrder[]) => arr.reduce((s, o) => s + o.vendorPayout, 0);
     const totalRevenue = sum(orders);
     const totalOrders = orders.length;
     return {
@@ -189,7 +195,7 @@ export default function EarningsPage() {
     for (const order of orders) {
       const day = startOfDay(order.createdAt);
       const bucket = days.find((d) => d.date.getTime() === day.getTime());
-      if (bucket) bucket.revenue += order.total;
+      if (bucket) bucket.revenue += order.vendorPayout;
     }
     return days;
   }, [orders]);
