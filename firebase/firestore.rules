@@ -22,9 +22,20 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
     }
 
-    // Users collection - users can read/write their own data
+    // Platform operator. The `admin` role is set manually on a trusted user's
+    // doc (Firebase console) — there is no admin self-signup. Admins get
+    // read-only oversight across the platform; they never write order/money
+    // fields, so this stays safe even as the admin console grows.
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users collection - users read/write their own data; admins may read any
+    // user (for the operator console). Writes remain owner-only.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Stores collection
@@ -68,6 +79,7 @@ service cloud.firestore {
     // store owner, OR any driver claiming an available order.
     match /orders/{orderId} {
       allow read: if request.auth != null && (
+        isAdmin() ||
         request.auth.uid == resource.data.customerId ||
         request.auth.uid == resource.data.driverId ||
         isStoreOwner(resource.data.storeId) ||

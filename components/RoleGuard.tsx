@@ -9,10 +9,10 @@ import { auth } from '../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import toast from 'react-hot-toast';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 
 interface RoleGuardProps {
-  allowedRoles: ('customer' | 'vendor' | 'driver')[];
+  allowedRoles: ('customer' | 'vendor' | 'driver' | 'admin')[];
   children: React.ReactNode;
 }
 
@@ -21,7 +21,7 @@ export default function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const checkUserRole = async (user: any) => {
+    const checkUserRole = async (user: User | null) => {
       if (!user) {
         toast.error('Please login first');
         router.push('/auth/login');
@@ -45,7 +45,9 @@ export default function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
           toast.error(`Access denied. This page is for ${allowedRoles.join(' or ')} only.`);
           
           // Redirect based on their actual role
-          if (userRole === 'vendor') {
+          if (userRole === 'admin') {
+            router.push('/admin');
+          } else if (userRole === 'vendor') {
             router.push('/vendor/dashboard');
           } else if (userRole === 'driver') {
             router.push('/driver/dashboard');
