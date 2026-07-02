@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import RoleGuard from '../components/RoleGuard';
+import { isImageUrl } from '../utils/isImageUrl';
 
 type FeaturedRestaurant = {
   id: string;
@@ -18,9 +19,6 @@ type FeaturedRestaurant = {
   image: string;
 };
 
-function isImageUrl(value: string) {
-  return /^https?:\/\//i.test(value);
-}
 
 export default function Home() {
   const [featured, setFeatured] = useState<FeaturedRestaurant[]>([]);

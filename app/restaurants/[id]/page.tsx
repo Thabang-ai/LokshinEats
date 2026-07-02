@@ -18,6 +18,7 @@ import {
 import { db } from '../../../firebase/config';
 import { useCart } from '../../../context/CartContext';
 import { useFavorites } from '../../../hooks/useFavorites';
+import { isImageUrl } from '../../../utils/isImageUrl';
 import type { Product } from '../../../types';
 
 type StoreView = {
@@ -316,7 +317,15 @@ export default function RestaurantDetailPage({
               </div>
             </div>
 
-            <div className="text-8xl">{store.image}</div>
+            {isImageUrl(store.image) ? (
+              <img
+                src={store.image}
+                alt={store.name}
+                className="w-36 h-36 md:w-44 md:h-44 rounded-2xl object-cover shadow-lg flex-shrink-0"
+              />
+            ) : (
+              <div className="text-8xl">{store.image}</div>
+            )}
           </div>
         </div>
       </div>
@@ -358,8 +367,12 @@ export default function RestaurantDetailPage({
                   className={`bg-white rounded-xl shadow-md overflow-hidden ${!item.available ? 'opacity-50' : ''}`}
                 >
                   <div className="flex gap-4 p-4">
-                    <div className="w-24 h-24 bg-gradient-to-br from-primary-light to-primary rounded-lg flex items-center justify-center text-4xl flex-shrink-0">
-                      {item.image}
+                    <div className="w-24 h-24 bg-gradient-to-br from-primary-light to-primary rounded-lg flex items-center justify-center text-4xl flex-shrink-0 overflow-hidden">
+                      {isImageUrl(item.image) ? (
+                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                      ) : (
+                        item.image
+                      )}
                     </div>
 
                     <div className="flex-1">

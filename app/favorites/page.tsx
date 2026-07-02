@@ -12,6 +12,7 @@ import { motion } from 'framer-motion';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useFavorites } from '../../hooks/useFavorites';
+import { isImageUrl } from '../../utils/isImageUrl';
 
 type RestaurantCard = {
   id: string;
@@ -163,8 +164,16 @@ export default function FavoritesPage() {
                 </button>
 
                 <Link href={`/restaurants/${restaurant.id}`}>
-                  <div className="h-48 bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-7xl relative">
-                    {restaurant.image}
+                  <div className="h-48 bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-7xl relative overflow-hidden">
+                    {isImageUrl(restaurant.image) ? (
+                      <img
+                        src={restaurant.image}
+                        alt={restaurant.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      restaurant.image
+                    )}
                     {!restaurant.isOpen && (
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                         <span className="text-white font-bold text-lg">Closed</span>
