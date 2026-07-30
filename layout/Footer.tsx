@@ -23,7 +23,7 @@ export default function Footer() {
                 Lokshin<span className="text-primary">Eats</span>
               </h2>
             </div>
-            <p className="text-gray-400">
+            <p className="text-white/60">
               Township food. Delivered. Support local businesses, enjoy great food.
             </p>
           </div>
@@ -31,7 +31,7 @@ export default function Footer() {
           {/* Quick links */}
           <div>
             <h3 className="font-semibold mb-4">Quick Links</h3>
-            <ul className="space-y-2 text-gray-400">
+            <ul className="space-y-2 text-white/60">
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/about" className="hover:text-primary transition-colors">How It Works</Link></li>
               <li><Link href="/auth/signup" className="hover:text-primary transition-colors">Become a Driver</Link></li>
@@ -42,7 +42,7 @@ export default function Footer() {
           {/* Support */}
           <div>
             <h3 className="font-semibold mb-4">Support</h3>
-            <ul className="space-y-2 text-gray-400">
+            <ul className="space-y-2 text-white/60">
               <li><a href="mailto:support@lokshineats.co.za" className="hover:text-primary transition-colors">Contact Us</a></li>
               <li><Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link></li>
               <li><Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
@@ -52,7 +52,7 @@ export default function Footer() {
           {/* Contact */}
           <div>
             <h3 className="font-semibold mb-4">Contact</h3>
-            <ul className="space-y-2 text-gray-400">
+            <ul className="space-y-2 text-white/60">
               <li>Email: support@lokshineats.co.za</li>
               <li>Phone: +27 11 123 4567</li>
               <li>Based in South Africa</li>
@@ -60,7 +60,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-white/60">
           <p>&copy; {new Date().getFullYear()} LokshinEats. All rights reserved.</p>
         </div>
       </div>

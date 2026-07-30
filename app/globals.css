@@ -44,20 +44,31 @@
   --color-light-gray: var(--light-gray);
   --color-success: var(--success);
   --color-error: var(--error);
+
+  /* Tailwind's default gray-400 (#9ca3af, ~2.9:1 on our cream background)
+     and gray-500 (#6b7280, ~4.6:1) read as near-illegible light grey —
+     text-gray-400/500 are used ~200 times across the app for labels, empty
+     states, and secondary copy. Shift both one step darker to their old
+     500/600 values so every existing usage becomes readable without
+     touching each call site. gray-600+ was already fine (~7.5:1+) and is
+     left alone. */
+  --color-gray-400: #6b7280;
+  --color-gray-500: #4b5563;
   --color-warning: var(--warning);
   --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --glass-bg: rgba(10, 10, 10, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.1);
-  }
-}
+/* No dark-mode variant: every component hardcodes light-mode Tailwind
+   classes (bg-white, bg-gray-50, etc.) and none use `dark:` utilities, so
+   this app has never actually supported a dark theme. A leftover
+   prefers-color-scheme override here used to flip --foreground to
+   near-white (#ededed) whenever the OS/browser preferred dark mode, while
+   every card/page background stayed hardcoded light — making unstyled
+   heading and body text (anything relying on inherited body color, with no
+   explicit text-* class) render almost invisibly on white cards. That was
+   the real "light grey, hard to read" bug, not just muted secondary text. */
 
 body {
   background: var(--background);
