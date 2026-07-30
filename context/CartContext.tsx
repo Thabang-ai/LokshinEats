@@ -17,6 +17,8 @@ export type StoreMeta = {
   isOpen: boolean;
   deliveryFee: number;
   minOrderAmount: number;
+  /** Vendor's registered city/area — used to estimate delivery distance at checkout. */
+  city: string;
 };
 
 interface CartContextType {
@@ -81,6 +83,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           isOpen: data.isOpen !== false,
           deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 15,
           minOrderAmount: typeof data.minOrderAmount === 'number' ? data.minOrderAmount : 0,
+          city: typeof data.city === 'string' ? data.city : '',
         });
       } catch {
         if (!cancelled) setStoreMeta(null);

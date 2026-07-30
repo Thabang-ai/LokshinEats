@@ -17,6 +17,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
 import { computeOrderEconomics } from '../../services/economics';
+import { estimateOrderDistanceKm } from '../../services/mapService';
 
 export default function CheckoutPage() {
   const { cart, storeMeta, clearCart } = useCart();
@@ -126,6 +127,11 @@ export default function CheckoutPage() {
       // good-fences/casual-fraud deterrent.
       const deliveryOTP = String(Math.floor(1000 + Math.random() * 9000));
 
+      // Rough store→customer distance (mock geocoding — see mapService.ts).
+      // Frozen on the order so drivers can be filtered by vehicle-type range
+      // without recomputing it live. Null if either city couldn't resolve.
+      const estimatedDistanceKm = await estimateOrderDistanceKm(storeMeta.city, formData.city);
+
       // Step 2: Write real order to Firestore.
       // Fields are denormalized so other roles (vendor, driver) can render
       // them without reading users/{customerId} (rules block cross-user reads).
@@ -153,6 +159,7 @@ export default function CheckoutPage() {
         },
         deliveryOTP,
         deliveryOTPVerified: false,
+        estimatedDistanceKm,
         // Cash logistics — null for card/Ozow, customer's declared note for cash
         cashAmount: cashAmountEffective,
         // Platform economics — frozen at the rate this order was placed

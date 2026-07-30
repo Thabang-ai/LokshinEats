@@ -43,9 +43,18 @@ import {
 import { auth, db } from '../../../firebase/config';
 import { readDriverPayout } from '../../../services/economics';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
+import { isWithinVehicleRadius } from '../../../services/mapService';
 
 // ---------------------------------------------------------------------------
 // Types
+
+type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled';
+
+// Orders a driver can claim (not yet picked up). Claiming during
+// confirmed/preparing only assigns driverId — status stays put until the
+// vendor marks it ready. Claiming a 'ready' order still jumps straight to
+// picked_up in one step, same as before this change.
+const CLAIMABLE_STATUSES: OrderStatus[] = ['confirmed', 'preparing', 'ready'];
 
 type DeliveryAddress = {
   street: string;
@@ -57,12 +66,15 @@ type DriverOrder = {
   id: string;
   storeName: string;
   customerName: string;
+  status: OrderStatus;
   deliveryAddress: DeliveryAddress | null;
   deliveryFee: number;
   total: number;
   items: { name: string; quantity: number }[];
   paymentMethod: string;
   cashAmount: number | null;
+  /** Rough store→customer distance from mock geocoding; null for orders placed before this field existed. */
+  estimatedDistanceKm: number | null;
   createdAt: Date;
 };
 
@@ -98,12 +110,14 @@ function mapOrderDoc(d: any): DriverOrder {
     id: d.id,
     storeName: data.storeName ?? 'Unknown store',
     customerName: data.customerName ?? 'Customer',
+    status: (data.status as OrderStatus) ?? 'pending',
     deliveryAddress: data.deliveryAddress ?? null,
     deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
     total: typeof data.total === 'number' ? data.total : 0,
     items,
     paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
     cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
+    estimatedDistanceKm: typeof data.estimatedDistanceKm === 'number' ? data.estimatedDistanceKm : null,
     createdAt: created,
   };
 }
@@ -141,12 +155,16 @@ export default function DriverDashboard() {
   };
 
   const [available, setAvailable] = useState<DriverOrder[]>([]);
+  // Assigned to me but not yet physically picked up — split client-side into
+  // "waiting on the vendor" (confirmed/preparing) vs "ready, go collect".
+  const [assigned, setAssigned] = useState<DriverOrder[]>([]);
   const [active, setActive] = useState<DriverOrder[]>([]);
   const [delivered, setDelivered] = useState<DeliveredOrder[]>([]);
   const [ratingTotal, setRatingTotal] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
 
   const [isAvailableLoading, setIsAvailableLoading] = useState(true);
+  const [isAssignedLoading, setIsAssignedLoading] = useState(true);
   const [isActiveLoading, setIsActiveLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -155,6 +173,11 @@ export default function DriverDashboard() {
 
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
+
+  // This driver's own vehicle type, read from users/{uid}. Used purely to
+  // filter the available-deliveries feed — never sent to Firestore, so an
+  // unknown/missing value just means "don't filter" (see isWithinVehicleRadius).
+  const [myVehicleType, setMyVehicleType] = useState<string | null>(null);
 
   // Subscribe to auth state
   useEffect(() => {
@@ -165,16 +188,35 @@ export default function DriverDashboard() {
     return unsub;
   }, []);
 
-  // Subscribe to available deliveries (status='ready' AND driverId=null)
-  // This subscription runs even when offline so we know the count, but the UI
-  // only renders the feed when isOnline is true.
+  // One-time fetch of this driver's own vehicleType (set at /driver/register).
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => {
+        if (cancelled) return;
+        const vt = snap.data()?.vehicleType;
+        setMyVehicleType(typeof vt === 'string' ? vt : null);
+      })
+      .catch(() => {
+        if (!cancelled) setMyVehicleType(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  // Subscribe to available deliveries — unclaimed orders the vendor has
+  // accepted (confirmed/preparing) or finished (ready). This runs even when
+  // offline so we know the count, but the UI only renders the feed when
+  // isOnline is true.
   useEffect(() => {
     if (!user) return;
     setIsAvailableLoading(true);
 
     const q = query(
       collection(db, 'orders'),
-      where('status', '==', 'ready'),
+      where('status', 'in', CLAIMABLE_STATUSES),
       where('driverId', '==', null),
       orderBy('createdAt', 'desc'),
     );
@@ -214,6 +256,34 @@ export default function DriverDashboard() {
     );
     return unsub;
   }, [user, notify]);
+
+  // Subscribe to orders assigned to me but not yet picked up — the early-claim
+  // stage. Split into "waiting on vendor" vs "ready, go collect" client-side
+  // by status in the render below.
+  useEffect(() => {
+    if (!user) return;
+    // No setIsAssignedLoading(true) here — initial state is already true,
+    // and this effect only (re)runs once per user change.
+
+    const q = query(
+      collection(db, 'orders'),
+      where('driverId', '==', user.uid),
+      where('status', 'in', CLAIMABLE_STATUSES),
+      orderBy('createdAt', 'desc'),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setAssigned(snap.docs.map(mapOrderDoc));
+        setIsAssignedLoading(false);
+      },
+      (err) => {
+        setErrorMessage(err.message);
+        setIsAssignedLoading(false);
+      },
+    );
+    return unsub;
+  }, [user]);
 
   // Subscribe to this driver's active deliveries (driverId=uid, status=picked_up)
   useEffect(() => {
@@ -306,6 +376,11 @@ export default function DriverDashboard() {
 
   // ---- Actions -----------------------------------------------------------
 
+  // Claiming an order behaves differently depending on how far along the
+  // vendor is: if the food's still being made (confirmed/preparing), we only
+  // assign the driver — status stays put, and it moves from `available` into
+  // `assigned` (waiting-on-vendor). If it's already `ready`, claiming jumps
+  // straight to picked_up in one step, same as before this change.
   const acceptDelivery = async (orderId: string) => {
     if (!user) {
       toast.error('Not signed in');
@@ -319,19 +394,64 @@ export default function DriverDashboard() {
         if (!snap.exists()) throw new Error('Order no longer exists');
         const data = snap.data();
         if (data.driverId) throw new Error('Already taken by another driver');
-        if (data.status !== 'ready') throw new Error('Order is no longer ready for pickup');
-        tx.update(ref, {
-          driverId: user.uid,
-          status: 'picked_up',
-          pickedUpAt: serverTimestamp(),
-        });
+        if (!CLAIMABLE_STATUSES.includes(data.status)) throw new Error('Order is no longer available');
+        if (data.status === 'ready') {
+          tx.update(ref, {
+            driverId: user.uid,
+            status: 'picked_up',
+            pickedUpAt: serverTimestamp(),
+          });
+        } else {
+          tx.update(ref, {
+            driverId: user.uid,
+            claimedAt: serverTimestamp(),
+          });
+        }
       });
-      toast.success('Delivery accepted');
-      // No manual state update needed — the onSnapshot listeners flip the
-      // order out of `available` and into `active` automatically.
+      toast.success('Delivery claimed');
+      // No manual state update needed — the onSnapshot listeners move the
+      // order between `available` / `assigned` / `active` automatically.
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(message);
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
+  // The food's ready and the driver is physically at the vendor collecting
+  // it — flips an early-claimed order from 'ready' to 'picked_up'. Already
+  // covered by the "assigned driver can update" rule since driverId is
+  // already theirs, so a plain updateDoc (no transaction) is safe here.
+  const confirmPickup = async (orderId: string) => {
+    setClaimingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        status: 'picked_up',
+        pickedUpAt: serverTimestamp(),
+      });
+      toast.success('Pickup confirmed — delivery in progress');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to confirm pickup');
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
+  // Give up a claim before physically picking up the food, sending it back
+  // to the available pool for another driver.
+  const releaseClaim = async (orderId: string) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm("Release this delivery? It'll go back to the available pool for another driver.")) return;
+    setClaimingId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        driverId: null,
+        claimedAt: null,
+      });
+      toast.success('Delivery released');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to release');
     } finally {
       setClaimingId(null);
     }
@@ -377,6 +497,28 @@ export default function DriverDashboard() {
       setCompletingId(null);
     }
   };
+
+  // ---- Derived lists -------------------------------------------------------
+
+  // Filter available deliveries down to what this driver's vehicle can
+  // realistically cover. Orders with no estimatedDistanceKm (placed before
+  // this field existed) always pass through — see isWithinVehicleRadius.
+  const visibleAvailable = useMemo(
+    () => available.filter((o) => isWithinVehicleRadius(o.estimatedDistanceKm, myVehicleType)),
+    [available, myVehicleType],
+  );
+  const hiddenByRadiusCount = available.length - visibleAvailable.length;
+
+  // Assigned-to-me-but-not-picked-up, split by whether the vendor's still
+  // working on it or it's sitting ready waiting for collection.
+  const headingToPickup = useMemo(
+    () => assigned.filter((o) => o.status !== 'ready'),
+    [assigned],
+  );
+  const readyToCollect = useMemo(
+    () => assigned.filter((o) => o.status === 'ready'),
+    [assigned],
+  );
 
   // ---- Derived stats ------------------------------------------------------
 
@@ -485,9 +627,9 @@ export default function DriverDashboard() {
               <div className="flex items-center gap-4">
                 <button className="relative p-2 hover:bg-white/10 rounded-full">
                   <Bell className="w-6 h-6" />
-                  {available.length > 0 && (
+                  {visibleAvailable.length > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                      {available.length}
+                      {visibleAvailable.length}
                     </span>
                   )}
                 </button>
@@ -689,14 +831,53 @@ export default function DriverDashboard() {
             </div>
           )}
 
-          {/* My Active Deliveries */}
+          {/* Ready to collect — claimed early, food's done, go get it */}
+          {!isAssignedLoading && readyToCollect.length > 0 && (
+            <section className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Ready — Go Collect</h2>
+              <div className="space-y-4">
+                {readyToCollect.map((order, index) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    index={index}
+                    variant="assigned-ready"
+                    isBusy={claimingId === order.id}
+                    onConfirmPickup={() => confirmPickup(order.id)}
+                    onRelease={() => releaseClaim(order.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Heading to pickup — claimed early, vendor still preparing */}
+          {!isAssignedLoading && headingToPickup.length > 0 && (
+            <section className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">Heading to Pickup</h2>
+              <div className="space-y-4">
+                {headingToPickup.map((order, index) => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    index={index}
+                    variant="assigned-waiting"
+                    isBusy={claimingId === order.id}
+                    onRelease={() => releaseClaim(order.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Out For Delivery — physically holding the food */}
           <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">My Active Deliveries</h2>
+            <h2 className="text-2xl font-bold mb-4">Out For Delivery</h2>
             {isActiveLoading ? (
               <FeedSkeleton count={1} />
             ) : active.length === 0 ? (
               <div className="bg-white rounded-xl shadow-md p-8 text-center">
-                <p className="text-gray-500">No active deliveries</p>
+                <p className="text-gray-500">No deliveries in progress</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -719,36 +900,46 @@ export default function DriverDashboard() {
             <section className="mb-8">
               <h2 className="text-2xl font-bold mb-4">
                 Available Deliveries
-                {!isAvailableLoading && available.length > 0 && (
+                {!isAvailableLoading && visibleAvailable.length > 0 && (
                   <span className="ml-3 text-sm font-normal text-gray-500">
-                    ({available.length})
+                    ({visibleAvailable.length})
                   </span>
                 )}
               </h2>
 
               {isAvailableLoading ? (
                 <FeedSkeleton count={2} />
-              ) : available.length === 0 ? (
+              ) : visibleAvailable.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-md p-12 text-center">
                   <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">No orders available right now</p>
                   <p className="text-sm text-gray-400 mt-2">
-                    Stay online — new orders will appear here in real time
+                    {hiddenByRadiusCount > 0
+                      ? `${hiddenByRadiusCount} order${hiddenByRadiusCount === 1 ? ' is' : 's are'} out of range for your vehicle right now.`
+                      : 'Stay online — new orders will appear here in real time'}
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {available.map((order, index) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      index={index}
-                      variant="available"
-                      isBusy={claimingId === order.id}
-                      onAccept={() => acceptDelivery(order.id)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="space-y-4">
+                    {visibleAvailable.map((order, index) => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        index={index}
+                        variant="available"
+                        isBusy={claimingId === order.id}
+                        onAccept={() => acceptDelivery(order.id)}
+                      />
+                    ))}
+                  </div>
+                  {hiddenByRadiusCount > 0 && (
+                    <p className="text-sm text-gray-500 mt-3">
+                      +{hiddenByRadiusCount} more nearby but outside your vehicle&apos;s range
+                      {myVehicleType ? ` (${myVehicleType})` : ''}.
+                    </p>
+                  )}
+                </>
               )}
             </section>
           )}
@@ -805,13 +996,17 @@ function OrderCard({
   isBusy,
   onAccept,
   onComplete,
+  onConfirmPickup,
+  onRelease,
 }: {
   order: DriverOrder;
   index: number;
-  variant: 'available' | 'active';
+  variant: 'available' | 'assigned-waiting' | 'assigned-ready' | 'active';
   isBusy: boolean;
   onAccept?: () => void;
   onComplete?: (otp?: string) => Promise<boolean>;
+  onConfirmPickup?: () => void;
+  onRelease?: () => void;
 }) {
   const [otpMode, setOtpMode] = useState(false);
   const [otp, setOtp] = useState('');
@@ -837,12 +1032,35 @@ function OrderCard({
           <h3 className="font-bold text-lg">#{order.id}</h3>
           <p className="text-gray-600">{order.storeName}</p>
           <p className="text-sm text-gray-500">For {order.customerName}</p>
+          {order.estimatedDistanceKm !== null && (
+            <p className="text-xs text-gray-500 mt-1">
+              ≈{order.estimatedDistanceKm.toFixed(1)} km delivery
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="font-bold text-xl text-primary">R{order.deliveryFee}</p>
           <p className="text-xs text-gray-500">delivery fee</p>
         </div>
       </div>
+
+      {variant === 'assigned-waiting' && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <p className="text-sm text-blue-800">
+            Vendor is still preparing this order — head over now so you&apos;re there when it&apos;s ready.
+          </p>
+        </div>
+      )}
+
+      {variant === 'assigned-ready' && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-4 flex items-center gap-2">
+          <Package className="w-4 h-4 text-green-600 flex-shrink-0" />
+          <p className="text-sm text-green-800">
+            Food&apos;s ready. Confirm pickup once you&apos;ve collected it from the vendor.
+          </p>
+        </div>
+      )}
 
       {order.deliveryAddress && (
         <div className="p-3 bg-gray-50 rounded-lg mb-4">
@@ -903,6 +1121,46 @@ function OrderCard({
         >
           {isBusy ? 'Claiming…' : 'Accept Delivery'}
         </button>
+      )}
+
+      {variant === 'assigned-waiting' && (
+        <div className="flex gap-2">
+          <div className="flex-1 py-3 text-center text-sm font-semibold text-gray-500 bg-gray-100 rounded-lg">
+            Waiting for vendor…
+          </div>
+          {onRelease && (
+            <button
+              onClick={onRelease}
+              disabled={isBusy}
+              className="px-4 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Release
+            </button>
+          )}
+        </div>
+      )}
+
+      {variant === 'assigned-ready' && (
+        <div className="flex gap-2">
+          {onConfirmPickup && (
+            <button
+              onClick={onConfirmPickup}
+              disabled={isBusy}
+              className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBusy ? '…' : 'Confirm Pickup'}
+            </button>
+          )}
+          {onRelease && (
+            <button
+              onClick={onRelease}
+              disabled={isBusy}
+              className="px-4 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Release
+            </button>
+          )}
+        </div>
       )}
 
       {variant === 'active' && onComplete && !otpMode && (

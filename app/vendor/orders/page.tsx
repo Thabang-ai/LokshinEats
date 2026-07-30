@@ -56,6 +56,7 @@ type VendorOrder = {
   subtotal: number;
   total: number;
   status: OrderStatus;
+  driverId: string | null;
   createdAt: Date;
   deliveryAddress: {
     street: string;
@@ -150,6 +151,7 @@ export default function VendorOrdersPage() {
             subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
             total: typeof data.total === 'number' ? data.total : 0,
             status: (data.status as OrderStatus) ?? 'pending',
+            driverId: typeof data.driverId === 'string' ? data.driverId : null,
             createdAt: created,
             deliveryAddress: data.deliveryAddress ?? null,
             paymentMethod: data.paymentMethod ?? 'cash',
@@ -516,6 +518,11 @@ export default function VendorOrdersPage() {
                               {order.createdAt.toLocaleDateString()}
                             </span>
                           </div>
+                          {order.driverId && order.status !== 'ready' && order.status !== 'picked_up' && (
+                            <p className="text-xs font-semibold text-green-700 mt-1">
+                              🏍️ Driver already on the way — will collect once ready
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3">

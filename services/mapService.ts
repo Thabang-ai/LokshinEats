@@ -78,6 +78,7 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
   // For now, return mock coordinates for South African townships
   const mockCoordinates: Record<string, { lat: number; lng: number }> = {
     'Soweto': { lat: -26.2675, lng: 27.8585 },
+    'Meadowlands': { lat: -26.2258, lng: 27.8712 }, // Soweto suburb — both seeded stores are here
     'Alexandra': { lat: -26.1097, lng: 28.0991 },
     'Tembisa': { lat: -26.0239, lng: 28.2233 },
     'Katlehong': { lat: -26.3486, lng: 28.1639 },
@@ -94,6 +95,56 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
 
   // Default to Johannesburg if no match
   return { lat: -26.2041, lng: 28.0473 };
+}
+
+/**
+ * Realistic max delivery distance per vehicle type, in km. Placeholder
+ * figures — tune these once you know your actual driver fleet and how far
+ * they're realistically willing/able to ride. A bicycle covering a 20km
+ * round trip isn't credible; a car covering 3km is needlessly restrictive.
+ */
+export const VEHICLE_MAX_RADIUS_KM: Record<'bicycle' | 'motorbike' | 'car', number> = {
+  bicycle: 4,
+  motorbike: 12,
+  car: 20,
+};
+
+/**
+ * Estimate the store → customer delivery distance from their city/area
+ * names. Uses the same mock geocoding as the rest of this file — city names
+ * are free text (typed by the vendor at registration, and by the customer
+ * at checkout), so this is a rough township-level estimate, not a precise
+ * address-to-address distance. Good enough to gate "can this vehicle type
+ * plausibly do this delivery", not for turn-by-turn routing.
+ */
+export async function estimateOrderDistanceKm(
+  storeCity: string,
+  customerCity: string,
+): Promise<number | null> {
+  if (!storeCity || !customerCity) return null;
+  const [origin, destination] = await Promise.all([
+    geocodeAddress(storeCity),
+    geocodeAddress(customerCity),
+  ]);
+  if (!origin || !destination) return null;
+  return calculateDistance(origin, destination);
+}
+
+/**
+ * Whether a delivery of the given distance is within a vehicle type's
+ * realistic range. `distanceKm === null` (unknown — e.g. an order placed
+ * before this field existed) defaults to true so old orders stay visible
+ * rather than silently disappearing from every driver's feed.
+ */
+export function isWithinVehicleRadius(
+  distanceKm: number | null,
+  vehicleType: string | null | undefined,
+): boolean {
+  if (distanceKm === null) return true;
+  const type = vehicleType === 'bicycle' || vehicleType === 'motorbike' || vehicleType === 'car'
+    ? vehicleType
+    : 'car'; // unknown/missing vehicleType fails open to the most permissive radius
+  return distanceKm <= VEHICLE_MAX_RADIUS_KM[type];
 }
 
 /**
