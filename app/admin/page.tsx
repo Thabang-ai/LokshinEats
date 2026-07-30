@@ -5,9 +5,14 @@
 // marketplace during the pilot: every order as it comes in, the money moving
 // through the platform, and anything that needs a human to step in.
 //
-// Read-only by design. The admin role is granted manually on a trusted user
-// doc (Firebase console → users/{uid}.role = "admin"); there is no admin
-// self-signup. Firestore rules give that role read access to every order.
+// Mostly read-only, with two narrow escape hatches for cleanup: Reset (clear
+// a stuck order's status/driver/cash-OTP state back to pending) and Delete
+// (remove an order from the list entirely). Both are scoped in Firestore
+// rules to operational fields only — admin can never touch the frozen money
+// fields (total, payouts, commission) on any order.
+//
+// The admin role is granted manually on a trusted user doc (Firebase console
+// → users/{uid}.role = "admin"); there is no admin self-signup.
 
 import RoleGuard from '../../components/RoleGuard';
 
@@ -20,11 +25,14 @@ import {
   Clock,
   PackageCheck,
   RefreshCw,
+  RotateCcw,
   ShoppingBag,
+  Trash2,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
-import { collection, onSnapshot, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, Timestamp, updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { db } from '../../firebase/config';
 
 type OrderStatus =
@@ -178,6 +186,58 @@ export default function AdminConsole() {
 
     return unsub;
   }, []);
+
+  // ---- Order actions: reset or remove -------------------------------------
+  // Both are scoped by Firestore rules to operational fields only — neither
+  // can ever touch total/payouts/commission on an order.
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const handleResetOrder = async (orderId: string) => {
+    if (typeof window === 'undefined') return;
+    if (
+      !window.confirm(
+        'Reset this order back to pending? This clears the assigned driver, delivery OTP, and cash-handoff state — use it to recover a stuck or miscategorized order.',
+      )
+    ) {
+      return;
+    }
+    setBusyId(orderId);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        status: 'pending',
+        driverId: null,
+        deliveryOTPVerified: false,
+        cashGivenToVendor: false,
+        cashGivenAmount: null,
+        vendorCashConfirmed: false,
+        vendorCashConfirmedAt: null,
+        vendorCashDisputed: false,
+        vendorCashDisputedAt: null,
+      });
+      toast.success('Order reset to pending');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reset order');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string, label: string) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm(`Delete "${label}" permanently? This removes it from the list and can't be undone.`)) {
+      return;
+    }
+    setBusyId(orderId);
+    try {
+      await deleteDoc(doc(db, 'orders', orderId));
+      toast.success('Order removed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete order');
+      setBusyId(null);
+    }
+    // No finally-reset on success: the row unmounts via the live snapshot,
+    // so there's nothing left to un-busy.
+  };
 
   // ---- Derived headline numbers ------------------------------------------
   const stats = useMemo(() => {
@@ -470,6 +530,28 @@ export default function AdminConsole() {
                         </p>
                       </div>
 
+                      {/* Cleanup actions */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleResetOrder(o.id)}
+                          disabled={busyId === o.id}
+                          title="Reset to pending — clears driver, OTP, and cash state"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-40 transition-colors"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOrder(o.id, `${o.storeName} → ${o.customerName}`)}
+                          disabled={busyId === o.id}
+                          title="Delete order permanently"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
                       {o.vendorCashDisputed && (
                         <span className="w-full text-xs font-semibold text-red-700 flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" /> Cash dispute — driver and vendor
@@ -484,8 +566,8 @@ export default function AdminConsole() {
           </div>
 
           <p className="text-xs text-gray-400 mt-4 text-center">
-            Read-only oversight · &quot;+R&quot; is your platform earnings (realized on delivery) ·
-            Updates live
+            &quot;+R&quot; is your platform earnings (realized on delivery) · Reset/delete never
+            touch money fields · Updates live
           </p>
         </div>
       </div>

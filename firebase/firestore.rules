@@ -24,11 +24,29 @@ service cloud.firestore {
 
     // Platform operator. The `admin` role is set manually on a trusted user's
     // doc (Firebase console) — there is no admin self-signup. Admins get
-    // read-only oversight across the platform; they never write order/money
-    // fields, so this stays safe even as the admin console grows.
+    // full read oversight across the platform, plus the ability to reset or
+    // remove orders for cleanup — but even admin writes are limited to
+    // operational fields (status, driver assignment, cash/OTP flags); the
+    // frozen financial fields (total, payouts, commission) can never be
+    // touched by anyone after checkout.
     function isAdmin() {
       return request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Fields an admin may reset on an order — deliberately excludes every
+    // money field (subtotal, deliveryFee, total, vendorPayout, driverPayout,
+    // platformEarnings, platformCommission, commissionRate,
+    // driverDeliveryShare) and identity fields (customerId, storeId, items).
+    function isAdminOrderReset() {
+      return isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'driverId',
+          'deliveryOTPVerified',
+          'cashGivenToVendor', 'cashGivenAmount',
+          'vendorCashConfirmed', 'vendorCashConfirmedAt',
+          'vendorCashDisputed', 'vendorCashDisputedAt'
+        ]);
     }
 
     // Users collection - users read/write their own data; admins may read any
@@ -101,8 +119,14 @@ service cloud.firestore {
         (resource.data.status == 'ready' &&
          resource.data.driverId == null &&
          request.resource.data.driverId == request.auth.uid &&
-         userRole(request.auth.uid) == 'driver')
+         userRole(request.auth.uid) == 'driver') ||
+        // admin resetting operational state — never money/identity fields
+        isAdminOrderReset()
       );
+
+      // Admin-only: remove an order from the operator console (e.g. stale
+      // test data or an order resolved outside the app).
+      allow delete: if isAdmin();
     }
 
     // Reviews collection - anyone can read, only customers who ordered can write
