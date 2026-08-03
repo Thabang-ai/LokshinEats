@@ -2,7 +2,6 @@
 
 // Add New Product Page
 // Writes a product doc to Firestore with storeId from the active vendor's store.
-// Image upload is intentionally stubbed for now — Phase 6 wires Firebase Storage.
 
 import RoleGuard from '../../../../components/RoleGuard';
 
@@ -15,12 +14,13 @@ import { useRouter } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../../firebase/config';
 import { useVendorStore } from '../../../../hooks/useVendorStore';
+import { extensionFor, ImageValidationError, uploadImage } from '../../../../services/storageService';
 
 const CATEGORIES = ['Main', 'Kota', 'Braai', 'Vegetarian', 'Drinks', 'Sides', 'Desserts'];
 
 export default function NewProductPage() {
   const router = useRouter();
-  const { store, isLoading: isStoreLoading, error: storeError } = useVendorStore();
+  const { user, store, isLoading: isStoreLoading, error: storeError } = useVendorStore();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -34,6 +34,7 @@ export default function NewProductPage() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -46,7 +47,7 @@ export default function NewProductPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!store) {
+    if (!store || !user) {
       toast.error('No store linked to your account');
       return;
     }
@@ -63,9 +64,20 @@ export default function NewProductPage() {
     setIsSubmitting(true);
 
     try {
-      // Image uploads are deferred — Firebase Storage requires the Blaze
-      // plan in our project's region. For now every product gets an emoji
-      // placeholder; we can wire real uploads when billing is sorted.
+      // Upload first — if the vendor picked a photo, don't silently drop it;
+      // block submission on a genuine upload failure rather than falling
+      // back to the emoji without telling them.
+      let image = '🍽️';
+      if (imageFile) {
+        setIsUploadingImage(true);
+        try {
+          const path = `products/${store.id}/${crypto.randomUUID()}.${extensionFor(imageFile)}`;
+          image = await uploadImage(imageFile, path, user.uid);
+        } finally {
+          setIsUploadingImage(false);
+        }
+      }
+
       await addDoc(collection(db, 'products'), {
         storeId: store.id, // REQUIRED by firestore rules
         name: formData.name.trim(),
@@ -76,14 +88,19 @@ export default function NewProductPage() {
         isVegetarian: formData.isVegetarian,
         isSpicy: formData.isSpicy,
         preparationTime: 20, // sensible default; can be made configurable later
-        image: '🍽️',
+        image,
         createdAt: serverTimestamp(),
       });
 
       toast.success('Product added 🎉');
       router.push('/vendor/products');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to add product';
+      const msg =
+        err instanceof ImageValidationError
+          ? err.message
+          : err instanceof Error
+          ? err.message
+          : 'Failed to add product';
       toast.error(msg);
       setIsSubmitting(false);
     }
@@ -159,7 +176,7 @@ export default function NewProductPage() {
             onSubmit={handleSubmit}
             className="bg-white rounded-2xl shadow-lg p-8 max-w-2xl"
           >
-            {/* Product Image (stubbed — Phase 6 wires Firebase Storage) */}
+            {/* Product Image */}
             <div className="mb-6">
               <label className="block text-sm font-semibold mb-2">Product Image</label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
@@ -176,7 +193,7 @@ export default function NewProductPage() {
                     {imageFile ? imageFile.name : 'Click to upload product image'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    Image uploads disabled for now — every product uses an emoji placeholder.
+                    {imageFile ? 'Tap to choose a different photo' : 'Optional — a 🍽️ placeholder is used if you skip this'}
                   </p>
                 </label>
               </div>
@@ -284,7 +301,7 @@ export default function NewProductPage() {
               disabled={isSubmitting}
               className="w-full bg-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Adding Product…' : 'Add Product'}
+              {isUploadingImage ? 'Uploading photo…' : isSubmitting ? 'Adding Product…' : 'Add Product'}
             </button>
           </motion.form>
         </div>

@@ -9,7 +9,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../../firebase/config';
-import { addDoc, collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { extensionFor, ImageValidationError, uploadImage } from '../../../services/storageService';
 
 export default function StoreRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -30,6 +31,7 @@ export default function StoreRegistrationPage() {
   const [businessRegistrationDocument, setBusinessRegistrationDocument] = useState<File | null>(null);
   const [proofOfAddress, setProofOfAddress] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
 
   const cuisineOptions = [
     'Traditional Township Food',
@@ -79,11 +81,12 @@ export default function StoreRegistrationPage() {
     }
 
     setIsLoading(true);
+    const ownerId = auth.currentUser.uid;
 
     try {
       // Mark the user as a vendor (merge so we don't clobber existing fields)
       await setDoc(
-        doc(db, 'users', auth.currentUser.uid),
+        doc(db, 'users', ownerId),
         {
           role: 'vendor',
           email: formData.email,
@@ -94,13 +97,38 @@ export default function StoreRegistrationPage() {
         { merge: true },
       );
 
-      // Actually create the store doc. Auto-generated id so future-proof for multi-store.
-      // File uploads (logo/banner/business docs) remain stubbed — Phase 6 will wire Firebase Storage.
-      await addDoc(collection(db, 'stores'), {
+      // Pre-allocate the store's id so logo/banner can upload to
+      // products/{storeId}-style paths BEFORE the store doc itself exists —
+      // avoids a create-then-patch round trip.
+      const storeRef = doc(collection(db, 'stores'));
+
+      let logoUrl: string | null = null;
+      let bannerUrl: string | null = null;
+      if (logoFile || bannerFile) {
+        setIsUploadingImages(true);
+        try {
+          [logoUrl, bannerUrl] = await Promise.all([
+            logoFile ? uploadImage(logoFile, `stores/${storeRef.id}/logo.${extensionFor(logoFile)}`, ownerId) : Promise.resolve(null),
+            bannerFile ? uploadImage(bannerFile, `stores/${storeRef.id}/banner.${extensionFor(bannerFile)}`, ownerId) : Promise.resolve(null),
+          ]);
+        } finally {
+          setIsUploadingImages(false);
+        }
+      }
+      // Business registration document / proof of address remain stubbed —
+      // those are private compliance docs, not public photos, and need a
+      // different (non-public-read) storage rule than logo/banner get.
+
+      // Card/list thumbnails use whichever wide image is available; the
+      // logo is the fallback so a store isn't left with the plain emoji if
+      // they only bothered uploading one image.
+      const image = bannerUrl ?? logoUrl ?? '🍽️';
+
+      await setDoc(storeRef, {
         name: formData.storeName,
         cuisine: formData.cuisine,
         description: formData.description,
-        ownerId: auth.currentUser.uid,
+        ownerId,
         address: formData.address,
         city: formData.city,
         phone: formData.phone,
@@ -108,8 +136,9 @@ export default function StoreRegistrationPage() {
         openingTime: formData.openingTime,
         closingTime: formData.closingTime,
         categories: formData.categories,
-        // Sensible defaults for a brand-new store
-        image: '🍽️',
+        image,
+        logo: logoUrl,
+        banner: bannerUrl,
         rating: 0,
         reviewCount: 0,
         deliveryTime: '30-45 min',
@@ -126,7 +155,13 @@ export default function StoreRegistrationPage() {
       window.location.href = '/vendor/dashboard';
     } catch (error) {
       console.error('Registration error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to register store');
+      const msg =
+        error instanceof ImageValidationError
+          ? error.message
+          : error instanceof Error
+          ? error.message
+          : 'Failed to register store';
+      toast.error(msg);
       setIsLoading(false);
     }
   };
@@ -418,7 +453,7 @@ export default function StoreRegistrationPage() {
               disabled={isLoading}
               className="w-full bg-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Registering...' : 'Register Store'}
+              {isUploadingImages ? 'Uploading photos…' : isLoading ? 'Registering...' : 'Register Store'}
             </button>
           </motion.form>
         </div>

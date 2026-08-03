@@ -1,32 +1,54 @@
 // Storage Security Rules for LokshinEats
-// These rules control who can upload/download images
+// These rules control who can upload/download images.
+//
+// IMPORTANT: this file is the source of truth in the repo, but Storage only
+// enforces what's deployed, and deploying requires a live bucket (Blaze
+// plan — see services/storageService.ts). Push changes with:
+//   firebase deploy --only storage
+//
+// Ownership model: every write path checks `request.resource.metadata
+// .ownerId` against the caller's own uid, set via customMetadata at upload
+// time (services/storageService.ts always does this). A store's logo/banner
+// and its products' photos live under the SAME storeId-keyed path — a
+// product doesn't have its own Firestore doc id yet at the moment its photo
+// is chosen (the doc is created after upload succeeds), so keying by
+// storeId avoids that chicken-and-egg problem instead of needing a
+// cross-service Firestore lookup.
 
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
+
+    function isValidImageUpload() {
+      return request.auth != null &&
+        request.auth.uid == request.resource.metadata.ownerId &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
     // Images folder structure: images/{userId}/{filename}
+    // General-purpose per-user path (e.g. future profile photos) — not
+    // currently used by any page, kept for forward compatibility.
     match /images/{userId}/{allPaths=**} {
-      // Users can upload their own images
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
     }
-    
-    // Store images: stores/{storeId}/{filename}
+
+    // Store logo/banner: stores/{storeId}/{filename}
+    // Anyone can read (shown to customers); only the uploading owner can write.
     match /stores/{storeId}/{allPaths=**} {
-      // Anyone can read store images
       allow read: if true;
-      // Only store owners can upload
-      allow write: if request.auth != null && 
-        request.auth.uid == request.resource.metadata.ownerId;
+      allow write: if isValidImageUpload();
     }
-    
-    // Product images: products/{productId}/{filename}
-    match /products/{productId}/{allPaths=**} {
-      // Anyone can read product images
+
+    // Product photos: products/{storeId}/{filename} — keyed by the OWNING
+    // STORE, not the product (see note above). Anyone can read; only the
+    // uploading store owner can write.
+    match /products/{storeId}/{allPaths=**} {
       allow read: if true;
-      // Only store owners can upload
-      allow write: if request.auth != null;
+      allow write: if isValidImageUpload();
     }
   }
 }
