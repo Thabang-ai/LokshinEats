@@ -19,6 +19,10 @@ import { useAuthUser } from '../../hooks/useAuthUser';
 import { computeOrderEconomics } from '../../services/economics';
 import { estimateOrderDistanceKm } from '../../services/mapService';
 
+// Real South African banknote denominations, smallest to largest — customers
+// pick from what they're actually holding rather than typing an arbitrary number.
+const CASH_NOTE_DENOMINATIONS = [10, 20, 50, 100, 200];
+
 export default function CheckoutPage() {
   const { cart, storeMeta, clearCart } = useCart();
   const router = useRouter();
@@ -28,6 +32,9 @@ export default function CheckoutPage() {
   // For cash payments — customer can declare which note they'll pay with so
   // the driver knows whether to bring change. Defaults to exact total.
   const [cashAmount, setCashAmount] = useState<number | ''>('');
+  // "Other" toggle — reveals a free-entry fallback for totals no standard
+  // note covers alone, or an unusual combination of notes/coins.
+  const [showCustomCashInput, setShowCustomCashInput] = useState(false);
 
   const [formData, setFormData] = useState({
     street: '',
@@ -418,7 +425,11 @@ export default function CheckoutPage() {
               </div>
             </motion.div>
 
-            {/* Cash details — only when cash is selected. Helps driver plan change. */}
+            {/* Cash details — only when cash is selected. Helps driver plan change.
+                Customer picks from the real notes they're actually holding (SA
+                banknotes: R10/R20/R50/R100/R200) rather than typing an arbitrary
+                number — a driver can't act on "I feel like paying R63.50",
+                only on an actual note they'll be handed at the door. */}
             {selectedPayment === 'cash' && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -432,27 +443,70 @@ export default function CheckoutPage() {
                   <span className="font-bold text-gray-900">R{cart.total.toFixed(2)}</span> when
                   they arrive.
                 </p>
-                <label htmlFor="cash-amount" className="block text-sm font-semibold mb-2">
-                  Paying with a different note?
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 font-semibold">R</span>
-                  <input
-                    id="cash-amount"
-                    type="number"
-                    min={cart.total}
-                    step="1"
-                    inputMode="numeric"
-                    value={cashAmount}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCashAmount(v === '' ? '' : Math.max(0, parseFloat(v) || 0));
-                    }}
-                    placeholder={`${cart.total.toFixed(0)} (exact)`}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
+                <p className="block text-sm font-semibold mb-2">
+                  Which note will you pay with?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCashAmount(cart.total)}
+                    className={`px-4 py-2 rounded-lg border-2 font-semibold text-sm transition-colors ${
+                      cashAmount === cart.total
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    Exact — R{cart.total.toFixed(2)}
+                  </button>
+                  {CASH_NOTE_DENOMINATIONS.filter((note) => note >= cart.total).map((note) => (
+                    <button
+                      key={note}
+                      type="button"
+                      onClick={() => setCashAmount(note)}
+                      className={`px-4 py-2 rounded-lg border-2 font-semibold text-sm transition-colors ${
+                        cashAmount === note
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      R{note} note
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomCashInput((v) => !v)}
+                    className={`px-4 py-2 rounded-lg border-2 font-semibold text-sm transition-colors ${
+                      showCustomCashInput
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    Other
+                  </button>
                 </div>
-                <p className="text-sm mt-2">
+
+                {showCustomCashInput && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className="text-gray-500 font-semibold">R</span>
+                    <input
+                      id="cash-amount"
+                      type="number"
+                      min={cart.total}
+                      step="1"
+                      inputMode="numeric"
+                      value={cashAmount}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCashAmount(v === '' ? '' : Math.max(0, parseFloat(v) || 0));
+                      }}
+                      placeholder={`Total cash you'll hand over`}
+                      autoFocus
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                )}
+
+                <p className="text-sm mt-3">
                   {typeof cashAmount !== 'number' || cashAmount === 0 ? (
                     <span className="text-gray-500">
                       Default: have exact <strong>R{cart.total.toFixed(2)}</strong> ready.
