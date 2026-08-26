@@ -9,7 +9,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, db } from '../../../firebase/config';
 import { useRouter } from 'next/navigation';
 import { doc, setDoc } from 'firebase/firestore';
@@ -55,9 +55,16 @@ export default function SignupPage() {
         formData.email,
         formData.password
       );
-      
-      // Store user role in Firestore
+
       if (userCredential.user) {
+        // createUserWithEmailAndPassword does NOT set displayName on the Auth
+        // user object — that needs this explicit call. Every real consumer
+        // (profile page, checkout's customerName, driver dashboard greeting)
+        // reads user.displayName from the Auth object, not the Firestore
+        // field below, so without this the name goes nowhere anyone sees it.
+        await updateProfile(userCredential.user, { displayName: formData.name });
+
+        // Store user role in Firestore
         await setDoc(doc(db, 'users', userCredential.user.uid), {
           email: formData.email,
           displayName: formData.name,

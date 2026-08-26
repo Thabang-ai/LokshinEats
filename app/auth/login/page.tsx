@@ -9,7 +9,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, db } from '../../../firebase/config';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -38,9 +38,17 @@ export default function LoginPage() {
       if (userDoc.exists()) {
         role = userDoc.data().role;
       } else {
+        // Same displayName gap as signup: only backfill the Auth object's
+        // displayName if it's genuinely missing (e.g. a Firebase-console
+        // user created with no name) — the app reads user.displayName as
+        // the source of truth everywhere, not the Firestore field below.
+        const fallbackName = email.split('@')[0];
+        if (!user.displayName) {
+          await updateProfile(user, { displayName: fallbackName });
+        }
         await setDoc(userRef, {
           email: user.email ?? email,
-          displayName: user.displayName ?? email.split('@')[0],
+          displayName: user.displayName ?? fallbackName,
           role: 'customer',
           createdAt: serverTimestamp(),
         });

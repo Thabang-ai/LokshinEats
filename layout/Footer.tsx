@@ -8,7 +8,7 @@ export default function Footer() {
   return (
     <footer className="bg-black text-white py-12 hidden lg:block">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Brand section */}
           <div>
             <div className="flex items-center space-x-2 mb-4">
@@ -34,8 +34,8 @@ export default function Footer() {
             <ul className="space-y-2 text-white/60">
               <li><Link href="/about" className="hover:text-primary transition-colors">About Us</Link></li>
               <li><Link href="/about" className="hover:text-primary transition-colors">How It Works</Link></li>
-              <li><Link href="/auth/signup" className="hover:text-primary transition-colors">Become a Driver</Link></li>
-              <li><Link href="/auth/signup" className="hover:text-primary transition-colors">Partner With Us</Link></li>
+              <li><Link href="/driver/register" className="hover:text-primary transition-colors">Become a Driver</Link></li>
+              <li><Link href="/vendor/register" className="hover:text-primary transition-colors">Partner With Us</Link></li>
             </ul>
           </div>
 
@@ -54,9 +54,22 @@ export default function Footer() {
             <h3 className="font-semibold mb-4">Contact</h3>
             <ul className="space-y-2 text-white/60">
               <li>Email: support@lokshineats.co.za</li>
-              <li>Phone: +27 11 123 4567</li>
+              <li>Phone: 069 612 6784</li>
               <li>Based in South Africa</li>
             </ul>
+          </div>
+
+          {/* Get the app */}
+          <div>
+            <h3 className="font-semibold mb-4">Get the App</h3>
+            <Image
+              src="/app-qr-code.png"
+              alt="Scan to open LokshinEats"
+              width={96}
+              height={96}
+              className="rounded-lg bg-white p-1.5"
+            />
+            <p className="text-white/60 text-sm mt-3">Scan to open LokshinEats</p>
           </div>
         </div>
 

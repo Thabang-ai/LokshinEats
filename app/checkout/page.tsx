@@ -7,17 +7,22 @@
 
 import { useEffect, useState } from 'react';
 import { useCart } from '../../context/CartContext';
-import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle } from 'lucide-react';
+import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle, LocateFixed } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { processPayment } from '../../services/paymentService';
 import { useRouter } from 'next/navigation';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
 import { computeOrderEconomics } from '../../services/economics';
-import { estimateOrderDistanceKm } from '../../services/mapService';
+import {
+  estimateOrderDistanceKm,
+  estimateOrderDistanceKmFromCoords,
+  findNearestTownship,
+  getCurrentLocation,
+} from '../../services/mapService';
 
 // Real South African banknote denominations, smallest to largest — customers
 // pick from what they're actually holding rather than typing an arbitrary number.
@@ -45,12 +50,73 @@ export default function CheckoutPage() {
     email: '',
   });
 
-  // Pre-fill email from authenticated user once auth resolves
+  // Real GPS coordinates from "Use my current location", if the customer
+  // used it. Kept separate from formData.city (which stays editable free
+  // text) so we can hand the actual coordinates to distance estimation
+  // instead of re-geocoding the township name we derived from them.
+  const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+
+  // Pre-fill from the authenticated user's profile once auth resolves —
+  // email from the Auth object, phone/address from the private
+  // users/{uid} Firestore doc (see app/profile/page.tsx, which is what
+  // actually writes these fields). Only fills in fields still blank, so it
+  // never clobbers something the customer already typed on this order.
   useEffect(() => {
-    if (user?.email && !formData.email) {
-      setFormData((prev) => ({ ...prev, email: user.email ?? '' }));
+    if (!user) return;
+    if (user.email) {
+      setFormData((prev) => (prev.email ? prev : { ...prev, email: user.email ?? '' }));
     }
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const address = data.address && typeof data.address === 'object' ? data.address : null;
+        setFormData((prev) => ({
+          ...prev,
+          phone: prev.phone || (typeof data.phone === 'string' ? data.phone : prev.phone),
+          street: prev.street || (typeof address?.street === 'string' ? address.street : prev.street),
+          city: prev.city || (typeof address?.city === 'string' ? address.city : prev.city),
+          postalCode:
+            prev.postalCode || (typeof address?.postalCode === 'string' ? address.postalCode : prev.postalCode),
+        }));
+      } catch (error) {
+        console.error('Failed to pre-fill from profile:', error);
+      }
+    })();
   }, [user]);
+
+  const handleUseMyLocation = async () => {
+    setIsLocating(true);
+    try {
+      const position = await getCurrentLocation();
+      const { latitude, longitude } = position.coords;
+      const nearest = findNearestTownship(latitude, longitude);
+
+      setCustomerCoords({ lat: latitude, lng: longitude });
+      if (nearest) {
+        setFormData((prev) => ({ ...prev, city: nearest.area }));
+        toast.success(
+          nearest.distanceKm < 3
+            ? `Set your city to ${nearest.area}`
+            : `Nearest area we recognise is ${nearest.area} (${nearest.distanceKm.toFixed(1)}km away) — please check it's right`,
+        );
+      } else {
+        toast.success('Got your location — please fill in your address below.');
+      }
+    } catch (error) {
+      const message =
+        error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED
+          ? 'Location access denied — you can still enter your address manually.'
+          : 'Could not get your location — please enter your address manually.';
+      toast.error(message);
+      console.error('Geolocation error:', error);
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   // Redirect to login if not authenticated. Firestore rules require
   // request.auth.uid == request.resource.data.customerId on order create.
@@ -134,10 +200,14 @@ export default function CheckoutPage() {
       // good-fences/casual-fraud deterrent.
       const deliveryOTP = String(Math.floor(1000 + Math.random() * 9000));
 
-      // Rough store→customer distance (mock geocoding — see mapService.ts).
-      // Frozen on the order so drivers can be filtered by vehicle-type range
-      // without recomputing it live. Null if either city couldn't resolve.
-      const estimatedDistanceKm = await estimateOrderDistanceKm(storeMeta.city, formData.city);
+      // Store→customer distance. Prefer the customer's real GPS coordinates
+      // (from "Use my current location") when available — that's strictly
+      // more accurate than double mock-geocoding two city names. Falls back
+      // to the city-name estimate otherwise. Frozen on the order so drivers
+      // can be filtered by vehicle-type range without recomputing it live.
+      const estimatedDistanceKm = customerCoords
+        ? await estimateOrderDistanceKmFromCoords(storeMeta.city, customerCoords)
+        : await estimateOrderDistanceKm(storeMeta.city, formData.city);
 
       // Step 2: Write real order to Firestore.
       // Fields are denormalized so other roles (vendor, driver) can render
@@ -164,6 +234,10 @@ export default function CheckoutPage() {
           postalCode: formData.postalCode,
           instructions: formData.instructions || null,
         },
+        // Real coordinates from "Use my current location", if the customer
+        // used it — null otherwise. A more precise fallback than the city
+        // name alone for future turn-by-turn routing.
+        customerLocation: customerCoords,
         deliveryOTP,
         deliveryOTPVerified: false,
         estimatedDistanceKm,
@@ -263,10 +337,21 @@ export default function CheckoutPage() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-xl shadow-md p-6"
             >
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-primary" />
-                Delivery Address
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-primary" />
+                  Delivery Address
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleUseMyLocation}
+                  disabled={isLocating}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <LocateFixed className="w-4 h-4" />
+                  {isLocating ? 'Locating…' : 'Use my location'}
+                </button>
+              </div>
 
               <div className="space-y-4">
                 <div>

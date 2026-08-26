@@ -8,10 +8,10 @@ import { User, Camera, ArrowLeft, Mail, Phone, MapPin, Save, LogOut } from 'luci
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { auth } from '../../firebase/config';
+import { auth, db, storage } from '../../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../firebase/config';
-import { updateProfile } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { updateProfile, onAuthStateChanged } from 'firebase/auth';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 
@@ -20,7 +20,9 @@ export default function ProfilePage() {
     name: '',
     email: '',
     phone: '',
-    address: '',
+    street: '',
+    city: '',
+    postalCode: '',
   });
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -40,15 +42,45 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    // Load user data from Firebase Auth (can be extended to load from Firestore)
-    if (auth.currentUser) {
-      setFormData({
-        name: auth.currentUser.displayName || '',
-        email: auth.currentUser.email || '',
-        phone: '',
-        address: '',
-      });
-    }
+    // auth.currentUser can still be null right after mount — Firebase Auth
+    // restores its session asynchronously. onAuthStateChanged is the
+    // reliable way to know when a user is actually available (same pattern
+    // as hooks/useVendorStore.ts).
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+
+      setFormData((prev) => ({
+        ...prev,
+        name: user.displayName || '',
+        email: user.email || '',
+      }));
+      if (user.photoURL) setPreviewUrl(user.photoURL);
+
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          const address = data.address && typeof data.address === 'object' ? data.address : null;
+          setFormData((prev) => ({
+            ...prev,
+            // Accounts created before this fix have their name sitting in
+            // this Firestore field instead of on the Auth object (signup
+            // used to only write it here, never call updateProfile). Fall
+            // back to it so existing accounts self-heal — hitting Save
+            // writes it to the Auth object properly for next time.
+            name: prev.name || (typeof data.displayName === 'string' ? data.displayName : prev.name),
+            phone: typeof data.phone === 'string' ? data.phone : prev.phone,
+            street: typeof address?.street === 'string' ? address.street : prev.street,
+            city: typeof address?.city === 'string' ? address.city : prev.city,
+            postalCode: typeof address?.postalCode === 'string' ? address.postalCode : prev.postalCode,
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load profile:', error);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,6 +117,15 @@ export default function ProfilePage() {
       await uploadBytes(storageRef, profilePicture);
       const downloadUrl = await getDownloadURL(storageRef);
 
+      // Persist the URL, not just the upload — otherwise it reverts to the
+      // default icon on next load despite the file having uploaded fine.
+      await updateProfile(auth.currentUser, { photoURL: downloadUrl });
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid),
+        { photoURL: downloadUrl, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+
       toast.success('Profile picture uploaded successfully! 🎉');
       setPreviewUrl(downloadUrl);
       setProfilePicture(null);
@@ -101,11 +142,31 @@ export default function ProfilePage() {
     setIsLoading(true);
 
     try {
-      // Update user profile in Firebase Auth
       if (auth.currentUser) {
+        // displayName lives on the Firebase Auth user object...
         await updateProfile(auth.currentUser, {
           displayName: formData.name,
         });
+        // ...phone and address don't have an Auth-object home, so they go on
+        // the private users/{uid} Firestore doc (owner/admin-read-only per
+        // firestore.rules) alongside the same fields vendor/driver
+        // registration already write there.
+        await setDoc(
+          doc(db, 'users', auth.currentUser.uid),
+          {
+            phone: formData.phone,
+            // Structured to match checkout's deliveryAddress shape exactly,
+            // so checkout can pre-fill straight from this doc with no
+            // string-parsing guesswork about which part is the city.
+            address: {
+              street: formData.street,
+              city: formData.city,
+              postalCode: formData.postalCode,
+            },
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
       }
 
       toast.success('Profile updated successfully! 🎉');
@@ -223,17 +284,34 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Address */}
+              {/* Address — same street/city/postalCode shape checkout uses,
+                  so it can pre-fill straight from this doc. */}
               <div>
                 <label className="block text-sm font-semibold mb-2">Delivery Address</label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     type="text"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    value={formData.street}
+                    onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter your delivery address"
+                    placeholder="Street address"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="City / Township"
+                  />
+                  <input
+                    type="text"
+                    value={formData.postalCode}
+                    onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Postal code"
                   />
                 </div>
               </div>
