@@ -12,6 +12,7 @@
 import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import { computeOrderEconomics, assertSplitBalances, toRands, toCents } from '../../lib/money';
+import { estimateOrderDistanceKm } from '../../lib/geo';
 import { createDeliveryCode } from '../../lib/otp';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
@@ -54,6 +55,7 @@ async function priceOrder(
   deliveryFee: number;
   total: number;
   storeName: string;
+  storeCity: string;
 }> {
   const store = await storeRepository.findById(input.storeId);
   if (!store) throw ApiError.notFound('No such store.');
@@ -124,7 +126,14 @@ async function priceOrder(
   const deliveryFee = store.deliveryFee;
   const total = toRands(subtotalCents + toCents(deliveryFee, 'deliveryFee'));
 
-  return { items, subtotal, deliveryFee, total, storeName: store.name };
+  return {
+    items,
+    subtotal,
+    deliveryFee,
+    total,
+    storeName: store.name,
+    storeCity: store.city,
+  };
 }
 
 /**
@@ -138,6 +147,22 @@ export async function placeOrder(
   input: CreateOrderInput,
 ): Promise<Order> {
   const priced = await priceOrder(input);
+
+  // A cash-note declaration only makes sense on a cash order, and it cannot
+  // be less than the bill. Rejected rather than ignored, so a client sending
+  // it on a card order finds out.
+  if (input.cashAmount !== undefined) {
+    if (input.paymentMethod !== 'cash') {
+      throw ApiError.unprocessable(
+        'A cash amount only applies to a cash order.',
+      );
+    }
+    if (input.cashAmount < priced.total) {
+      throw ApiError.unprocessable(
+        `Cash amount must be at least R${priced.total.toFixed(2)}.`,
+      );
+    }
+  }
 
   const economics = computeOrderEconomics(priced.subtotal, priced.deliveryFee);
   // Cheap insurance against a pricing bug quietly creating or destroying
@@ -164,6 +189,14 @@ export async function placeOrder(
       instructions: input.deliveryAddress.instructions ?? null,
     },
     deliveryCode: createDeliveryCode(),
+    cashAmount: input.cashAmount ?? null,
+    // Computed here, never accepted from the client: this figure decides
+    // which drivers see the order, so a client that could set it could widen
+    // its own driver pool.
+    estimatedDistanceKm: estimateOrderDistanceKm(
+      priced.storeCity,
+      input.deliveryAddress.city,
+    ),
     ...economics,
   };
 

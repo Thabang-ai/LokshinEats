@@ -27,6 +27,13 @@ This service is the trusted party that closes those holes. The Admin SDK
 bypasses Firestore security rules by design; the rules are then free to deny
 clients any write to money-bearing collections.
 
+**Checkout now goes through this API.** `app/checkout/page.tsx` sends a store
+id, product ids with quantities, an address and a payment method — and nothing
+else. All three holes above are closed on the path a customer actually takes,
+and `orders` creation is denied to clients in the rules. What remains is the
+vendor, driver and admin order pages, which still write to Firestore directly;
+until they move, the money fields on an *existing* order stay writable.
+
 ## Layout
 
 ```
@@ -115,9 +122,11 @@ vendor-only route the old one could not.
 *Security-rules* tests (`src/rules/`) are the only ones that exercise what a
 **browser** can do. Every other test goes through the API, which uses the
 Admin SDK and bypasses rules entirely — so a rule could be wide open and the
-rest of the suite would still be green. Since the web app has not moved onto
-the API yet, `firebase/firestore.rules` is still the only thing standing
-between a signed-in customer and the money fields on their own order.
+rest of the suite would still be green. Checkout has moved onto the API, so a
+browser can no longer create an order at all — but the vendor, driver,
+customer and admin order pages still write to Firestore directly, so these
+rules remain the only thing standing between a signed-in customer and the
+money fields on an order that already exists.
 
 They are split in two. One half asserts properties that hold. The other,
 `documented holes`, asserts what the rules currently *allow and should not* —
@@ -391,7 +400,7 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-311 tests — 88 unit, 223 against the emulators (62 of those on the rules).
+326 tests — 99 unit, 227 against the emulators (63 of those on the rules).
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
@@ -449,12 +458,30 @@ console or the Admin SDK, both of which bypass rules.
 > **Not live until deployed.** Firestore enforces only what is deployed:
 > `firebase deploy --only firestore:rules`
 
-**Still open — the frozen money fields are not frozen.** The comment above
-`isAdminOrderReset()` claims the financial fields "can never be touched by
-anyone after checkout". That is true only of the admin branch. A customer can
-create an order with payouts they invented and `paymentStatus: 'paid'`, and
-can rewrite `total`, `vendorPayout`, `driverPayout`, and `platformEarnings` on
-their own order afterwards.
+### Fixed: clients can no longer create orders
+
+**Was:** order creation checked only that `customerId` matched the caller, so a
+browser could mint an order with any total, any payout figures, and
+`paymentStatus: 'paid'`.
+
+**Now:** `allow create: if false`. Orders come only from `POST /api/v1/orders`,
+which prices them from the product records. No field restriction would have
+made client creation safe — the prices have to come from the catalogue, which
+a rule cannot read affordably.
+
+This became possible because the web checkout moved onto the API; nothing in
+the app calls `addDoc` on `orders` any more.
+
+> **Deploy order matters.** This rule breaks ordering for anyone still running
+> the old checkout bundle. Deploy the API first, then the web app built with
+> `NEXT_PUBLIC_API_BASE_URL` pointing at it, and only then the rules.
+
+**Still open — the frozen money fields are not frozen.** A customer can no
+longer *create* an order with invented payouts, but the update branches carry
+no field restriction, so they can still rewrite `total`, `vendorPayout`,
+`driverPayout`, `platformEarnings`, and `paymentStatus` on an order that
+already exists. This closes when the vendor, driver, customer and admin order
+pages move onto the API too — they still write to Firestore directly.
 
 **Drivers can read delivery codes.** The assigned driver can read
 `deliveryOTP` off their order, *and* any driver browsing unclaimed orders can
@@ -471,9 +498,9 @@ store you own moves someone else's menu item into your store.
 evaluating `request.resource.data.storeId` errors and the rule denies
 everyone. Menu deletion from the browser cannot work at all.
 
-All of these close when the web app moves onto the API and the rules are
-tightened to deny client writes to `orders` outright. Until then the tests at
-least make the gaps visible and stop them widening.
+All of these close when the remaining order pages move onto the API and the
+rules deny client *updates* to `orders` the way they now deny creation. Until
+then the tests keep the gaps visible and stop them widening.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing

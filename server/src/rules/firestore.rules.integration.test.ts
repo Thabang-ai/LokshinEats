@@ -6,10 +6,11 @@
  * rules entirely — so a rule could be wide open and every other test would
  * still pass.
  *
- * That gap matters here more than it usually would: the web app has not moved
- * onto the API yet, so `firebase/firestore.rules` is still the only thing
- * standing between a signed-in customer and the money fields on their own
- * order.
+ * That gap matters here more than it usually would. Checkout has moved onto
+ * the API, so orders can no longer be created from a browser at all — but the
+ * vendor, driver, customer and admin order pages still write to Firestore
+ * directly, so these rules remain the only thing standing between a signed-in
+ * customer and the money fields on an order that already exists.
  *
  * The suite is in two halves. The first asserts properties that hold. The
  * second, `documented holes`, asserts what the rules currently *allow* and
@@ -483,11 +484,20 @@ describe('orders', () => {
     await assertFails(getDoc(doc(db, 'orders', 'order-1')));
   });
 
-  it('stops a customer forging an order in someone else’s name', async () => {
+  it('stops a client creating an order at all', async () => {
+    // Orders come from POST /api/v1/orders, which prices them. A browser
+    // cannot create one even in its own name, because no field restriction
+    // could make a client-supplied price safe.
     const db = as(CUSTOMER);
+    await assertFails(setDoc(doc(db, 'orders', 'forged'), orderDoc()));
     await assertFails(
       setDoc(doc(db, 'orders', 'forged'), orderDoc({ customerId: OTHER_CUSTOMER })),
     );
+  });
+
+  it('stops even an admin creating an order from a browser', async () => {
+    const db = as(ADMIN);
+    await assertFails(setDoc(doc(db, 'orders', 'forged-admin'), orderDoc()));
   });
 
   it('stops a non-admin deleting an order', async () => {
@@ -538,25 +548,6 @@ describe('documented holes — current rules allow these', () => {
         price: 45.5,
       });
     });
-  });
-
-  it('HOLE: a customer can create an order with payouts they invented', async () => {
-    // Order creation checks only that customerId matches the caller. Every
-    // money field is whatever the browser sent.
-    const db = as(CUSTOMER);
-    await assertSucceeds(
-      setDoc(
-        doc(db, 'orders', 'forged-cheap'),
-        orderDoc({
-          total: 1,
-          subtotal: 1,
-          vendorPayout: 0,
-          driverPayout: 0,
-          platformEarnings: 1,
-          paymentStatus: 'paid',
-        }),
-      ),
-    );
   });
 
   it('HOLE: a customer can mark their own order paid after the fact', async () => {

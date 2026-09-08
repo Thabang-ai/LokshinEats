@@ -50,6 +50,8 @@ export type NewOrderDocument = {
     instructions: string | null;
   };
   deliveryCode: string;
+  cashAmount: number | null;
+  estimatedDistanceKm: number | null;
   vendorPayout: number;
   driverPayout: number;
   platformEarnings: number;

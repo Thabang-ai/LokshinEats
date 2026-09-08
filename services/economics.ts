@@ -1,6 +1,13 @@
-// Platform economics — single source of truth for how money splits on
-// every order. Frozen onto each order doc at checkout time, so changing
-// these rates later doesn't retroactively alter historical orders.
+// Platform economics — READ helpers only.
+//
+// The split itself is computed by the API (server/src/lib/money.ts) and frozen
+// onto the order at creation. It used to be computed here, in the browser, and
+// written straight onto the order document — which is how a client could hand
+// itself the platform's commission. `computeOrderEconomics` was removed from
+// this file rather than left unused, so it cannot be wired back into a write.
+//
+// What remains reads payouts back off an existing order, with a fallback for
+// orders written before the economics fields existed.
 //
 // Defaults are the "launch phase" recommendation: low commission to attract
 // vendors, fair driver share. Revisit once you have product-market fit
@@ -11,48 +18,6 @@ export const COMMISSION_RATE = 0.08; // 8%
 
 /** Fraction of the delivery fee the driver keeps. */
 export const DRIVER_DELIVERY_SHARE = 0.85; // 85% to driver, 15% to platform
-
-export type OrderEconomics = {
-  /** Cash the vendor receives — subtotal minus commission. */
-  vendorPayout: number;
-  /** Cash the driver receives — share of delivery fee. */
-  driverPayout: number;
-  /** What platform earns from this order = commission + delivery share. */
-  platformEarnings: number;
-  /** Commission amount in rands (for accounting visibility). */
-  platformCommission: number;
-  /** Rate snapshot — frozen so we know the rate this order was priced at. */
-  commissionRate: number;
-  driverDeliveryShare: number;
-};
-
-/**
- * Compute the money split for an order.
- *
- * Numbers are rounded to 2 decimals so we never store floating-point
- * artifacts like R12.749999 in Firestore.
- */
-export function computeOrderEconomics(
-  subtotal: number,
-  deliveryFee: number,
-): OrderEconomics {
-  const round = (n: number) => Math.round(n * 100) / 100;
-
-  const platformCommission = round(subtotal * COMMISSION_RATE);
-  const vendorPayout = round(subtotal - platformCommission);
-  const driverPayout = round(deliveryFee * DRIVER_DELIVERY_SHARE);
-  const platformDeliveryShare = round(deliveryFee - driverPayout);
-  const platformEarnings = round(platformCommission + platformDeliveryShare);
-
-  return {
-    vendorPayout,
-    driverPayout,
-    platformEarnings,
-    platformCommission,
-    commissionRate: COMMISSION_RATE,
-    driverDeliveryShare: DRIVER_DELIVERY_SHARE,
-  };
-}
 
 /**
  * Backward-compatible driver payout extraction.

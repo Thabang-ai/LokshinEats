@@ -1,9 +1,13 @@
 'use client';
 
 // Checkout Page
-// Writes a real order document to Firestore on submit.
-// Payment processing still goes through paymentService (Yoco/Ozow stubs +
-// real-ish cash flow) — real gateway integration is Phase 4.
+//
+// Submits the basket to POST /api/v1/orders and lets the server price it.
+// This page used to compute the subtotal, delivery fee, total and all four
+// payout figures in the browser, run a simulated payment that always
+// succeeded, generate the delivery code with Math.random, and write the
+// whole document to Firestore itself — so any client could mint a paid
+// order at a price it chose. None of that happens here any more.
 
 import { useEffect, useState } from 'react';
 import { useCart } from '../../context/CartContext';
@@ -11,13 +15,16 @@ import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle } from '
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { processPayment } from '../../services/paymentService';
 import { useRouter } from 'next/navigation';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
-import { computeOrderEconomics } from '../../services/economics';
-import { estimateOrderDistanceKm } from '../../services/mapService';
+import { ApiError } from '../../services/apiClient';
+import {
+  completeSandboxPayment,
+  initiatePayment,
+  isSandboxPayment,
+  placeOrder,
+  verifyPayment,
+} from '../../services/ordersApi';
 
 // Real South African banknote denominations, smallest to largest — customers
 // pick from what they're actually holding rather than typing an arbitrary number.
@@ -104,89 +111,91 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      // Step 1: Process payment (stubbed — Phase 4 will plug in real gateways)
-      // We pass a temporary id; the real Firestore doc ID is generated below.
-      const paymentResponse = await processPayment({
-        amount: cart.total,
-        paymentMethod: selectedPayment,
-        orderId: `pending-${Date.now()}`,
-        customerEmail: formData.email,
-        customerPhone: formData.phone,
-        description: `Order for ${cart.items.length} items`,
-      });
-
-      if (!paymentResponse.success) {
-        toast.error(paymentResponse.error || 'Payment failed');
-        setIsProcessing(false);
-        return;
-      }
-
-      // Compute platform economics at write time. These get frozen on the
-      // order so historical numbers don't shift if rates change later.
-      const economics = computeOrderEconomics(cart.subtotal, cart.deliveryFee);
-
-      // 4-digit OTP that the customer reads to the driver at handoff.
-      // Driver enters it in their app to mark delivery + payment received.
-      // KNOWN LIMITATION: drivers technically have read access to assigned
-      // orders, so a determined driver could read this from Firestore via
-      // dev tools and bypass the verification. Proper fix is server-side
-      // verification via Cloud Functions (Blaze plan). For now this is a
-      // good-fences/casual-fraud deterrent.
-      const deliveryOTP = String(Math.floor(1000 + Math.random() * 9000));
-
-      // Rough store→customer distance (mock geocoding — see mapService.ts).
-      // Frozen on the order so drivers can be filtered by vehicle-type range
-      // without recomputing it live. Null if either city couldn't resolve.
-      const estimatedDistanceKm = await estimateOrderDistanceKm(storeMeta.city, formData.city);
-
-      // Step 2: Write real order to Firestore.
-      // Fields are denormalized so other roles (vendor, driver) can render
-      // them without reading users/{customerId} (rules block cross-user reads).
-      const docRef = await addDoc(collection(db, 'orders'), {
-        customerId: user.uid,
-        customerName: user.displayName ?? user.email ?? 'Customer',
-        customerEmail: formData.email,
-        customerPhone: formData.phone,
+      // Everything that decides money now happens on the server. We send what
+      // the customer chose — which store, which items, where to deliver, how
+      // they intend to pay — and nothing else. No prices, no totals, no
+      // payouts, no payment status, no delivery code.
+      //
+      // The API rejects those fields outright rather than ignoring them, so
+      // if this request ever regrows one the checkout fails loudly instead of
+      // appearing to work.
+      const order = await placeOrder({
         storeId: storeMeta.id,
-        storeName: storeMeta.name,
-        driverId: null, // explicit null so `where driverId == null` matches
-        items: cart.items,
-        status: 'pending' as const,
-        subtotal: cart.subtotal,
-        deliveryFee: cart.deliveryFee,
-        total: cart.total,
-        paymentMethod: selectedPayment,
-        paymentStatus: selectedPayment === 'cash' ? ('pending' as const) : ('paid' as const),
-        paymentTransactionId: paymentResponse.transactionId ?? null,
+        items: cart.items.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          ...(item.specialInstructions
+            ? { specialInstructions: item.specialInstructions }
+            : {}),
+        })),
         deliveryAddress: {
           street: formData.street,
           city: formData.city,
           postalCode: formData.postalCode,
-          instructions: formData.instructions || null,
+          ...(formData.instructions ? { instructions: formData.instructions } : {}),
         },
-        deliveryOTP,
-        deliveryOTPVerified: false,
-        estimatedDistanceKm,
-        // Cash logistics — null for card/Ozow, customer's declared note for cash
-        cashAmount: cashAmountEffective,
-        // Platform economics — frozen at the rate this order was placed
-        vendorPayout: economics.vendorPayout,
-        driverPayout: economics.driverPayout,
-        platformEarnings: economics.platformEarnings,
-        platformCommission: economics.platformCommission,
-        commissionRate: economics.commissionRate,
-        driverDeliveryShare: economics.driverDeliveryShare,
-        createdAt: serverTimestamp(),
+        paymentMethod: selectedPayment,
+        customerPhone: formData.phone,
+        // A hint so the driver brings change — never a price.
+        ...(cashAmountEffective !== null ? { cashAmount: cashAmountEffective } : {}),
       });
+
+      // Cash is collected at the door, so there is nothing to charge now. The
+      // server settles it when the driver confirms delivery.
+      if (selectedPayment !== 'cash') {
+        await payForOrder(order.id);
+      }
 
       toast.success('Order placed successfully! 🎉');
       clearCart();
-      router.push(`/orders/${docRef.id}`);
+      router.push(`/orders/${order.id}`);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'An error occurred. Please try again.';
-      toast.error(msg);
+      // The API writes its messages for customers, so they are safe to show.
+      // A field error is more specific than the summary, so prefer it.
+      const message =
+        error instanceof ApiError
+          ? error.firstFieldError ?? error.message
+          : error instanceof Error
+            ? error.message
+            : 'An error occurred. Please try again.';
+
+      toast.error(message);
       console.error('Checkout error:', error);
       setIsProcessing(false);
+    }
+  };
+
+  /**
+   * Charge a card or EFT order.
+   *
+   * The server owns settlement: it asks the provider what happened and
+   * compares the captured amount against the order total before marking
+   * anything paid. Nothing here can declare a payment successful.
+   *
+   * While the API runs the sandbox provider there is no hosted page to visit,
+   * so the charge is resolved through the sandbox endpoint. Against a live
+   * provider the same code follows `redirectUrl` instead.
+   */
+  const payForOrder = async (orderId: string) => {
+    const { payment, redirectUrl, clientPayload } = await initiatePayment(orderId);
+
+    if (redirectUrl) {
+      // A live provider hosts its own checkout. Verification happens when the
+      // customer returns; the order page polls for it.
+      window.location.href = redirectUrl;
+      return;
+    }
+
+    if (isSandboxPayment(clientPayload)) {
+      await completeSandboxPayment(payment.providerReference ?? '', 'succeed');
+    }
+
+    const verified = await verifyPayment(payment.id);
+
+    if (verified.status === 'failed') {
+      throw new Error(
+        verified.failureReason ?? 'Payment was declined. Please try another method.',
+      );
     }
   };
 

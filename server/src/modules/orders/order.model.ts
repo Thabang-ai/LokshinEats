@@ -122,6 +122,10 @@ export type Order = {
   /** Present only for the order's own customer, and for admins. */
   deliveryCode?: string;
   deliveryVerified: boolean;
+  /** Note the customer will pay with, for driver change. Cash orders only. */
+  cashAmount: number | null;
+  /** Store-to-customer estimate, used to filter by driver vehicle range. */
+  estimatedDistanceKm: number | null;
   /** Frozen platform economics. Never accepted from a client. */
   vendorPayout: number;
   driverPayout: number;
@@ -181,6 +185,20 @@ export const createOrderSchema = z
         /^(?:\+27|0)[6-8][0-9]{8}$/,
         'Enter a valid South African mobile number.',
       ),
+    /**
+     * For cash orders: the note the customer intends to pay with, so the
+     * driver knows whether to bring change.
+     *
+     * This is a logistics hint, not a price. It never affects what is
+     * charged, and the service rejects it on a card order and rejects an
+     * amount below the total.
+     */
+    cashAmount: z
+      .number()
+      .min(0)
+      .max(10_000)
+      .multipleOf(0.01, 'Cash amount may not be finer than one cent.')
+      .optional(),
   })
   .strict();
 
@@ -302,6 +320,15 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
     // `deliveryOTPVerified` is the field name the existing documents use.
     deliveryVerified:
       data.deliveryVerified === true || data.deliveryOTPVerified === true,
+    cashAmount:
+      typeof data.cashAmount === 'number' && Number.isFinite(data.cashAmount)
+        ? data.cashAmount
+        : null,
+    estimatedDistanceKm:
+      typeof data.estimatedDistanceKm === 'number' &&
+      Number.isFinite(data.estimatedDistanceKm)
+        ? data.estimatedDistanceKm
+        : null,
     vendorPayout: toNumber(data.vendorPayout),
     driverPayout: toNumber(data.driverPayout),
     platformEarnings: toNumber(data.platformEarnings),

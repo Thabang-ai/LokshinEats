@@ -134,6 +134,74 @@ describe('placeOrder pricing', () => {
     expect(order.deliveryCode).toMatch(/^\d{6}$/);
   });
 
+  it('computes the delivery distance itself', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const productId = await seedProduct({ storeId, price: 100 });
+
+    const order = await orderService.placeOrder(customer, {
+      storeId,
+      items: [{ productId, quantity: 1 }],
+      // The seeded store is in Soweto; delivering across Gauteng.
+      deliveryAddress: { ...address, city: 'Tembisa' },
+      paymentMethod: 'cash',
+      customerPhone: '0821234567',
+    });
+
+    // Never taken from the request — this figure decides which drivers see
+    // the order, so a client could otherwise widen its own driver pool.
+    expect(order.estimatedDistanceKm).toBeGreaterThan(20);
+  });
+
+  it('records a cash note declaration on a cash order', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const productId = await seedProduct({ storeId, price: 100 });
+
+    const order = await orderService.placeOrder(customer, {
+      storeId,
+      items: [{ productId, quantity: 1 }],
+      deliveryAddress: address,
+      paymentMethod: 'cash',
+      customerPhone: '0821234567',
+      cashAmount: 200,
+    });
+
+    // A logistics hint for the driver's change, never a price.
+    expect(order.cashAmount).toBe(200);
+    expect(order.total).toBe(120);
+  });
+
+  it('refuses a cash declaration below the total', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const productId = await seedProduct({ storeId, price: 100 });
+
+    await expect(
+      orderService.placeOrder(customer, {
+        storeId,
+        items: [{ productId, quantity: 1 }],
+        deliveryAddress: address,
+        paymentMethod: 'cash',
+        customerPhone: '0821234567',
+        cashAmount: 50,
+      }),
+    ).rejects.toThrow(/at least R120/i);
+  });
+
+  it('refuses a cash declaration on a card order', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const productId = await seedProduct({ storeId, price: 100 });
+
+    await expect(
+      orderService.placeOrder(customer, {
+        storeId,
+        items: [{ productId, quantity: 1 }],
+        deliveryAddress: address,
+        paymentMethod: 'yoco',
+        customerPhone: '0821234567',
+        cashAmount: 200,
+      }),
+    ).rejects.toThrow(/only applies to a cash order/i);
+  });
+
   it('refuses a product belonging to a different store', async () => {
     const storeId = await seedStore({ ownerId: VENDOR });
     const otherStoreId = await seedStore({ ownerId: 'other-vendor' });

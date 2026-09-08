@@ -156,8 +156,22 @@ service cloud.firestore {
          userRole(request.auth.uid) == 'driver')
       );
 
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.customerId;
+      // Orders are created ONLY by the API, through the Admin SDK, which
+      // bypasses these rules. Checkout moved to POST /api/v1/orders, and no
+      // page in the web app calls addDoc on this collection any more.
+      //
+      // This is what actually closes the hole: previously the rule checked
+      // only that customerId matched the caller, so a browser could mint an
+      // order with any total, any payout figures, and paymentStatus 'paid'.
+      // No field restriction would have made that safe — the prices have to
+      // come from the product records, which a rule cannot read affordably.
+      // Denying creation outright is the fix.
+      //
+      // Updates are still permitted below, because the vendor, driver and
+      // customer order pages have not moved to the API yet. Those branches
+      // carry no field restriction, so the money fields on an existing order
+      // stay writable until they do. See server/README.md, "Known rules gaps".
+      allow create: if false;
 
       allow update: if request.auth != null && (
         request.auth.uid == resource.data.customerId ||
