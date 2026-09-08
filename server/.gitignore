@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+
+# Secrets — never commit. Service-account JSON and real env values.
+.env
+.env.*
+!.env.example
+*serviceAccount*.json
