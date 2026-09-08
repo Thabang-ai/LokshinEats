@@ -7,6 +7,8 @@
  */
 
 import { Router } from 'express';
+import { productRouter } from './products/product.routes';
+import { storeRouter } from './stores/store.routes';
 import { userRouter } from './users/user.routes';
 
 export const apiRouter = Router();
@@ -21,3 +23,5 @@ apiRouter.get('/health', (_req, res) => {
 });
 
 apiRouter.use('/users', userRouter);
+apiRouter.use('/stores', storeRouter);
+apiRouter.use('/products', productRouter);

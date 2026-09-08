@@ -131,6 +131,45 @@ could PATCH their own role to `admin` would own the platform. `POST /users/me`
 allows only `customer` or `driver`: vendor accounts are promoted when their
 store is approved, and admin is granted out of band.
 
+### Stores
+
+| Method | Path            | Access        | Purpose                        |
+|--------|-----------------|---------------|--------------------------------|
+| GET    | `/stores`       | public        | Browse (`?city=`, `?cuisine=`, `?openOnly=true`) |
+| GET    | `/stores/:id`   | public        | Read one store                 |
+| POST   | `/stores`       | authenticated | Register a store               |
+| GET    | `/stores/mine`  | vendor        | The caller's own store         |
+| PATCH  | `/stores/mine`  | vendor        | Update own store, open/close   |
+| PATCH  | `/stores/:id`   | admin         | Edit any store                 |
+
+Registering a store is what promotes an account to the vendor role, so
+`POST /stores` cannot require that role first. The response sets
+`meta.tokenRefreshRequired`.
+
+`ownerId`, `rating`, and `reviewCount` are absent from every client-writable
+schema: ownership comes from the verified token, and the two rating fields are
+derived from reviews. Vendor writes resolve the caller's own store from their
+uid, so no write route takes a store id that decides what gets modified.
+
+### Products
+
+| Method | Path             | Access       | Purpose                       |
+|--------|------------------|--------------|-------------------------------|
+| GET    | `/products`      | public       | Browse (`?storeId=`, `?category=`, `?availableOnly=true`) |
+| GET    | `/products/:id`  | public       | Read one product              |
+| GET    | `/products/mine` | vendor       | Own menu, including hidden items |
+| POST   | `/products`      | vendor       | Add a menu item               |
+| PATCH  | `/products/:id`  | vendor (own) | Edit a menu item              |
+| DELETE | `/products/:id`  | vendor (own) | Remove a menu item            |
+
+`storeId` is never accepted from a request — it comes from the caller's own
+store. Writes to another vendor's product return 404 rather than 403, so an id
+cannot be probed to learn whether it exists.
+
+The product document is the authority on price. Once order pricing lands, an
+order's cost is computed from these records rather than from anything the
+client sends.
+
 All routes are versioned under `/api/v1`. Mobile apps stay installed on old
 versions for months, so a breaking change will ship as `/api/v2` while v1 keeps
 serving.
@@ -139,9 +178,8 @@ serving.
 
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery OTP,
-and the users module.
+and the users, stores, and products modules.
 
-Not built yet: stores, products, orders, payments, wallets, notifications,
-promotions, reports. Until orders and payments land here, the web client's
-direct-to-Firestore checkout remains the live path, with the three holes above
-still open.
+Not built yet: orders, payments, wallets, notifications, promotions, reports.
+Until orders and payments land here, the web client's direct-to-Firestore
+checkout remains the live path, with the three holes above still open.
