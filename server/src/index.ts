@@ -17,10 +17,10 @@ import './config/firebase';
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
-  logger.info(
-    { port: env.PORT, env: env.NODE_ENV },
-    'LokshinEats API listening.',
-  );
+  // `env` is already on every line via the logger's base fields, so it is not
+  // repeated here — duplicate keys in one JSON object are ambiguous to log
+  // aggregators, which keep whichever they parse last.
+  logger.info({ port: env.PORT }, 'LokshinEats API listening.');
 });
 
 /** Stop accepting connections, let in-flight requests finish, then exit. */
