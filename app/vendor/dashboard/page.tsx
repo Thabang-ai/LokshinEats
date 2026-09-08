@@ -24,8 +24,11 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
+// `updateDoc` here is only for the store open/closed toggle; every order
+// write on this page goes through the API.
+import { collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
+import { settleCashReceipt } from '../../../services/ordersApi';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { readVendorPayout } from '../../../services/economics';
 
@@ -218,10 +221,7 @@ export default function VendorDashboard() {
   const handleConfirmCashReceipt = async (orderId: string) => {
     setConfirmingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        vendorCashConfirmed: true,
-        vendorCashConfirmedAt: serverTimestamp(),
-      });
+      await settleCashReceipt(orderId, 'confirm');
       toast.success('Cash receipt confirmed');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to confirm');
@@ -235,10 +235,7 @@ export default function VendorDashboard() {
     if (!window.confirm("Dispute this cash receipt? Only do this if the driver actually didn't give you the money.")) return;
     setConfirmingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        vendorCashDisputed: true,
-        vendorCashDisputedAt: serverTimestamp(),
-      });
+      await settleCashReceipt(orderId, 'dispute');
       toast.success('Receipt disputed — driver has been notified');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to dispute');

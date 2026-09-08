@@ -30,15 +30,16 @@ service cloud.firestore {
     // reset or remove orders for cleanup. Admin *writes* to an order are
     // limited to operational fields by isAdminOrderReset().
     //
-    // WARNING: that restriction applies to the admin branch ONLY. This comment
-    // used to claim the financial fields "can never be touched by anyone after
-    // checkout", which is not true: the customer, assigned driver, and store
-    // owner branches of the orders update rule carry no field restriction at
-    // all, so a customer can rewrite total, vendorPayout, driverPayout and
-    // paymentStatus on their own order. See the failing-by-design tests in
-    // server/src/rules/, and the "Known rules gaps" section of server/README.md.
-    // This closes when the web checkout moves onto POST /api/v1/orders and
-    // client writes to orders are denied outright.
+    // The money fields really are frozen now, on every branch: orders can only
+    // be created by the API, and the only client update permitted is the
+    // customer's four review flags. Drivers and vendors cannot write to an
+    // order at all — their pages call the API, which owns the lifecycle.
+    //
+    // Still open: a driver can READ an order they are assigned or that is
+    // unclaimed, and the delivery code is stored on that document, so they can
+    // still see it. Rules cannot hide a field. Closing that means moving the
+    // code out of the order document — see "Known rules gaps" in
+    // server/README.md.
     function isAdmin() {
       return request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
@@ -132,18 +133,21 @@ service cloud.firestore {
     }
 
     // Orders collection
-    // Reads: customer, assigned driver, store owner, and any driver looking at
-    // available (unclaimed) orders.
-    // Writes: customer create their own; updates by customer, assigned driver,
-    // store owner, OR any driver claiming an available order.
     //
-    // Drivers can see + claim orders as soon as the vendor accepts them
-    // (status 'confirmed'), not just once food is 'ready' — this lets a
-    // driver head toward the vendor while the food is still being prepared
-    // instead of only finding out once it's already sitting done. Claiming
-    // early only sets driverId (status is untouched until the vendor marks
-    // it ready); claiming a 'ready' order still sets driverId + flips
-    // straight to 'picked_up' in one step, same as before.
+    // Reads: customer, assigned driver, store owner, and any driver browsing
+    // unclaimed deliveries. Reads stay on Firestore so the vendor and driver
+    // feeds update live; it is the writes that moved.
+    //
+    // Writes: none from a client, except the customer's review flags and the
+    // admin console's operational reset. Everything else — placing an order,
+    // claiming and releasing a delivery, advancing the status, confirming
+    // delivery with the code, settling cash — goes through the API, which
+    // enforces the lifecycle and owns every money field.
+    //
+    // Drivers can still see and claim orders as soon as the vendor accepts
+    // them, not just once the food is 'ready', so a driver can head to the
+    // store while it is still being made. That rule now lives in the API's
+    // CLAIMABLE_STATUSES rather than here.
     match /orders/{orderId} {
       allow read: if request.auth != null && (
         isAdmin() ||
@@ -173,20 +177,26 @@ service cloud.firestore {
       // stay writable until they do. See server/README.md, "Known rules gaps".
       allow create: if false;
 
+      // Updates are now almost entirely the API's job. The vendor and driver
+      // order pages moved to it, so the broad "assigned driver may write
+      // anything" and "store owner may write anything" branches are gone —
+      // those were what let a driver set deliveryOTPVerified themselves, and
+      // what left every money field writable after checkout.
+      //
+      // Two narrow exceptions remain:
       allow update: if request.auth != null && (
-        request.auth.uid == resource.data.customerId ||
-        // the assigned driver — covers early claim, release-back-to-null,
-        // and confirming pickup (ready -> picked_up), all the same broad
-        // trust already granted once driverId is theirs
-        request.auth.uid == resource.data.driverId ||
-        isStoreOwner(resource.data.storeId) ||
-        // driver claiming an available order: must be a driver, must be
-        // claiming for themselves, order must still be unclaimed
-        (resource.data.status in ['confirmed', 'preparing', 'ready'] &&
-         resource.data.driverId == null &&
-         request.resource.data.driverId == request.auth.uid &&
-         userRole(request.auth.uid) == 'driver') ||
-        // admin resetting operational state — never money/identity fields
+        // The customer marking their own order as reviewed. This is the only
+        // order write the web app still makes directly, and it is restricted
+        // to the four review flags — not the status, not the payment, and
+        // none of the money fields.
+        (
+          request.auth.uid == resource.data.customerId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'reviewed', 'ratingGiven', 'driverRated', 'driverRatingGiven'
+          ])
+        ) ||
+        // Admin resetting operational state from the console — never money
+        // or identity fields; see isAdminOrderReset above.
         isAdminOrderReset()
       );
 

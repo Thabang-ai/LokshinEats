@@ -20,15 +20,14 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   collection,
-  doc,
-  getDoc,
   getDocs,
   query,
-  serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
 } from 'firebase/firestore';
+// Reads stay on Firestore; the delivery confirmation goes through the API,
+// which holds the code this app is never sent.
+import { completeDelivery } from '../../../services/ordersApi';
 import { db } from '../../../firebase/config';
 import { useAuthUser } from '../../../hooks/useAuthUser';
 
@@ -169,50 +168,48 @@ export default function DriverOrdersPage() {
     [orders],
   );
 
-  // Verifies the order's deliveryOTP against the entered value before
-  // flipping status. Orders created before the OTP feature have no
-  // deliveryOTP and skip verification. Returns true on success so the
-  // caller can dismiss any inline OTP entry UI.
+  // Confirm a delivery against the customer's code.
+  //
+  // The comparison used to happen here, in the driver's browser, against a
+  // deliveryOTP read off the order document — so a driver could read the code
+  // out of Firestore and close an order they never delivered. The server now
+  // compares it against a value this app is never sent, and counts attempts.
+  //
+  // Returns true on success so the caller can dismiss the code entry UI.
   const markDelivered = async (orderId: string, otp?: string): Promise<boolean> => {
     setCompletingId(orderId);
-    try {
-      const ref = doc(db, 'orders', orderId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        toast.error('Order no longer exists');
-        return false;
-      }
-      const data = snap.data();
-      const expectedOTP = typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null;
 
-      if (expectedOTP) {
-        if (!otp || otp.trim() !== expectedOTP) {
-          toast.error('Wrong code. Ask the customer to check their order page.');
-          return false;
-        }
-      }
+    // Optimistic, rolled back below if the server disagrees.
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId ? { ...o, status: 'delivered', actualDeliveryTime: new Date() } : o,
+      ),
+    );
 
-      // Optimistic update (after OTP check passes)
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, status: 'delivered', actualDeliveryTime: new Date() } : o,
-        ),
-      );
-
-      await updateDoc(ref, {
-        status: 'delivered',
-        actualDeliveryTime: serverTimestamp(),
-        ...(expectedOTP ? { deliveryOTPVerified: true } : {}),
-      });
-      toast.success('Delivery completed');
-      return true;
-    } catch (err) {
-      // Rollback
+    const rollback = () =>
       setOrders((prev) =>
         prev.map((o) =>
           o.id === orderId ? { ...o, status: 'picked_up', actualDeliveryTime: null } : o,
         ),
       );
+
+    try {
+      const result = await completeDelivery(orderId, (otp ?? '').trim());
+
+      if (!result.ok) {
+        rollback();
+        toast.error(
+          result.attemptsRemaining !== undefined
+            ? `Wrong code — ${result.attemptsRemaining} attempt${result.attemptsRemaining === 1 ? '' : 's'} left.`
+            : result.message,
+        );
+        return false;
+      }
+
+      toast.success('Delivery completed');
+      return true;
+    } catch (err) {
+      rollback();
       toast.error(err instanceof Error ? err.message : 'Failed to update');
       return false;
     } finally {
@@ -398,7 +395,7 @@ export default function DriverOrdersPage() {
                       {order.status === 'picked_up' && otpModeOrderId === order.id && (
                         <div className="border-t border-gray-200 pt-4">
                           <p className="text-sm font-semibold text-gray-700 mb-1">
-                            Ask the customer for their 4-digit code
+                            Ask the customer for their delivery code
                           </p>
                           <p className="text-xs text-gray-500 mb-3">
                             It's shown in their order tracking page. The order won't complete without it.
@@ -408,18 +405,18 @@ export default function DriverOrdersPage() {
                               type="text"
                               inputMode="numeric"
                               pattern="[0-9]*"
-                              maxLength={4}
+                              maxLength={6}
                               value={otpInput}
                               onChange={(e) =>
-                                setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))
+                                setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))
                               }
-                              placeholder="0000"
+                              placeholder="000000"
                               autoFocus
                               className="flex-1 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-lg py-2 focus:outline-none focus:border-primary"
                             />
                             <button
                               onClick={() => handleSubmitOTP(order.id)}
-                              disabled={isCompleting || otpInput.length !== 4}
+                              disabled={isCompleting || otpInput.length < 4}
                               className="px-5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {isCompleting ? '…' : 'Confirm'}

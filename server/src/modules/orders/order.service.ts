@@ -351,6 +351,64 @@ export async function acceptOrder(
   return assigned;
 }
 
+/** A driver gives up a claim before collecting the food. */
+export async function releaseOrder(
+  caller: AuthContext,
+  orderId: string,
+): Promise<Order> {
+  const released = await repository.releaseDriver(orderId, caller.uid);
+  log.info({ orderId, driverId: caller.uid }, 'Driver released order.');
+  return released;
+}
+
+/**
+ * A driver records handing the vendor their cash.
+ *
+ * The amount is computed from the order rather than sent by the driver — it
+ * is what they owe, and a driver who could name it could under-declare.
+ */
+export async function recordCashHandover(
+  caller: AuthContext,
+  orderId: string,
+): Promise<Order> {
+  const order = await repository.recordCashHandover(orderId, caller.uid);
+
+  log.info(
+    { orderId, driverId: caller.uid, amount: order.cashGivenAmount },
+    'Driver recorded cash handover.',
+  );
+  return order;
+}
+
+/**
+ * A vendor confirms or disputes a driver's cash handover.
+ *
+ * Ownership is checked against the vendor's own store, so one vendor cannot
+ * settle — or dispute — another's cash.
+ */
+export async function settleCashReceipt(
+  caller: AuthContext,
+  orderId: string,
+  outcome: 'confirm' | 'dispute',
+): Promise<Order> {
+  // getOrder proves the caller is party to this order; for a vendor that
+  // means they own the store it was placed with.
+  const order = await getOrder(caller, orderId);
+
+  if (caller.role === 'vendor' && order.storeId) {
+    const store = await storeRepository.findByOwner(caller.uid);
+    if (store?.id !== order.storeId) throw ApiError.notFound('No such order.');
+  }
+
+  const settled = await repository.settleCashReceipt(orderId, outcome);
+
+  log.warn(
+    { orderId, vendorId: caller.uid, outcome },
+    'Vendor settled a cash receipt.',
+  );
+  return settled;
+}
+
 /**
  * Confirm delivery against the customer's code.
  *
@@ -361,7 +419,7 @@ export async function acceptOrder(
 export async function confirmDelivery(
   caller: AuthContext,
   orderId: string,
-  code: string,
+  code: string | undefined,
 ): Promise<DeliveryResult> {
   const result = await repository.completeDelivery(orderId, caller.uid, code);
 

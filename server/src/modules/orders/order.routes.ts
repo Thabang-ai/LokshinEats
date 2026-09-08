@@ -12,7 +12,10 @@
  * | GET    | /orders/:id             | party to the order  |
  * | PATCH  | /orders/:id/status      | party to the order  |
  * | POST   | /orders/:id/accept      | driver              |
+ * | POST   | /orders/:id/release     | assigned driver     |
  * | POST   | /orders/:id/complete    | assigned driver     |
+ * | POST   | /orders/:id/cash-handover | assigned driver   |
+ * | POST   | /orders/:id/cash-receipt  | owning vendor     |
  *
  * Collection routes come before /:id so none of their names is read as an
  * order id.
@@ -25,6 +28,7 @@ import { requireAdmin, requireRole } from '../../middleware/requireRole';
 import { sensitiveRateLimit } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import {
+  cashReceiptSchema,
   completeDeliverySchema,
   createOrderSchema,
   listOrdersQuerySchema,
@@ -151,6 +155,56 @@ orderRouter.post(
     const order = await service.acceptOrder(
       requireAuth(req),
       req.params.id as string,
+    );
+    res.json({ data: order });
+  }),
+);
+
+/** Give up a claim before collecting, returning it to the available pool. */
+orderRouter.post(
+  '/:id/release',
+  requireRole('driver', 'admin'),
+  validate({ params: orderIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const order = await service.releaseOrder(
+      requireAuth(req),
+      req.params.id as string,
+    );
+    res.json({ data: order });
+  }),
+);
+
+/**
+ * Record that the driver handed the vendor their cash.
+ *
+ * No amount in the body: it is computed from the order, because it is what
+ * the driver owes.
+ */
+orderRouter.post(
+  '/:id/cash-handover',
+  requireRole('driver', 'admin'),
+  sensitiveRateLimit,
+  validate({ params: orderIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const order = await service.recordCashHandover(
+      requireAuth(req),
+      req.params.id as string,
+    );
+    res.json({ data: order });
+  }),
+);
+
+/** The vendor confirms or disputes that handover. */
+orderRouter.post(
+  '/:id/cash-receipt',
+  requireRole('vendor', 'admin'),
+  sensitiveRateLimit,
+  validate({ params: orderIdParamSchema, body: cashReceiptSchema }),
+  asyncHandler(async (req, res) => {
+    const order = await service.settleCashReceipt(
+      requireAuth(req),
+      req.params.id as string,
+      req.body.outcome,
     );
     res.json({ data: order });
   }),

@@ -34,13 +34,20 @@ import {
   onSnapshot,
   orderBy,
   query,
-  runTransaction,
-  serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
+// Reads stay on Firestore so the delivery feeds stay live. Every write goes
+// through the API, which owns the claim race, the lifecycle, and the delivery
+// code the driver is deliberately never sent.
+import {
+  acceptOrder,
+  completeDelivery,
+  recordCashHandover,
+  releaseOrder,
+  updateOrderStatus,
+} from '../../../services/ordersApi';
 import { readDriverPayout } from '../../../services/economics';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 import { isWithinVehicleRadius } from '../../../services/mapService';
@@ -388,26 +395,11 @@ export default function DriverDashboard() {
     }
     setClaimingId(orderId);
     try {
-      await runTransaction(db, async (tx) => {
-        const ref = doc(db, 'orders', orderId);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) throw new Error('Order no longer exists');
-        const data = snap.data();
-        if (data.driverId) throw new Error('Already taken by another driver');
-        if (!CLAIMABLE_STATUSES.includes(data.status)) throw new Error('Order is no longer available');
-        if (data.status === 'ready') {
-          tx.update(ref, {
-            driverId: user.uid,
-            status: 'picked_up',
-            pickedUpAt: serverTimestamp(),
-          });
-        } else {
-          tx.update(ref, {
-            driverId: user.uid,
-            claimedAt: serverTimestamp(),
-          });
-        }
-      });
+      // The server runs this in a Firestore transaction: two drivers tapping
+      // at the same moment, only one wins, and the loser is told so. It also
+      // decides whether a claim doubles as collection, which it does when the
+      // food is already sitting ready.
+      await acceptOrder(orderId);
       toast.success('Delivery claimed');
       // No manual state update needed — the onSnapshot listeners move the
       // order between `available` / `assigned` / `active` automatically.
@@ -420,16 +412,12 @@ export default function DriverDashboard() {
   };
 
   // The food's ready and the driver is physically at the vendor collecting
-  // it — flips an early-claimed order from 'ready' to 'picked_up'. Already
-  // covered by the "assigned driver can update" rule since driverId is
-  // already theirs, so a plain updateDoc (no transaction) is safe here.
+  // it — flips an early-claimed order from 'ready' to 'picked_up'. The server
+  // checks that this driver is the one assigned before allowing the move.
   const confirmPickup = async (orderId: string) => {
     setClaimingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: 'picked_up',
-        pickedUpAt: serverTimestamp(),
-      });
+      await updateOrderStatus(orderId, 'picked_up');
       toast.success('Pickup confirmed — delivery in progress');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to confirm pickup');
@@ -445,10 +433,7 @@ export default function DriverDashboard() {
     if (!window.confirm("Release this delivery? It'll go back to the available pool for another driver.")) return;
     setClaimingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        driverId: null,
-        claimedAt: null,
-      });
+      await releaseOrder(orderId);
       toast.success('Delivery released');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to release');
@@ -457,36 +442,32 @@ export default function DriverDashboard() {
     }
   };
 
-  // markDelivered now optionally accepts an OTP. If the order has a
-  // deliveryOTP, the OTP must match before status flips. Orders created
-  // before the OTP feature have no deliveryOTP and skip verification
-  // (backward compat). Returns true on success so the caller can dismiss
-  // any inline OTP entry UI.
+  // Confirm a delivery against the customer's code.
+  //
+  // The comparison used to happen right here, in the driver's own browser,
+  // against a deliveryOTP read straight off the order document — so a driver
+  // could read the code out of Firestore and close an order they never
+  // delivered. Now the code goes to the server, which compares it against a
+  // value this app is never sent, counts the attempts, and locks the order
+  // after a handful of wrong guesses.
+  //
+  // Returns true on success so the caller can dismiss the code entry UI.
   const markDelivered = async (orderId: string, otp?: string): Promise<boolean> => {
     if (!user) return false;
     setCompletingId(orderId);
     try {
-      const ref = doc(db, 'orders', orderId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        toast.error('Order no longer exists');
+      const result = await completeDelivery(orderId, (otp ?? '').trim());
+
+      if (!result.ok) {
+        // A wrong code is an expected outcome, not a failure of the request.
+        toast.error(
+          result.attemptsRemaining !== undefined
+            ? `Wrong code — ${result.attemptsRemaining} attempt${result.attemptsRemaining === 1 ? '' : 's'} left.`
+            : result.message,
+        );
         return false;
       }
-      const data = snap.data();
-      const expectedOTP = typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null;
 
-      if (expectedOTP) {
-        if (!otp || otp.trim() !== expectedOTP) {
-          toast.error('Wrong code. Ask the customer to check their order page.');
-          return false;
-        }
-      }
-
-      await updateDoc(ref, {
-        status: 'delivered',
-        actualDeliveryTime: serverTimestamp(),
-        ...(expectedOTP ? { deliveryOTPVerified: true } : {}),
-      });
       toast.success('Delivery completed');
       return true;
     } catch (err) {
@@ -579,14 +560,10 @@ export default function DriverDashboard() {
     if (!user) return;
     setSettlingId(order.id);
     try {
-      await updateDoc(doc(db, 'orders', order.id), {
-        cashGivenToVendor: true,
-        cashGivenToVendorAt: serverTimestamp(),
-        // Record what the driver claims they gave — typically the food
-        // subtotal (vendor's full take pre-commission; vendor settles
-        // commission with platform separately).
-        cashGivenAmount: order.subtotal > 0 ? order.subtotal : order.total - order.driverPayout,
-      });
+      // The amount is computed by the server from the order, not sent from
+      // here — it is what the driver owes, and a driver who could name it
+      // could under-declare.
+      await recordCashHandover(order.id);
       toast.success(`Marked R${(order.subtotal || order.total - order.driverPayout).toFixed(2)} as paid to ${order.storeName}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update');
@@ -1177,7 +1154,7 @@ function OrderCard({
       {variant === 'active' && onComplete && otpMode && (
         <div className="border-t border-gray-200 pt-4">
           <p className="text-sm font-semibold text-gray-700 mb-1">
-            Ask the customer for their 4-digit code
+            Ask the customer for their delivery code
           </p>
           <p className="text-xs text-gray-500 mb-3">
             It's shown in their order tracking page. The order won't complete without it.
@@ -1187,16 +1164,16 @@ function OrderCard({
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={4}
+              maxLength={6}
               value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="0000"
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
               autoFocus
               className="flex-1 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-lg py-2 focus:outline-none focus:border-primary"
             />
             <button
               onClick={handleSubmitOTP}
-              disabled={isBusy || otp.length !== 4}
+              disabled={isBusy || otp.length < 4}
               className="px-5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isBusy ? '…' : 'Confirm'}

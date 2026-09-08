@@ -54,6 +54,11 @@ export const ALLOWED_TRANSITIONS: Readonly<
   Partial<Record<OrderStatus, Partial<Record<OrderStatus, readonly Role[]>>>>
 > = Object.freeze({
   pending: {
+    // The vendor dashboard's "Accept Order" goes straight to `preparing` —
+    // there is no separate confirm step in the UI, and requiring one made
+    // accepting an order fail with a 409. `confirmed` stays reachable because
+    // orders already in the database use it and drivers can claim it.
+    preparing: ['vendor', 'admin'],
     confirmed: ['vendor', 'admin'],
     cancelled: ['customer', 'vendor', 'admin'],
   },
@@ -124,6 +129,11 @@ export type Order = {
   deliveryVerified: boolean;
   /** Note the customer will pay with, for driver change. Cash orders only. */
   cashAmount: number | null;
+  /** Cash settlement between driver, vendor and platform. */
+  cashGivenToVendor: boolean;
+  cashGivenAmount: number | null;
+  vendorCashConfirmed: boolean;
+  vendorCashDisputed: boolean;
   /** Store-to-customer estimate, used to filter by driver vehicle range. */
   estimatedDistanceKm: number | null;
   /** Frozen platform economics. Never accepted from a client. */
@@ -210,11 +220,21 @@ export const updateStatusSchema = z
 
 export const completeDeliverySchema = z
   .object({
+    /**
+     * Optional only so that orders placed before delivery codes existed can
+     * still be closed — those have no code stored and nothing to type. For
+     * every normal order an absent code is simply a wrong one.
+     */
     code: z
       .string()
       .trim()
-      .regex(/^\d{4,6}$/, 'Enter the delivery code from the customer.'),
+      .regex(/^\d{4,6}$/, 'Enter the delivery code from the customer.')
+      .optional(),
   })
+  .strict();
+
+export const cashReceiptSchema = z
+  .object({ outcome: z.enum(['confirm', 'dispute']) })
   .strict();
 
 export const orderIdParamSchema = z.object({
@@ -324,6 +344,14 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
       typeof data.cashAmount === 'number' && Number.isFinite(data.cashAmount)
         ? data.cashAmount
         : null,
+    cashGivenToVendor: data.cashGivenToVendor === true,
+    cashGivenAmount:
+      typeof data.cashGivenAmount === 'number' &&
+      Number.isFinite(data.cashGivenAmount)
+        ? data.cashGivenAmount
+        : null,
+    vendorCashConfirmed: data.vendorCashConfirmed === true,
+    vendorCashDisputed: data.vendorCashDisputed === true,
     estimatedDistanceKm:
       typeof data.estimatedDistanceKm === 'number' &&
       Number.isFinite(data.estimatedDistanceKm)

@@ -24,6 +24,21 @@ import {
 
 const collection = () => db.collection(Collections.orders);
 
+/**
+ * Statuses at which a driver may claim an order.
+ *
+ * Deliberately wider than `ready`: a driver can claim as soon as the vendor
+ * accepts, so they can start heading to the store while the food is still
+ * being made rather than only finding out once it is sitting done. Claiming
+ * early sets `driverId` and nothing else — the vendor still drives the status.
+ */
+const CLAIMABLE_STATUSES: readonly OrderStatus[] = [
+  'confirmed',
+  'preparing',
+  'ready',
+];
+
+
 /** The complete server-computed document written at order creation. */
 export type NewOrderDocument = {
   customerId: string;
@@ -165,15 +180,24 @@ export async function listForDriver(
 /**
  * The unclaimed queue drivers pick from.
  *
- * Only `ready` orders appear: a driver claiming an order the kitchen has not
- * finished would sit waiting at the store, and the vendor could still cancel
- * it out from under them.
+ * Matches CLAIMABLE_STATUSES rather than `ready` alone, so this list and
+ * `assignDriver` agree on what is claimable — otherwise a driver would be
+ * shown orders they cannot take, or able to take orders they were never
+ * shown.
+ *
+ * The `in` filter combined with the `createdAt` ordering needs the composite
+ * index declared in firebase/firestore.indexes.json. The emulator does not
+ * enforce indexes, so without that file this query would pass every test and
+ * fail only in production.
  */
 export async function listAvailableForDrivers(
   options: ListOptions,
 ): Promise<Page<Order>> {
   return runList(
-    (base) => base.where('driverId', '==', null).where('status', '==', 'ready'),
+    (base) =>
+      base
+        .where('driverId', '==', null)
+        .where('status', 'in', [...CLAIMABLE_STATUSES]),
     { ...options, status: undefined },
   );
 }
@@ -249,21 +273,159 @@ export async function assignDriver(
       throw ApiError.conflict('Another driver has already taken this order.');
     }
 
-    const status = snapshot.get('status');
-    if (status !== 'ready') {
-      throw ApiError.conflict(
-        'This order is not ready for collection yet.',
-      );
+    const status = snapshot.get('status') as OrderStatus;
+    if (!CLAIMABLE_STATUSES.includes(status)) {
+      throw ApiError.conflict('This order is not available to claim.');
     }
+
+    // Food already waiting: claiming it is the collection, so this is one
+    // step rather than a claim the driver must immediately confirm.
+    const collectingNow = status === 'ready';
 
     transaction.update(ref, {
       driverId,
+      claimedAt: FieldValue.serverTimestamp(),
+      ...(collectingNow
+        ? { status: 'picked_up', pickedUpAt: FieldValue.serverTimestamp() }
+        : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
 
   const snapshot = await ref.get();
   return toOrder(snapshot, 'driver');
+}
+
+/**
+ * Give up a claim, returning the order to the available pool.
+ *
+ * Only before collection. Once the food is in the driver's hands, releasing
+ * it would leave an order nobody is carrying and a customer still waiting —
+ * that needs an admin, not a tap.
+ */
+export async function releaseDriver(
+  orderId: string,
+  driverId: string,
+): Promise<Order> {
+  const ref = collection().doc(orderId);
+
+  await db.runTransaction(async (transaction: Transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw ApiError.notFound('No such order.');
+
+    if (snapshot.get('driverId') !== driverId) {
+      // Reported as missing so a driver cannot probe other orders.
+      throw ApiError.notFound('No such order.');
+    }
+
+    const status = snapshot.get('status') as OrderStatus;
+    if (status === 'picked_up' || status === 'delivered') {
+      throw ApiError.conflict(
+        'You already have the food — contact support to hand this over.',
+      );
+    }
+
+    transaction.update(ref, {
+      driverId: null,
+      claimedAt: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  const snapshot = await ref.get();
+  return toOrder(snapshot, 'driver');
+}
+
+/**
+ * Record that the driver handed the vendor their cash for a cash order.
+ *
+ * The amount is computed here from the order, never supplied by the driver:
+ * it is the vendor's take, and a driver who could name it could under-declare
+ * what they owe.
+ */
+export async function recordCashHandover(
+  orderId: string,
+  driverId: string,
+): Promise<Order> {
+  const ref = collection().doc(orderId);
+
+  await db.runTransaction(async (transaction: Transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw ApiError.notFound('No such order.');
+
+    if (snapshot.get('driverId') !== driverId) {
+      throw ApiError.notFound('No such order.');
+    }
+    if (snapshot.get('paymentMethod') !== 'cash') {
+      throw ApiError.unprocessable('This is not a cash order.');
+    }
+    if (snapshot.get('status') !== 'delivered') {
+      throw ApiError.conflict('Deliver the order before settling the cash.');
+    }
+    if (snapshot.get('cashGivenToVendor') === true) {
+      throw ApiError.conflict('This cash has already been marked as handed over.');
+    }
+
+    // The vendor's full pre-commission take; commission is settled between
+    // the vendor and the platform separately.
+    const subtotal = Number(snapshot.get('subtotal') ?? 0);
+
+    transaction.update(ref, {
+      cashGivenToVendor: true,
+      cashGivenToVendorAt: FieldValue.serverTimestamp(),
+      cashGivenAmount: subtotal,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  const snapshot = await ref.get();
+  return toOrder(snapshot, 'driver');
+}
+
+/**
+ * Vendor's response to a driver's cash handover claim.
+ *
+ * Confirming and disputing are the same write with a different flag, so they
+ * share one transaction and one set of preconditions.
+ */
+export async function settleCashReceipt(
+  orderId: string,
+  outcome: 'confirm' | 'dispute',
+): Promise<Order> {
+  const ref = collection().doc(orderId);
+
+  await db.runTransaction(async (transaction: Transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw ApiError.notFound('No such order.');
+
+    if (snapshot.get('cashGivenToVendor') !== true) {
+      throw ApiError.conflict(
+        'The driver has not recorded handing this cash over yet.',
+      );
+    }
+    if (
+      snapshot.get('vendorCashConfirmed') === true ||
+      snapshot.get('vendorCashDisputed') === true
+    ) {
+      throw ApiError.conflict('This cash receipt has already been settled.');
+    }
+
+    transaction.update(ref, {
+      ...(outcome === 'confirm'
+        ? {
+            vendorCashConfirmed: true,
+            vendorCashConfirmedAt: FieldValue.serverTimestamp(),
+          }
+        : {
+            vendorCashDisputed: true,
+            vendorCashDisputedAt: FieldValue.serverTimestamp(),
+          }),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  const snapshot = await ref.get();
+  return toOrder(snapshot, 'vendor');
 }
 
 export type DeliveryResult =
@@ -281,7 +443,7 @@ export type DeliveryResult =
 export async function completeDelivery(
   orderId: string,
   driverId: string,
-  submittedCode: string,
+  submittedCode: string | undefined,
 ): Promise<DeliveryResult> {
   const ref = collection().doc(orderId);
 
@@ -315,6 +477,22 @@ export async function completeDelivery(
       const expected =
         snapshot.get('deliveryCode') ?? snapshot.get('deliveryOTP');
 
+      // Orders placed before delivery codes existed have none stored. The web
+      // app skipped verification for those, and refusing them now would strip
+      // drivers of any way to close a historical delivery. Only a genuinely
+      // codeless order qualifies — a driver cannot remove a code, because
+      // drivers cannot write to orders at all.
+      if (typeof expected !== 'string' || expected.length === 0) {
+        transaction.update(ref, {
+          status: 'delivered',
+          deliveryVerified: false,
+          deliveredAt: FieldValue.serverTimestamp(),
+          actualDeliveryTime: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return { outcome: 'delivered', order: toOrder(snapshot, 'driver') };
+      }
+
       if (!verifyDeliveryCode(submittedCode, expected)) {
         transaction.update(ref, {
           deliveryCodeAttempts: attempts + 1,
@@ -333,6 +511,9 @@ export async function completeDelivery(
         // deliveryOTPVerified, still show the order as complete.
         deliveryOTPVerified: true,
         deliveredAt: FieldValue.serverTimestamp(),
+        // The existing driver and vendor views read actualDeliveryTime, so it
+        // is kept in step rather than leaving them showing a blank time.
+        actualDeliveryTime: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
 

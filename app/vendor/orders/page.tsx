@@ -22,16 +22,16 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   collection,
-  doc,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+// Reads stay on Firestore so the order feed stays live; writes go through the
+// API, which owns the lifecycle rules and the money fields.
+import { settleCashReceipt, updateOrderStatus } from '../../../services/ordersApi';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 import { Bell } from 'lucide-react';
@@ -210,7 +210,9 @@ export default function VendorOrdersPage() {
     );
 
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      // The server re-checks the transition and that this vendor owns the
+      // store, so a stale UI cannot force an invalid move.
+      await updateOrderStatus(orderId, newStatus);
       toast.success(`Order ${orderId} → ${statusConfig[newStatus].label}`);
     } catch (err) {
       // Rollback
@@ -267,10 +269,7 @@ export default function VendorOrdersPage() {
   const handleConfirmCashReceipt = async (orderId: string) => {
     setConfirmingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        vendorCashConfirmed: true,
-        vendorCashConfirmedAt: serverTimestamp(),
-      });
+      await settleCashReceipt(orderId, 'confirm');
       toast.success('Cash receipt confirmed');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to confirm');
@@ -284,10 +283,7 @@ export default function VendorOrdersPage() {
     if (!window.confirm("Dispute this cash receipt? Only do this if the driver actually didn't give you the money.")) return;
     setConfirmingId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        vendorCashDisputed: true,
-        vendorCashDisputedAt: serverTimestamp(),
-      });
+      await settleCashReceipt(orderId, 'dispute');
       toast.success('Receipt disputed — driver has been notified');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to dispute');

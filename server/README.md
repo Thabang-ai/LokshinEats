@@ -270,7 +270,10 @@ client sends.
 | GET    | `/orders/:id`         | party to the order | Read one order             |
 | PATCH  | `/orders/:id/status`  | party to the order | Advance the lifecycle      |
 | POST   | `/orders/:id/accept`  | driver             | Claim an order             |
+| POST   | `/orders/:id/release` | assigned driver    | Return it to the pool      |
 | POST   | `/orders/:id/complete`| assigned driver    | Confirm with delivery code |
+| POST   | `/orders/:id/cash-handover` | assigned driver | Record cash given to vendor |
+| POST   | `/orders/:id/cash-receipt`  | owning vendor   | Confirm or dispute it       |
 
 **The client no longer prices its own order.** `POST /orders` accepts a store
 id, a list of product ids and quantities, an address, and a payment method —
@@ -284,8 +287,10 @@ exactly one bucket.
 `paymentStatus` is always `pending` at creation, card orders included. Only the
 payments module may change it.
 
-**Lifecycle.** `pending -> confirmed -> preparing -> ready -> picked_up ->
-delivered`, with cancellation allowed at defined points. Who may make each
+**Lifecycle.** `pending -> preparing -> ready -> picked_up -> delivered`, with
+cancellation allowed at defined points. The vendor dashboard's "Accept Order"
+goes straight from `pending` to `preparing`; `confirmed` remains reachable
+because orders already in the database use it and drivers can claim it. Who may make each
 transition is a table in `order.model.ts` rather than scattered conditionals,
 so it can be read in one place and is tested exhaustively. `delivered` is
 unreachable through `PATCH /:id/status` by any role — it exists only behind
@@ -391,6 +396,17 @@ is derived from the order, wallet, and reason that caused it, so a retried
 verification or a replayed webhook writes to the same id and changes nothing.
 Refunds are written as new compensating entries, never by editing history.
 
+**Claiming.** A driver may claim at `confirmed`, `preparing` or `ready`, so
+they can head to the store while the food is still being made. Claiming a
+`ready` order counts as collecting it and moves straight to `picked_up`.
+Releasing is allowed only before collection — once the food is in the driver's
+hands, unwinding it needs an admin.
+
+**Cash settlement.** On a cash order the driver records handing the vendor
+their money, and the vendor confirms or disputes it. The amount is computed
+server-side from the order, never sent by the driver, because it is what they
+owe.
+
 All routes are versioned under `/api/v1`. Mobile apps stay installed on old
 versions for months, so a breaking change will ship as `/api/v2` while v1 keeps
 serving.
@@ -400,7 +416,7 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-326 tests — 99 unit, 227 against the emulators (63 of those on the rules).
+346 tests — 99 unit, 247 against the emulators (69 of those on the rules).
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
@@ -476,18 +492,31 @@ the app calls `addDoc` on `orders` any more.
 > the old checkout bundle. Deploy the API first, then the web app built with
 > `NEXT_PUBLIC_API_BASE_URL` pointing at it, and only then the rules.
 
-**Still open — the frozen money fields are not frozen.** A customer can no
-longer *create* an order with invented payouts, but the update branches carry
-no field restriction, so they can still rewrite `total`, `vendorPayout`,
-`driverPayout`, `platformEarnings`, and `paymentStatus` on an order that
-already exists. This closes when the vendor, driver, customer and admin order
-pages move onto the API too — they still write to Firestore directly.
+### Fixed: the money fields really are frozen
 
-**Drivers can read delivery codes.** The assigned driver can read
-`deliveryOTP` off their order, *and* any driver browsing unclaimed orders can
-read it off an order they have no relationship to. Combined with an
-unrestricted update, a driver can set `deliveryOTPVerified: true` and
-`status: 'delivered'` without meeting the customer.
+**Was:** the update rule let the customer, the assigned driver, and the store
+owner each write *any* field on an order — so a customer could rewrite `total`
+and `paymentStatus` after checkout, and a driver could set
+`deliveryOTPVerified` themselves and close a delivery that never happened.
+
+**Now:** the vendor and driver order pages call the API, so those branches are
+gone. The only client update permitted is the customer's four review flags
+(`reviewed`, `ratingGiven`, `driverRated`, `driverRatingGiven`), plus the admin
+console's operational reset. Claiming, releasing, advancing status, confirming
+delivery and settling cash all go through endpoints that check the caller and
+the transition.
+
+**Still open — drivers can read delivery codes.** A driver can no longer write
+to an order, so they cannot mark one delivered directly. But the code is stored
+on the order document, and drivers must be able to read their own and unclaimed
+orders for the live feeds — so they can still *see* the code and then submit it
+to the API without meeting the customer. Rules cannot hide a field.
+
+Closing it means moving the code out of the order document into a collection
+with no client access (the API would read it for verification, and serve it to
+the customer through `GET /orders/:id`). That also needs the customer's order
+page to fetch the code from the API rather than from Firestore. Until then,
+this is the last of the original three holes still open.
 
 **A vendor can take another vendor's product.** The `products` rule checks the
 *incoming* `storeId`, never the existing one, so rewriting `storeId` to a
@@ -498,9 +527,9 @@ store you own moves someone else's menu item into your store.
 evaluating `request.resource.data.storeId` errors and the rule denies
 everyone. Menu deletion from the browser cannot work at all.
 
-All of these close when the remaining order pages move onto the API and the
-rules deny client *updates* to `orders` the way they now deny creation. Until
-then the tests keep the gaps visible and stop them widening.
+The remaining gaps close as the last direct writers move over: the customer's
+review flow and the admin console still write to `orders`, and the delivery
+code still lives on a document drivers can read. The tests keep both visible.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing

@@ -347,7 +347,7 @@ describe('accepting an order', () => {
     expect([DRIVER, OTHER_DRIVER]).toContain(stored?.driverId);
   });
 
-  it('refuses an order the kitchen has not finished', async () => {
+  it('lets a driver claim before the food is ready', async () => {
     const storeId = await seedStore({ ownerId: VENDOR });
     const orderId = await seedOrder({
       customerId: CUSTOMER,
@@ -355,10 +355,39 @@ describe('accepting an order', () => {
       status: 'preparing',
     });
 
-    // A driver who claimed it early would wait at the store, and the vendor
-    // could still cancel it out from under them.
+    // Deliberate: a driver can start heading to the store while the food is
+    // still being made, rather than only finding out once it is sitting done.
+    const accepted = await orderService.acceptOrder(driver, orderId);
+
+    expect(accepted.driverId).toBe(DRIVER);
+    // Claiming early must not move the order along — the vendor owns status.
+    expect(accepted.status).toBe('preparing');
+  });
+
+  it('treats claiming a ready order as collecting it', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      status: 'ready',
+    });
+
+    const accepted = await orderService.acceptOrder(driver, orderId);
+
+    // The food is already waiting, so the claim is the collection.
+    expect(accepted.status).toBe('picked_up');
+  });
+
+  it('refuses to claim an order the vendor has not accepted', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      status: 'pending',
+    });
+
     await expect(orderService.acceptOrder(driver, orderId)).rejects.toThrow(
-      /not ready/i,
+      /not available to claim/i,
     );
   });
 
@@ -505,6 +534,181 @@ describe('confirming delivery', () => {
 
     // And the driver was paid once, not twice.
     expect((await readWallet(DRIVER)).available).toBe(17);
+  });
+});
+
+describe('releasing a claim', () => {
+  it('returns the order to the available pool', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      status: 'preparing',
+      driverId: DRIVER,
+    });
+
+    const released = await orderService.releaseOrder(driver, orderId);
+    expect(released.driverId).toBeNull();
+  });
+
+  it('refuses once the driver has the food', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      status: 'picked_up',
+      driverId: DRIVER,
+    });
+
+    // Releasing here would leave an order nobody is carrying and a customer
+    // still waiting. That needs an admin, not a tap.
+    await expect(orderService.releaseOrder(driver, orderId)).rejects.toThrow(
+      /already have the food/i,
+    );
+  });
+
+  it('refuses a driver the order is not assigned to', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      status: 'preparing',
+      driverId: OTHER_DRIVER,
+    });
+
+    await expect(orderService.releaseOrder(driver, orderId)).rejects.toThrow(
+      /No such order/i,
+    );
+  });
+});
+
+describe('cash settlement between driver and vendor', () => {
+  const vendorActor = actor(VENDOR, 'vendor');
+
+  /** A delivered cash order, ready for the driver to settle. */
+  async function deliveredCashOrder() {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      status: 'delivered',
+      paymentMethod: 'cash',
+      subtotal: 100,
+      deliveryFee: 20,
+    });
+    return { orderId, storeId };
+  }
+
+  it('records the vendor’s take, not an amount the driver chose', async () => {
+    const { orderId } = await deliveredCashOrder();
+
+    const order = await orderService.recordCashHandover(driver, orderId);
+
+    // The subtotal — the vendor's full pre-commission take. A driver who
+    // could name this figure could under-declare what they owe.
+    expect(order.cashGivenToVendor).toBe(true);
+    expect(order.cashGivenAmount).toBe(100);
+  });
+
+  it('refuses before the order is delivered', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      status: 'picked_up',
+      paymentMethod: 'cash',
+    });
+
+    await expect(
+      orderService.recordCashHandover(driver, orderId),
+    ).rejects.toThrow(/deliver the order/i);
+  });
+
+  it('refuses on a card order', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      status: 'delivered',
+      paymentMethod: 'yoco',
+    });
+
+    await expect(
+      orderService.recordCashHandover(driver, orderId),
+    ).rejects.toThrow(/not a cash order/i);
+  });
+
+  it('cannot be recorded twice', async () => {
+    const { orderId } = await deliveredCashOrder();
+    await orderService.recordCashHandover(driver, orderId);
+
+    await expect(
+      orderService.recordCashHandover(driver, orderId),
+    ).rejects.toThrow(/already been marked/i);
+  });
+
+  it('lets the owning vendor confirm receipt', async () => {
+    const { orderId } = await deliveredCashOrder();
+    await orderService.recordCashHandover(driver, orderId);
+
+    const settled = await orderService.settleCashReceipt(
+      vendorActor,
+      orderId,
+      'confirm',
+    );
+
+    expect(settled.vendorCashConfirmed).toBe(true);
+    expect(settled.vendorCashDisputed).toBe(false);
+  });
+
+  it('lets the owning vendor dispute it', async () => {
+    const { orderId } = await deliveredCashOrder();
+    await orderService.recordCashHandover(driver, orderId);
+
+    const settled = await orderService.settleCashReceipt(
+      vendorActor,
+      orderId,
+      'dispute',
+    );
+
+    expect(settled.vendorCashDisputed).toBe(true);
+    expect(settled.vendorCashConfirmed).toBe(false);
+  });
+
+  it('refuses before the driver has claimed a handover', async () => {
+    const { orderId } = await deliveredCashOrder();
+
+    await expect(
+      orderService.settleCashReceipt(vendorActor, orderId, 'confirm'),
+    ).rejects.toThrow(/not recorded handing/i);
+  });
+
+  it('cannot be settled twice', async () => {
+    const { orderId } = await deliveredCashOrder();
+    await orderService.recordCashHandover(driver, orderId);
+    await orderService.settleCashReceipt(vendorActor, orderId, 'confirm');
+
+    await expect(
+      orderService.settleCashReceipt(vendorActor, orderId, 'dispute'),
+    ).rejects.toThrow(/already been settled/i);
+  });
+
+  it('refuses a vendor who does not own the store', async () => {
+    const { orderId } = await deliveredCashOrder();
+    await orderService.recordCashHandover(driver, orderId);
+
+    await seedStore({ ownerId: 'other-vendor-uid' });
+
+    await expect(
+      orderService.settleCashReceipt(
+        actor('other-vendor-uid', 'vendor'),
+        orderId,
+        'confirm',
+      ),
+    ).rejects.toThrow(/No such order/i);
   });
 });
 

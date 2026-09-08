@@ -279,9 +279,12 @@ describe('listing orders', () => {
     expect(response.body.data[0].storeId).toBe(storeId);
   });
 
-  it('shows drivers only unclaimed, ready orders', async () => {
+  it('shows drivers unclaimed orders they may actually claim', async () => {
     await seedOrder({ customerId: 'cust-1', storeId, status: 'ready' });
     await seedOrder({ customerId: 'cust-1', storeId, status: 'preparing' });
+    // Not yet accepted by the vendor, so not claimable.
+    await seedOrder({ customerId: 'cust-1', storeId, status: 'pending' });
+    // Already taken.
     await seedOrder({
       customerId: 'cust-1',
       storeId,
@@ -294,9 +297,14 @@ describe('listing orders', () => {
       .set(...driver.authHeader);
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toHaveLength(1);
-    expect(response.body.data[0].status).toBe('ready');
-    expect(response.body.data[0].driverId).toBeNull();
+    // The ready one and the preparing one — this list and the claim rule
+    // have to agree, or a driver sees orders they cannot take.
+    expect(response.body.data).toHaveLength(2);
+    expect(
+      response.body.data.every(
+        (o: { driverId: string | null }) => o.driverId === null,
+      ),
+    ).toBe(true);
   });
 
   it('keeps a customer out of the all-orders list', async () => {

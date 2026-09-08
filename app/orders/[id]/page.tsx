@@ -277,7 +277,15 @@ export default function OrderTrackingPage({
           ratingGiven: typeof data.ratingGiven === 'number' ? data.ratingGiven : null,
           driverRated: data.driverRated === true,
           driverRatingGiven: typeof data.driverRatingGiven === 'number' ? data.driverRatingGiven : null,
-          deliveryOTP: typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null,
+          // Orders placed through the API store the code as `deliveryCode`;
+          // ones written by the old browser checkout used `deliveryOTP`.
+          // Reading both keeps every order's code visible to its customer.
+          deliveryOTP:
+            typeof data.deliveryCode === 'string'
+              ? data.deliveryCode
+              : typeof data.deliveryOTP === 'string'
+                ? data.deliveryOTP
+                : null,
           deliveryOTPVerified: data.deliveryOTPVerified === true,
           cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
         });

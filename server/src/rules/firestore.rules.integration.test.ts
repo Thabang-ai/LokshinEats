@@ -6,11 +6,11 @@
  * rules entirely — so a rule could be wide open and every other test would
  * still pass.
  *
- * That gap matters here more than it usually would. Checkout has moved onto
- * the API, so orders can no longer be created from a browser at all — but the
- * vendor, driver, customer and admin order pages still write to Firestore
- * directly, so these rules remain the only thing standing between a signed-in
- * customer and the money fields on an order that already exists.
+ * Checkout and the vendor and driver order pages have all moved onto the API,
+ * so a browser can no longer create an order, claim a delivery, advance a
+ * status, or confirm one. What a client may still write directly is the
+ * customer's four review flags and the admin console's operational reset —
+ * and these tests pin exactly that boundary.
  *
  * The suite is in two halves. The first asserts properties that hold. The
  * second, `documented holes`, asserts what the rules currently *allow* and
@@ -510,6 +510,87 @@ describe('orders', () => {
     await assertSucceeds(deleteDoc(doc(db, 'orders', 'order-1')));
   });
 
+  it('stops a customer marking their own order paid', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), { paymentStatus: 'paid' }),
+    );
+  });
+
+  it('stops a customer rewriting the payouts on their own order', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), {
+        total: 1,
+        vendorPayout: 0,
+        driverPayout: 0,
+        platformEarnings: 1,
+      }),
+    );
+  });
+
+  it('stops the assigned driver self-confirming a delivery', async () => {
+    // The whole point of moving the driver page to the API: a driver can no
+    // longer write to an order at all, so they cannot mark one delivered.
+    const db = as(DRIVER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-mine'), {
+        deliveryOTPVerified: true,
+        status: 'delivered',
+      }),
+    );
+  });
+
+  it('stops a driver claiming an order directly', async () => {
+    const db = as(DRIVER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-ready'), { driverId: DRIVER }),
+    );
+  });
+
+  it('stops the store owner advancing an order', async () => {
+    const db = as(VENDOR);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), { status: 'confirmed' }),
+    );
+  });
+
+  it('stops a vendor settling a cash receipt directly', async () => {
+    const db = as(VENDOR);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), { vendorCashConfirmed: true }),
+    );
+  });
+
+  it('lets the customer mark their own order reviewed', async () => {
+    // The one client order write the web app still makes.
+    const db = as(CUSTOMER);
+    await assertSucceeds(
+      updateDoc(doc(db, 'orders', 'order-1'), {
+        reviewed: true,
+        ratingGiven: 5,
+      }),
+    );
+  });
+
+  it('stops a review write smuggling a money field alongside it', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), {
+        reviewed: true,
+        ratingGiven: 5,
+        total: 1,
+      }),
+    );
+  });
+
+  it('stops someone else marking an order reviewed', async () => {
+    const db = as(OTHER_CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'orders', 'order-1'), { reviewed: true }),
+    );
+  });
+
   it('stops an admin rewriting money fields through the reset branch', async () => {
     // isAdminOrderReset() restricts the admin branch to operational keys.
     const db = as(ADMIN);
@@ -550,28 +631,6 @@ describe('documented holes — current rules allow these', () => {
     });
   });
 
-  it('HOLE: a customer can mark their own order paid after the fact', async () => {
-    // The rules comment claims the frozen financial fields "can never be
-    // touched by anyone after checkout". That is true only of the admin
-    // branch; the customer branch has no field restriction at all.
-    const db = as(CUSTOMER);
-    await assertSucceeds(
-      updateDoc(doc(db, 'orders', 'order-1'), { paymentStatus: 'paid' }),
-    );
-  });
-
-  it('HOLE: a customer can rewrite the payouts on their own order', async () => {
-    const db = as(CUSTOMER);
-    await assertSucceeds(
-      updateDoc(doc(db, 'orders', 'order-1'), {
-        total: 1,
-        vendorPayout: 0,
-        driverPayout: 0,
-        platformEarnings: 1,
-      }),
-    );
-  });
-
   it('HOLE: the assigned driver can read the delivery code', async () => {
     // The whole reason delivery confirmation moved server-side.
     const db = as(DRIVER);
@@ -585,18 +644,6 @@ describe('documented holes — current rules allow these', () => {
     const db = as(DRIVER);
     const snapshot = await getDoc(doc(db, 'orders', 'order-ready'));
     expect(snapshot.data()?.deliveryOTP).toBe('482913');
-  });
-
-  it('HOLE: the assigned driver can self-confirm a delivery', async () => {
-    // Combined with the previous two, a driver can mark a delivery complete
-    // without ever meeting the customer.
-    const db = as(DRIVER);
-    await assertSucceeds(
-      updateDoc(doc(db, 'orders', 'order-mine'), {
-        deliveryOTPVerified: true,
-        status: 'delivered',
-      }),
-    );
   });
 
   it('HOLE: a vendor can move another vendor’s product into their own store', async () => {

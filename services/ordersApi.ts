@@ -8,7 +8,7 @@
 // chose. The server reads the real prices, computes the split, and decides
 // whether the order is paid.
 
-import { apiRequest } from './apiClient';
+import { ApiError, apiRequest } from './apiClient';
 
 export type PaymentMethod = 'cash' | 'yoco' | 'ozow';
 
@@ -119,6 +119,117 @@ export async function completeSandboxPayment(
     method: 'POST',
     body: { outcome },
   });
+}
+
+// ---- Vendor and driver operations ----------------------------------------
+//
+// These replace direct Firestore writes from the vendor and driver pages.
+// Reads stay on Firestore, so the live order feeds keep updating in real time;
+// only the writes moved, which is where the security problem was.
+
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'picked_up'
+  | 'delivered'
+  | 'cancelled';
+
+/** Move an order along. The server checks the transition and the caller. */
+export async function updateOrderStatus(
+  orderId: string,
+  status: OrderStatus,
+): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/status`,
+    { method: 'PATCH', body: { status } },
+  );
+  return response.data;
+}
+
+/**
+ * Claim a delivery.
+ *
+ * The server resolves the race: two drivers tapping at once, only one wins,
+ * and the loser is told the order is taken.
+ */
+export async function acceptOrder(orderId: string): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/accept`,
+    { method: 'POST' },
+  );
+  return response.data;
+}
+
+/** Give a claim back to the pool, before collection. */
+export async function releaseOrder(orderId: string): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/release`,
+    { method: 'POST' },
+  );
+  return response.data;
+}
+
+export type DeliveryOutcome =
+  | { ok: true; order: ApiOrder }
+  | { ok: false; message: string; attemptsRemaining?: number };
+
+/**
+ * Confirm a delivery with the customer's code.
+ *
+ * The comparison happens on the server against a code this app is never sent.
+ * A wrong code is an expected outcome rather than an error, so it comes back
+ * as a result the UI can show inline with the attempts left.
+ */
+export async function completeDelivery(
+  orderId: string,
+  code: string,
+): Promise<DeliveryOutcome> {
+  try {
+    const response = await apiRequest<ApiOrder>(
+      `/api/v1/orders/${orderId}/complete`,
+      { method: 'POST', body: { code } },
+    );
+    return { ok: true, order: response.data };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422) {
+      const remaining = error.details?.attemptsRemaining;
+      return {
+        ok: false,
+        message: error.message,
+        ...(remaining !== undefined
+          ? { attemptsRemaining: Number(remaining) }
+          : {}),
+      };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Record handing the vendor their cash on a cash order.
+ *
+ * No amount is sent — the server computes what is owed from the order.
+ */
+export async function recordCashHandover(orderId: string): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/cash-handover`,
+    { method: 'POST' },
+  );
+  return response.data;
+}
+
+/** The vendor's response to that handover. */
+export async function settleCashReceipt(
+  orderId: string,
+  outcome: 'confirm' | 'dispute',
+): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/cash-receipt`,
+    { method: 'POST', body: { outcome } },
+  );
+  return response.data;
 }
 
 /** True when an initiation came back from the sandbox provider. */

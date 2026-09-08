@@ -34,6 +34,9 @@ const validOrder = {
 
 describe('order lifecycle', () => {
   it('lets a vendor walk an order to ready', () => {
+    // The dashboard's "Accept Order" goes pending -> preparing directly; the
+    // confirmed step exists for orders already in that state.
+    expect(canTransition('pending', 'preparing', 'vendor')).toBe(true);
     expect(canTransition('pending', 'confirmed', 'vendor')).toBe(true);
     expect(canTransition('confirmed', 'preparing', 'vendor')).toBe(true);
     expect(canTransition('preparing', 'ready', 'vendor')).toBe(true);
@@ -55,6 +58,7 @@ describe('order lifecycle', () => {
 
   it('does not let a customer confirm or prepare their own order', () => {
     expect(canTransition('pending', 'confirmed', 'customer')).toBe(false);
+    expect(canTransition('pending', 'preparing', 'customer')).toBe(false);
     expect(canTransition('confirmed', 'preparing', 'customer')).toBe(false);
     expect(canTransition('preparing', 'ready', 'customer')).toBe(false);
   });
