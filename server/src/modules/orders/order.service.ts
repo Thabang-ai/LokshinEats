@@ -15,6 +15,7 @@ import { computeOrderEconomics, assertSplitBalances, toRands, toCents } from '..
 import { createDeliveryCode } from '../../lib/otp';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
+import * as paymentService from '../payments/payment.service';
 import * as productRepository from '../products/product.repository';
 import * as storeRepository from '../stores/store.repository';
 import * as userRepository from '../users/user.repository';
@@ -336,8 +337,25 @@ export async function confirmDelivery(
       { orderId, driverId: caller.uid, attemptsRemaining: result.attemptsRemaining },
       'Incorrect delivery code submitted.',
     );
-  } else {
-    log.info({ orderId, driverId: caller.uid }, 'Delivery confirmed.');
+    return result;
+  }
+
+  log.info({ orderId, driverId: caller.uid }, 'Delivery confirmed.');
+
+  // Money moves only now: the driver is paid and the vendor's pending
+  // balance is released, because this is the point at which the handover
+  // actually happened. Settlement is idempotent, so a retry is harmless.
+  //
+  // Deliberately not fatal to the request. The delivery is already recorded
+  // and the customer has their food; a settlement failure is an operational
+  // problem to retry, not a reason to tell the driver their delivery failed.
+  try {
+    await paymentService.settleDelivery(orderId);
+  } catch (error) {
+    log.error(
+      { orderId, driverId: caller.uid, err: error },
+      'Delivery recorded but settlement failed; wallets need reconciliation.',
+    );
   }
 
   return result;

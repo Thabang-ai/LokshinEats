@@ -227,6 +227,83 @@ transaction that re-reads the order first. Two drivers accepting at the same
 moment both see `driverId === null`, but only one transaction commits; the
 other is told the order is taken.
 
+### Payments
+
+| Method | Path                                  | Access   | Purpose            |
+|--------|---------------------------------------|----------|--------------------|
+| POST   | `/payments`                           | customer | Start a charge     |
+| POST   | `/payments/:id/verify`                | customer | Settle if it worked|
+| GET    | `/payments/mine`                      | customer | Own payments       |
+| GET    | `/payments/:id`                       | customer | Read one payment   |
+| GET    | `/payments`                           | admin    | All payments       |
+| POST   | `/payments/:id/refund`                | admin    | Refund and reverse |
+| POST   | `/payments/sandbox/:ref/complete`     | sandbox  | Resolve a test charge |
+
+**An order becomes paid only because the provider said so.** `POST /payments`
+takes an order id and nothing else — the amount comes from the order the
+server priced. `POST /:id/verify` asks the provider, server to server, what
+happened, and compares the amount actually captured against the order total.
+A mismatch is refused and logged rather than settled, so a R1 charge cannot
+close a R500 order.
+
+Verification is idempotent: a client may poll it after returning from a
+redirect, and a duplicate call settles nothing twice.
+
+Providers are adapters behind a two-method interface (`initiate`, `verify`).
+Adding Paystack or PayShap means writing one more adapter and registering it
+in `payment.bootstrap.ts`; nothing above that line changes.
+
+The **sandbox provider** implements the full path without moving real money,
+so the rest of the system could be built before a merchant account exists. It
+is deliberately not the old simulated service: a sandbox charge starts
+`pending` and stays there until something explicitly resolves it, so no code
+written against it can come to depend on payments always succeeding. It also
+refuses to construct when `NODE_ENV=production` unless
+`ALLOW_SANDBOX_PAYMENTS=true`, which means a misconfigured production deploy
+fails at boot rather than quietly accepting fake money.
+
+### Wallets
+
+| Method | Path                        | Access | Purpose            |
+|--------|-----------------------------|--------|--------------------|
+| GET    | `/wallets/me`               | any    | Own balances       |
+| GET    | `/wallets/me/transactions`  | any    | Own ledger         |
+| GET    | `/wallets/:id`              | admin  | Any wallet         |
+| GET    | `/wallets/:id/transactions` | admin  | Any ledger         |
+| POST   | `/wallets/:id/credit`       | admin  | Refund, bonus, fix |
+
+One wallet shape serves all three roles — a vendor's takings, a driver's
+earnings, and a customer's refunds are the same ledger with different entry
+types. There is no endpoint that lets anyone move their own balance.
+
+Two records back a wallet: `wallets/{uid}` holds the running balances, and
+`walletTransactions` is an append-only ledger. **The ledger is the source of
+truth and the balance is a cache of it** — if they disagree, the balance can
+be rebuilt by summing the ledger. Storing only a balance would make a wrong
+number impossible to explain later.
+
+Balances split into `pending` and `available` because money is earned before
+it can be spent. A vendor's share lands in pending when the order is paid for,
+and clears to available only once delivery is confirmed — paying out money
+that might still be refunded is how a platform ends up chasing vendors.
+
+Money moves at two moments:
+
+- **Payment verified** — vendor share to pending, platform commission and
+  delivery share to available.
+- **Delivery confirmed** — driver earnings to available, vendor's pending
+  balance released. Cash orders are settled here too, since that is the moment
+  the money actually changes hands.
+
+The platform's own earnings live in a wallet under a reserved `platform` id
+rather than being inferred as whatever is left over, so a settlement either
+balances or visibly does not.
+
+Every credit is **idempotent by construction**: a ledger entry's document id
+is derived from the order, wallet, and reason that caused it, so a retried
+verification or a replayed webhook writes to the same id and changes nothing.
+Refunds are written as new compensating entries, never by editing history.
+
 All routes are versioned under `/api/v1`. Mobile apps stay installed on old
 versions for months, so a breaking change will ship as `/api/v2` while v1 keeps
 serving.
@@ -235,9 +312,16 @@ serving.
 
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
-and the users, stores, products, and orders modules. 69 tests.
+and the users, stores, products, orders, payments, and wallets modules.
+88 tests.
 
-Not built yet: payments, wallets, notifications, promotions, reports.
+Not built yet: withdrawals, notifications, promotions, reports, reviews,
+driver profiles and location. No live payment provider — sandbox only, by
+design, so nothing blocks on merchant-account approval.
+
+Tests cover pure logic: schemas, the order lifecycle table, audience-scoped
+serialisation, and the money maths. Repository and settlement paths need a
+Firestore emulator to test end to end, which is not wired up yet.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing

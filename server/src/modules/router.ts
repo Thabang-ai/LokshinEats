@@ -8,9 +8,17 @@
 
 import { Router } from 'express';
 import { orderRouter } from './orders/order.routes';
+import { registerPaymentProviders } from './payments/payment.bootstrap';
+import { paymentRouter } from './payments/payment.routes';
 import { productRouter } from './products/product.routes';
 import { storeRouter } from './stores/store.routes';
 import { userRouter } from './users/user.routes';
+import { walletRouter } from './wallets/wallet.routes';
+
+// Registered before any route can be hit, so a provider that must not run in
+// this environment stops the process at import rather than at a customer's
+// first attempt to pay.
+registerPaymentProviders();
 
 export const apiRouter = Router();
 
@@ -27,3 +35,5 @@ apiRouter.use('/users', userRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/payments', paymentRouter);
+apiRouter.use('/wallets', walletRouter);

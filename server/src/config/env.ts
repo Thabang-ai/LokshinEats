@@ -44,6 +44,18 @@ const schema = z.object({
   COMMISSION_RATE: fraction(0.08),
   DRIVER_DELIVERY_SHARE: fraction(0.85),
 
+  /**
+   * Which payment provider handles charges. "sandbox" moves no real money
+   * and refuses to run in production unless ALLOW_SANDBOX_PAYMENTS is set.
+   */
+  PAYMENT_PROVIDER: z.string().trim().min(1).default('sandbox'),
+  ALLOW_SANDBOX_PAYMENTS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  /** Where a redirect-style provider returns the customer afterwards. */
+  PAYMENT_RETURN_URL: z.string().trim().url().optional(),
+
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_SENSITIVE_MAX: z.coerce.number().int().positive().default(20),
