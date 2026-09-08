@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { createStoreSchema, updateStoreSchema, toStore } from './store.model';
 
 const validStore = {
-  name: 'Kasi Kota Corner',
+  name: 'Lokshin Kota Corner',
   cuisine: 'Kota Specialist',
   address: '12 Vilakazi Street',
   city: 'Soweto',

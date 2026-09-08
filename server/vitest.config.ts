@@ -8,7 +8,7 @@ export default defineConfig({
     // on anything missing, so the suite supplies a complete configuration.
     env: {
       NODE_ENV: 'test',
-      FIREBASE_PROJECT_ID: 'kasieats-test',
+      FIREBASE_PROJECT_ID: 'lokshineats-test',
       COMMISSION_RATE: '0.08',
       DRIVER_DELIVERY_SHARE: '0.85',
     },
