@@ -14,10 +14,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest:integration": "node scripts/free-emulator-port.mjs 8080",
-    "test:integration": "firebase emulators:exec --project lokshineats-test --only firestore --config ../firebase.json \"vitest run --config vitest.integration.config.ts\"",
+    "pretest:integration": "node scripts/free-emulator-port.mjs 8080 9099",
+    "test:integration": "firebase emulators:exec --project lokshineats-test --only firestore,auth --config ../firebase.json \"vitest run --config vitest.integration.config.ts\"",
     "test:all": "npm run test && npm run test:integration",
-    "emulator": "firebase emulators:start --project lokshineats-test --only firestore --config ../firebase.json"
+    "emulator": "firebase emulators:start --project lokshineats-test --only firestore,auth --config ../firebase.json"
   },
   "dependencies": {
     "compression": "^1.7.5",
