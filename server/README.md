@@ -107,6 +107,21 @@ One test walks the whole promotion flow: a plain customer registers a store,
 gets `meta.tokenRefreshRequired`, signs in again, and the new token reaches a
 vendor-only route the old one could not.
 
+*Security-rules* tests (`src/rules/`) are the only ones that exercise what a
+**browser** can do. Every other test goes through the API, which uses the
+Admin SDK and bypasses rules entirely — so a rule could be wide open and the
+rest of the suite would still be green. Since the web app has not moved onto
+the API yet, `firebase/firestore.rules` is still the only thing standing
+between a signed-in customer and the money fields on their own order.
+
+They are split in two. One half asserts properties that hold. The other,
+`documented holes`, asserts what the rules currently *allow and should not* —
+those tests pass today and will fail the moment a rule is tightened, which is
+deliberate: the failure is the signal to come back and flip the assertion,
+rather than leaving a stale test that silently passes forever.
+
+See **Known rules gaps** below for what they found.
+
 That split matters. The emulator caught a bug the unit suite could not see:
 `clearPending` was composing two `credit()` calls inside one transaction, and
 Firestore requires every read in a transaction to precede every write — so
@@ -376,7 +391,7 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-249 tests — 88 unit, 161 against the emulators.
+298 tests — 88 unit, 210 against the emulators (49 of those on the rules).
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
@@ -389,10 +404,65 @@ HTTP with real ID tokens, asserting who is turned away as well as who gets
 through.
 
 Gaps worth naming: no test exercises an expired or revoked token (the emulator
-mints only fresh ones), rate limiting is skipped under `NODE_ENV=test` so its
-thresholds are unverified, and `firebase/firestore.rules` has no test at all —
-which matters, because the rules are still what protect the collections the
-web app writes to directly.
+mints only fresh ones), and rate limiting is skipped under `NODE_ENV=test` so
+its thresholds are unverified.
+
+## Known rules gaps
+
+`firebase/firestore.rules` now has tests, and they confirmed the following.
+None of these are reachable through this API, which validates every one of
+them — they are reachable from the **browser**, because the web app still
+writes to Firestore directly. Each has a matching test in `src/rules/`.
+
+**Good news first.** `wallets`, `walletTransactions`, `payments`, and
+`sandboxPayments` appear nowhere in the rules, and `rules_version = '2'`
+denies anything unmatched. No client — not even an admin — can read a wallet
+balance or forge a payment record. That default is doing real work, and there
+are tests pinning it so a future rule cannot open it by accident.
+
+**Critical: any signed-in user can make themselves an admin.** `users` lets a
+user write their own document with no field restriction, and `isAdmin()` reads
+the role straight back out of that document. One write of `{ role: 'admin' }`
+grants admin for every other rule — including deleting any order and reading
+every user profile. The test proves the escalation, not just the write.
+
+The smallest fix that closes it without breaking anything is to keep letting a
+user write their own document but refuse the `admin` value, which the web app
+never needs to set (it only writes `customer`, `driver`, and `vendor`):
+
+```
+match /users/{userId} {
+  allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+  allow write: if request.auth != null && request.auth.uid == userId &&
+    (!('role' in request.resource.data) || request.resource.data.role != 'admin');
+}
+```
+
+**The frozen money fields are not frozen.** The comment above
+`isAdminOrderReset()` claims the financial fields "can never be touched by
+anyone after checkout". That is true only of the admin branch. A customer can
+create an order with payouts they invented and `paymentStatus: 'paid'`, and
+can rewrite `total`, `vendorPayout`, `driverPayout`, and `platformEarnings` on
+their own order afterwards.
+
+**Drivers can read delivery codes.** The assigned driver can read
+`deliveryOTP` off their order, *and* any driver browsing unclaimed orders can
+read it off an order they have no relationship to. Combined with an
+unrestricted update, a driver can set `deliveryOTPVerified: true` and
+`status: 'delivered'` without meeting the customer.
+
+**A vendor can take another vendor's product.** The `products` rule checks the
+*incoming* `storeId`, never the existing one, so rewriting `storeId` to a
+store you own moves someone else's menu item into your store.
+
+**A vendor cannot delete their own product.** Not a hole — the opposite.
+`allow write` covers delete, but on a delete `request.resource` is null, so
+evaluating `request.resource.data.storeId` errors and the rule denies
+everyone. Menu deletion from the browser cannot work at all.
+
+All of these close when the web app moves onto the API and the rules are
+tightened to deny client writes to `orders` outright. Until then the tests at
+least make the gaps visible and stop them widening.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing
