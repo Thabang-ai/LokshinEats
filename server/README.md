@@ -85,6 +85,11 @@ balance always equals the sum of its ledger, that two drivers accepting the
 same order produce exactly one winner, and that concurrent wrong delivery
 codes each burn an attempt instead of racing the counter.
 
+Those tests earn their keep. The emulator caught a bug the unit suite could
+not see: `clearPending` was composing two `credit()` calls inside one
+transaction, and Firestore requires every read in a transaction to precede
+every write — so `settleDelivery` would have failed on every real delivery.
+
 *HTTP route* tests drive the real Express app with **real Firebase ID tokens**
 minted from the Auth emulator — created, given a role claim, then signed in
 over the Identity Toolkit REST API, exactly as a client does. Every request
@@ -121,11 +126,6 @@ deliberate: the failure is the signal to come back and flip the assertion,
 rather than leaving a stale test that silently passes forever.
 
 See **Known rules gaps** below for what they found.
-
-That split matters. The emulator caught a bug the unit suite could not see:
-`clearPending` was composing two `credit()` calls inside one transaction, and
-Firestore requires every read in a transaction to precede every write — so
-`settleDelivery` would have failed on every real delivery.
 
 The suite requires a JRE (the Firestore emulator is a Java process) and
 nothing else; `firebase-tools` is a dev dependency, so a clean checkout can
@@ -391,7 +391,7 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-298 tests — 88 unit, 210 against the emulators (49 of those on the rules).
+311 tests — 88 unit, 223 against the emulators (62 of those on the rules).
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
@@ -414,31 +414,42 @@ None of these are reachable through this API, which validates every one of
 them — they are reachable from the **browser**, because the web app still
 writes to Firestore directly. Each has a matching test in `src/rules/`.
 
+One of them, admin self-escalation, has since been fixed; the rest are open.
+
 **Good news first.** `wallets`, `walletTransactions`, `payments`, and
 `sandboxPayments` appear nowhere in the rules, and `rules_version = '2'`
 denies anything unmatched. No client — not even an admin — can read a wallet
 balance or forge a payment record. That default is doing real work, and there
 are tests pinning it so a future rule cannot open it by accident.
 
-**Critical: any signed-in user can make themselves an admin.** `users` lets a
-user write their own document with no field restriction, and `isAdmin()` reads
-the role straight back out of that document. One write of `{ role: 'admin' }`
-grants admin for every other rule — including deleting any order and reading
-every user profile. The test proves the escalation, not just the write.
+### Fixed: admin self-escalation
 
-The smallest fix that closes it without breaking anything is to keep letting a
-user write their own document but refuse the `admin` value, which the web app
-never needs to set (it only writes `customer`, `driver`, and `vendor`):
+**Was:** `users` let a user write their own document with no field
+restriction, and `isAdmin()` reads the role straight back out of that
+document — so one write of `{ role: 'admin' }` granted admin for every other
+rule, including deleting any order and reading every user profile.
 
-```
-match /users/{userId} {
-  allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-  allow write: if request.auth != null && request.auth.uid == userId &&
-    (!('role' in request.resource.data) || request.resource.data.role != 'admin');
-}
-```
+**Now:** the `users` rule is split into create/update/delete and refuses to
+write the `admin` value. Thirteen tests pin it, covering the smuggled-field
+case, a full overwrite, and delete-then-recreate.
 
-**The frozen money fields are not frozen.** The comment above
+Two behaviours it deliberately preserves, each with its own test:
+
+- Self-assigning `vendor` or `driver` still works. The web app's registration
+  pages write those from the browser, and breaking them would have taken out
+  vendor sign-up.
+- An existing admin can still edit their own profile. The naive fix — a flat
+  `role != 'admin'` check — locks every admin out of their own record, because
+  the document still says `admin` after an unrelated edit. The rule instead
+  allows a write whose role is *unchanged*, or whose new role is not admin.
+
+Granting admin still works the way it always did: through the Firebase
+console or the Admin SDK, both of which bypass rules.
+
+> **Not live until deployed.** Firestore enforces only what is deployed:
+> `firebase deploy --only firestore:rules`
+
+**Still open — the frozen money fields are not frozen.** The comment above
 `isAdminOrderReset()` claims the financial fields "can never be touched by
 anyone after checkout". That is true only of the admin branch. A customer can
 create an order with payouts they invented and `paymentStatus: 'paid'`, and

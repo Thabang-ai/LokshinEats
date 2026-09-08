@@ -232,6 +232,118 @@ describe('users', () => {
     const db = anonymous();
     await assertFails(getDoc(doc(db, 'users', CUSTOMER)));
   });
+
+  it('lets a user edit their own profile', async () => {
+    const db = as(CUSTOMER);
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', CUSTOMER), { displayName: 'Thabo' }),
+    );
+  });
+});
+
+/**
+ * Privilege escalation through the user document.
+ *
+ * `isAdmin()` reads the role straight out of `users/{uid}`, and users may
+ * write their own document — so the role field is the single most dangerous
+ * value in the database. These pin the restriction that stops a self-write
+ * granting admin across every other rule.
+ */
+describe('users cannot make themselves admin', () => {
+  it('refuses an admin role on create', async () => {
+    const db = as('brand-new-user');
+    await assertFails(
+      setDoc(doc(db, 'users', 'brand-new-user'), { role: 'admin' }),
+    );
+  });
+
+  it('refuses an admin role on update', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
+  });
+
+  it('refuses an admin role smuggled in beside other fields', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'users', CUSTOMER), {
+        displayName: 'Thabo',
+        role: 'admin',
+      }),
+    );
+  });
+
+  it('refuses a full overwrite that sets admin', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      setDoc(doc(db, 'users', CUSTOMER), { role: 'admin', displayName: 'T' }),
+    );
+  });
+
+  it('leaves the caller unable to read other profiles afterwards', async () => {
+    // The escalation the old rules permitted, now proven closed end to end.
+    const db = as(CUSTOMER);
+    await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
+    await assertFails(getDoc(doc(db, 'users', OTHER_CUSTOMER)));
+  });
+
+  it('still lets a user become a vendor', async () => {
+    // The web app's store registration writes role: 'vendor' from the browser.
+    // Closing the admin hole must not break that.
+    const db = as(CUSTOMER);
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', CUSTOMER), { role: 'vendor' }),
+    );
+  });
+
+  it('still lets a user become a driver', async () => {
+    const db = as(CUSTOMER);
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', CUSTOMER), { role: 'driver' }),
+    );
+  });
+
+  it('still lets an existing admin edit their own profile', async () => {
+    // The resulting document still says 'admin', so a flat inequality check
+    // would have locked every admin out of their own record.
+    const db = as(ADMIN);
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', ADMIN), { displayName: 'Operator' }),
+    );
+  });
+
+  it('still lets an existing admin keep their role on a full overwrite', async () => {
+    const db = as(ADMIN);
+    await assertSucceeds(
+      setDoc(doc(db, 'users', ADMIN), { role: 'admin', displayName: 'Operator' }),
+    );
+  });
+
+  it('still denies writing to somebody else’s profile', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'users', ADMIN), { displayName: 'Hijacked' }),
+    );
+  });
+
+  it('does not let a user grant admin to somebody else', async () => {
+    const db = as(CUSTOMER);
+    await assertFails(
+      updateDoc(doc(db, 'users', OTHER_CUSTOMER), { role: 'admin' }),
+    );
+  });
+
+  it('still lets a user delete their own profile', async () => {
+    // Behaviour preserved from before the fix; splitting `write` into
+    // create/update/delete could have removed it by accident.
+    const db = as(CUSTOMER);
+    await assertSucceeds(deleteDoc(doc(db, 'users', CUSTOMER)));
+  });
+
+  it('does not let deleting and recreating sneak admin in', async () => {
+    const db = as(CUSTOMER);
+    await assertSucceeds(deleteDoc(doc(db, 'users', CUSTOMER)));
+    await assertFails(setDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
+  });
 });
 
 describe('stores', () => {
@@ -426,18 +538,6 @@ describe('documented holes — current rules allow these', () => {
         price: 45.5,
       });
     });
-  });
-
-  it('HOLE: any signed-in user can grant themselves the admin role', async () => {
-    // `users` allows a user to write their own document with no field
-    // restriction, and isAdmin() reads the role straight back out of it. So
-    // this single write makes the caller an admin for every other rule —
-    // including order deletion and reading every user profile.
-    const db = as(CUSTOMER);
-    await assertSucceeds(setDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
-
-    // Proof the escalation is real, not just a permitted write.
-    await assertSucceeds(getDoc(doc(db, 'users', OTHER_CUSTOMER)));
   });
 
   it('HOLE: a customer can create an order with payouts they invented', async () => {

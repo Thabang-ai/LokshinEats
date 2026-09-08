@@ -23,12 +23,22 @@ service cloud.firestore {
     }
 
     // Platform operator. The `admin` role is set manually on a trusted user's
-    // doc (Firebase console) — there is no admin self-signup. Admins get
-    // full read oversight across the platform, plus the ability to reset or
-    // remove orders for cleanup — but even admin writes are limited to
-    // operational fields (status, driver assignment, cash/OTP flags); the
-    // frozen financial fields (total, payouts, commission) can never be
-    // touched by anyone after checkout.
+    // doc (Firebase console, which bypasses these rules) — there is no admin
+    // self-signup, and the users rules below refuse to write the value.
+    //
+    // Admins get full read oversight across the platform, plus the ability to
+    // reset or remove orders for cleanup. Admin *writes* to an order are
+    // limited to operational fields by isAdminOrderReset().
+    //
+    // WARNING: that restriction applies to the admin branch ONLY. This comment
+    // used to claim the financial fields "can never be touched by anyone after
+    // checkout", which is not true: the customer, assigned driver, and store
+    // owner branches of the orders update rule carry no field restriction at
+    // all, so a customer can rewrite total, vendorPayout, driverPayout and
+    // paymentStatus on their own order. See the failing-by-design tests in
+    // server/src/rules/, and the "Known rules gaps" section of server/README.md.
+    // This closes when the web checkout moves onto POST /api/v1/orders and
+    // client writes to orders are denied outright.
     function isAdmin() {
       return request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
@@ -49,11 +59,42 @@ service cloud.firestore {
         ]);
     }
 
+    // The role a write would leave on a user document, and the one already
+    // there. Defaulted so a document without a role field does not error.
+    function incomingRole() {
+      return request.resource.data.get('role', '');
+    }
+    function existingRole() {
+      return resource.data.get('role', '');
+    }
+
     // Users collection - users read/write their own data; admins may read any
     // user (for the operator console). Writes remain owner-only.
+    //
+    // Nobody may write themselves the 'admin' role. isAdmin() reads the role
+    // straight back out of this document, so without that restriction a single
+    // self-write granted admin across every rule below — including deleting
+    // any order and reading every user profile.
+    //
+    // Split into create/update/delete rather than one `write`, because the
+    // update case has to allow an existing admin to edit their own profile:
+    // the resulting document still says 'admin', so a flat inequality check
+    // would lock every admin out of their own record.
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow write: if request.auth != null && request.auth.uid == userId;
+
+      allow create: if request.auth != null && request.auth.uid == userId &&
+        incomingRole() != 'admin';
+
+      // Either the role is unchanged (so an admin can edit their name), or the
+      // new role is not admin (so vendor and driver self-assignment, which the
+      // web app's registration pages rely on, keeps working).
+      allow update: if request.auth != null && request.auth.uid == userId && (
+        incomingRole() == existingRole() ||
+        incomingRole() != 'admin'
+      );
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // Stores collection
