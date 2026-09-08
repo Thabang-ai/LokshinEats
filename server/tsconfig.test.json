@@ -1,0 +1,15 @@
+{
+  // Type-checks the test suite and its helpers, which the build config
+  // deliberately excludes. Vitest transpiles with esbuild and does not check
+  // types, so without this a broken test helper would only surface at runtime.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The build config roots at src/, but the vitest configs live beside
+    // package.json. Nothing is emitted here, so widening the root is safe.
+    "rootDir": ".",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "vitest.config.ts", "vitest.integration.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

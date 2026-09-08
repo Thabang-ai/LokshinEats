@@ -60,11 +60,50 @@ JSON), then `GOOGLE_APPLICATION_CREDENTIALS` (path to a key file), then
 Application Default Credentials. On Cloud Run there is nothing to configure.
 
 ```bash
-npm run typecheck   # tsc --noEmit
-npm test            # vitest
-npm run build       # emit dist/
-npm start           # run the build
+npm run typecheck        # source and tests
+npm test                 # unit tests — fast, no emulator needed
+npm run test:integration  # against the Firestore emulator
+npm run test:all         # both
+npm run build            # emit dist/
+npm start                # run the build
 ```
+
+## Testing
+
+Two suites, split by what they need.
+
+**Unit tests** (`npm test`) cover pure logic — schemas, the order lifecycle
+table, audience-scoped serialisation, money arithmetic. They need nothing but
+Node and run in a few seconds.
+
+**Integration tests** (`npm run test:integration`) run against the Firestore
+emulator and cover what only exists once transactions and document ids are
+real: that a replayed settlement does not pay a vendor twice, that a balance
+always equals the sum of its ledger, that two drivers accepting the same order
+produce exactly one winner, and that concurrent wrong delivery codes each burn
+an attempt instead of racing the counter.
+
+That split matters. The emulator caught a bug the unit suite could not see:
+`clearPending` was composing two `credit()` calls inside one transaction, and
+Firestore requires every read in a transaction to precede every write — so
+`settleDelivery` would have failed on every real delivery.
+
+The suite requires a JRE (the emulator is a Java process) and nothing else;
+`firebase-tools` is a dev dependency, so a clean checkout can run it.
+`npm run test:integration` starts the emulator, runs the tests, and shuts it
+down. `npm run emulator` starts one to keep around.
+
+Integration tests refuse to run unless `FIRESTORE_EMULATOR_HOST` is set, so
+the helper that wipes the database between tests can never point at a real
+project. When the emulator is in use the Admin SDK is initialised without
+credentials at all, which means no contributor or CI job needs a
+service-account key to run the suite.
+
+On Windows the emulator's JVM often survives the shutdown signal and leaves
+port 8080 held, which made every second run fail with "port taken". A pretest
+step clears it — but only after reading the process's command line and
+confirming it really is a Firestore emulator; anything else holding the port
+is reported and left alone.
 
 ## Authentication
 
@@ -313,15 +352,17 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-88 tests.
+146 tests — 88 unit, 58 against the emulator.
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
 design, so nothing blocks on merchant-account approval.
 
-Tests cover pure logic: schemas, the order lifecycle table, audience-scoped
-serialisation, and the money maths. Repository and settlement paths need a
-Firestore emulator to test end to end, which is not wired up yet.
+Settlement is covered end to end against a real database: pricing, payment
+verification, wallet credits and their idempotency, delivery confirmation,
+refunds, and the two concurrency cases. Routes themselves are covered only at
+the auth boundary; there is no HTTP-level test that signs a real Firebase
+token, because that needs the Auth emulator too.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing

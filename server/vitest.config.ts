@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Integration tests need a running Firestore emulator and have their own
+    // config; without this exclusion the pattern above would pick them up and
+    // the unit suite would fail on a machine with no emulator.
+    exclude: ['**/node_modules/**', 'src/**/*.integration.test.ts'],
     // config/env.ts validates process.env at import time and refuses to boot
     // on anything missing, so the suite supplies a complete configuration.
     env: {

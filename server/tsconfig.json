@@ -20,5 +20,7 @@
     "removeComments": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  // Tests and their helpers are type-checked by tsconfig.test.json, but must
+  // not end up in the shipped build.
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/test"]
 }

@@ -26,6 +26,14 @@ import { moduleLogger } from './logger';
 
 const log = moduleLogger('firebase');
 
+/**
+ * True when the Admin SDK should talk to a local emulator.
+ *
+ * `firebase emulators:exec` sets this, and the SDK honours it on its own; we
+ * only read it to decide about credentials.
+ */
+export const isUsingEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
 function buildCredential(): AppOptions['credential'] {
   if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
@@ -58,10 +66,25 @@ function initialise(): App {
   const existing = getApps();
   if (existing.length > 0 && existing[0]) return existing[0];
 
-  return initializeApp({
-    credential: buildCredential(),
-    projectId: env.FIREBASE_PROJECT_ID,
-  });
+  const options: AppOptions = { projectId: env.FIREBASE_PROJECT_ID };
+
+  if (isUsingEmulator) {
+    // The emulator authenticates nothing, and requiring real credentials to
+    // run the suite would mean every contributor and CI job needs a
+    // service-account key just to exercise local logic.
+    //
+    // The key is omitted rather than set to undefined: initializeApp
+    // validates the property when it is present at all, so an explicit
+    // `credential: undefined` is rejected.
+    log.info(
+      { host: process.env.FIRESTORE_EMULATOR_HOST },
+      'Connecting to the Firestore emulator; credentials are not used.',
+    );
+  } else {
+    options.credential = buildCredential();
+  }
+
+  return initializeApp(options);
 }
 
 export const firebaseApp: App = initialise();

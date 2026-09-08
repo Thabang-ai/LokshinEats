@@ -16,6 +16,7 @@
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { Collections, db } from '../../config/firebase';
+import { moduleLogger } from '../../config/logger';
 import { toCents, toRands } from '../../lib/money';
 import { buildPage, type Page } from '../../lib/pagination';
 import {
@@ -26,6 +27,8 @@ import {
   type LedgerEntryType,
   type Wallet,
 } from './wallet.model';
+
+const log = moduleLogger('wallets:repository');
 
 const wallets = () => db.collection(Collections.wallets);
 const ledger = () => db.collection(Collections.walletTransactions);
@@ -76,18 +79,19 @@ export type CreditResult = {
 /**
  * Move money into or out of a wallet, atomically with its ledger entry.
  *
- * Runs inside `transaction` when one is supplied, so a caller settling
- * several wallets at once gets all-or-nothing behaviour across them.
+ * Deliberately owns its own transaction rather than accepting one. Firestore
+ * requires every read in a transaction to happen before any write, and this
+ * function reads. Composing two of these inside one caller-supplied
+ * transaction therefore fails at runtime — which is exactly how the original
+ * `clearPending` was written, and why it now does its own reads up front
+ * instead of calling this twice.
  */
-export async function credit(
-  input: CreditInput,
-  transaction?: Transaction,
-): Promise<CreditResult> {
+export async function credit(input: CreditInput): Promise<CreditResult> {
   const entryId = ledgerId(input);
   const entryRef = ledger().doc(entryId);
   const walletRef = wallets().doc(input.walletId);
 
-  const apply = async (tx: Transaction): Promise<CreditResult> => {
+  return db.runTransaction(async (tx: Transaction): Promise<CreditResult> => {
     // Firestore requires every read in a transaction to happen before any
     // write, so both reads come first.
     const [existing, walletSnapshot] = await Promise.all([
@@ -144,9 +148,7 @@ export async function credit(
     });
 
     return { applied: true, entryId };
-  };
-
-  return transaction ? apply(transaction) : db.runTransaction(apply);
+  });
 }
 
 /**
@@ -161,36 +163,106 @@ export async function clearPending(input: {
   description: string;
   orderId?: string | null;
 }): Promise<CreditResult> {
-  return db.runTransaction(async (tx) => {
-    const out = await credit(
-      {
-        walletId: input.walletId,
-        type: 'adjustment',
-        amount: -Math.abs(input.amount),
-        balance: 'pending',
-        description: input.description,
-        orderId: input.orderId ?? null,
-        suffix: 'clear_out',
-      },
-      tx,
-    );
+  const base = {
+    walletId: input.walletId,
+    type: 'adjustment' as const,
+    orderId: input.orderId ?? null,
+  };
 
-    // If the debit was already applied, the matching credit was too — the
-    // pair is written in one transaction and cannot half-exist.
-    if (!out.applied) return out;
+  const outRef = ledger().doc(ledgerId({ ...base, suffix: 'clear_out' }));
+  const inRef = ledger().doc(ledgerId({ ...base, suffix: 'clear_in' }));
+  const walletRef = wallets().doc(input.walletId);
 
-    return credit(
-      {
-        walletId: input.walletId,
-        type: 'adjustment',
-        amount: Math.abs(input.amount),
-        balance: 'available',
-        description: input.description,
-        orderId: input.orderId ?? null,
-        suffix: 'clear_in',
-      },
-      tx,
-    );
+  return db.runTransaction(async (tx: Transaction): Promise<CreditResult> => {
+    // Every read first — Firestore rejects a transaction that reads after it
+    // has written, which is why this cannot be two `credit` calls.
+    const [outSnapshot, inSnapshot, walletSnapshot] = await Promise.all([
+      tx.get(outRef),
+      tx.get(inRef),
+      tx.get(walletRef),
+    ]);
+
+    // The pair is written in one transaction and cannot half-exist, so
+    // either entry being present means the move already happened.
+    if (outSnapshot.exists || inSnapshot.exists) {
+      return { applied: false, entryId: inRef.id };
+    }
+
+    const amountCents = Math.round(Math.abs(input.amount) * 100);
+
+    const pendingCents = walletSnapshot.exists
+      ? toCents(
+          Number(walletSnapshot.get('pendingBalance') ?? 0),
+          `${input.walletId} pendingBalance`,
+        )
+      : 0;
+    const availableCents = walletSnapshot.exists
+      ? toCents(
+          Number(walletSnapshot.get('availableBalance') ?? 0),
+          `${input.walletId} availableBalance`,
+        )
+      : 0;
+
+    const nextPending = toRands(pendingCents - amountCents);
+    const nextAvailable = toRands(availableCents + amountCents);
+
+    if (nextPending < 0) {
+      // Releasing more than was ever held means an earlier settlement did not
+      // run. The move still happens so the recipient is not short-paid, but
+      // the negative balance is left visible rather than clamped to zero,
+      // because a silently corrected balance is one nobody investigates.
+      log.error(
+        {
+          walletId: input.walletId,
+          orderId: input.orderId,
+          requested: input.amount,
+          pendingBefore: toRands(pendingCents),
+        },
+        'Clearing more than the pending balance held; wallet needs review.',
+      );
+    }
+
+    if (walletSnapshot.exists) {
+      tx.update(walletRef, {
+        pendingBalance: nextPending,
+        availableBalance: nextAvailable,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      tx.set(walletRef, {
+        ownerId: input.walletId,
+        pendingBalance: nextPending,
+        availableBalance: nextAvailable,
+        currency: 'ZAR',
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    const shared = {
+      walletId: input.walletId,
+      type: 'adjustment',
+      orderId: input.orderId ?? null,
+      paymentId: null,
+      description: input.description,
+      createdAt: FieldValue.serverTimestamp(),
+    };
+
+    tx.set(outRef, {
+      ...shared,
+      amount: toRands(-amountCents),
+      balance: 'pending',
+      balanceAfter: nextPending,
+    });
+
+    tx.set(inRef, {
+      ...shared,
+      amount: toRands(amountCents),
+      balance: 'available',
+      balanceAfter: nextAvailable,
+    });
+
+    return { applied: true, entryId: inRef.id };
   });
 }
 
