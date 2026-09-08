@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { orderRouter } from './orders/order.routes';
 import { productRouter } from './products/product.routes';
 import { storeRouter } from './stores/store.routes';
 import { userRouter } from './users/user.routes';
@@ -25,3 +26,4 @@ apiRouter.get('/health', (_req, res) => {
 apiRouter.use('/users', userRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/products', productRouter);
+apiRouter.use('/orders', orderRouter);

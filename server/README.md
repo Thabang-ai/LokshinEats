@@ -170,6 +170,63 @@ The product document is the authority on price. Once order pricing lands, an
 order's cost is computed from these records rather than from anything the
 client sends.
 
+### Orders
+
+| Method | Path                  | Access             | Purpose                    |
+|--------|-----------------------|--------------------|----------------------------|
+| POST   | `/orders`             | customer           | Place an order             |
+| GET    | `/orders/mine`        | customer           | Own order history          |
+| GET    | `/orders/store`       | vendor             | Orders for own store       |
+| GET    | `/orders/assigned`    | driver             | Own deliveries             |
+| GET    | `/orders/available`   | driver             | Unclaimed queue            |
+| GET    | `/orders`             | admin              | Every order                |
+| GET    | `/orders/:id`         | party to the order | Read one order             |
+| PATCH  | `/orders/:id/status`  | party to the order | Advance the lifecycle      |
+| POST   | `/orders/:id/accept`  | driver             | Claim an order             |
+| POST   | `/orders/:id/complete`| assigned driver    | Confirm with delivery code |
+
+**The client no longer prices its own order.** `POST /orders` accepts a store
+id, a list of product ids and quantities, an address, and a payment method —
+nothing else. The schema is strict, so sending `total`, `subtotal`,
+`vendorPayout`, `paymentStatus`, or `deliveryCode` is a validation error rather
+than a silently ignored field. The server reads prices from the product
+records, takes the delivery fee from the store, enforces the store's minimum,
+computes the split, and asserts that every cent the customer pays lands in
+exactly one bucket.
+
+`paymentStatus` is always `pending` at creation, card orders included. Only the
+payments module may change it.
+
+**Lifecycle.** `pending -> confirmed -> preparing -> ready -> picked_up ->
+delivered`, with cancellation allowed at defined points. Who may make each
+transition is a table in `order.model.ts` rather than scattered conditionals,
+so it can be read in one place and is tested exhaustively. `delivered` is
+unreachable through `PATCH /:id/status` by any role — it exists only behind
+the delivery-code endpoint.
+
+Access is by relationship, not role: the customer who placed it, the vendor
+who owns the store, the assigned driver, or an admin. Everyone else gets 404
+rather than 403, so order ids cannot be probed.
+
+**Delivery codes.** Generated with a CSPRNG and returned only to the order's
+own customer (and admins) — driver and vendor responses omit the field
+entirely, including the legacy `deliveryOTP` key on older documents. The
+driver submits a code they were never sent; the server compares it in constant
+time inside a transaction that also increments a per-order attempt counter, so
+parallel guesses cannot race past the limit of 5. A wrong code returns 422 with
+`details.attemptsRemaining`.
+
+The code is stored in plaintext rather than hashed, because the customer has
+to re-read it at the door long after ordering, which a one-way hash cannot
+serve. At-rest protection therefore rests on the collection being
+Admin-SDK-only. The realistic attacker is the assigned driver, not someone who
+has already breached the database.
+
+**Concurrency.** Accepting an order and every status change run in a Firestore
+transaction that re-reads the order first. Two drivers accepting at the same
+moment both see `driverId === null`, but only one transaction commits; the
+other is told the order is taken.
+
 All routes are versioned under `/api/v1`. Mobile apps stay installed on old
 versions for months, so a breaking change will ship as `/api/v2` while v1 keeps
 serving.
@@ -177,9 +234,20 @@ serving.
 ## Status
 
 Built and tested: configuration, logging, Firebase Admin, error contract,
-authentication, RBAC, validation, rate limiting, money maths, delivery OTP,
-and the users, stores, and products modules.
+authentication, RBAC, validation, rate limiting, money maths, delivery codes,
+and the users, stores, products, and orders modules. 69 tests.
 
-Not built yet: orders, payments, wallets, notifications, promotions, reports.
-Until orders and payments land here, the web client's direct-to-Firestore
-checkout remains the live path, with the three holes above still open.
+Not built yet: payments, wallets, notifications, promotions, reports.
+
+**The three holes are closed on this side but not yet live.** The web app still
+checks out directly against Firestore, so both paths currently exist. Closing
+them for real needs two more things:
+
+1. The web checkout moved onto `POST /api/v1/orders` and
+   `POST /api/v1/payments`.
+2. `firebase/firestore.rules` tightened in the same change to deny client
+   writes to `orders`, `payments`, `wallets`, and `walletTransactions`, and to
+   deny client reads of the delivery code. The Admin SDK bypasses rules, so
+   this API keeps working when they do.
+
+Until both land, the old exploitable path stays open alongside the new one.

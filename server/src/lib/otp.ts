@@ -1,93 +1,75 @@
 /**
- * Delivery OTP generation and verification.
+ * Delivery code generation and verification.
  *
  * The customer reads a short code to the driver on handover, and the driver
- * submits it to close the order. Three properties matter:
+ * submits it to close the order.
  *
- *   1. The code is unguessable. The web app generated it with `Math.random`,
- *      which is seeded predictably and is not a CSPRNG. This uses
- *      `crypto.randomInt`, which draws from the OS entropy pool and rejects
- *      biased samples rather than taking a modulo.
- *   2. The driver cannot read it. Only a salted scrypt hash is persisted, and
- *      order serialisers strip the hash from every response. Previously the
- *      plaintext sat on the order document the assigned driver could read, so
- *      a driver could confirm a delivery that never happened.
- *   3. It cannot be brute-forced. Verification is server-side, rate-limited by
- *      an attempt counter on the order, and compares in constant time.
+ * The hole this replaces: the web app generated the code with `Math.random`,
+ * stored it on the order document that the assigned driver can read, and
+ * compared it in the driver's own browser — so a driver could read the code
+ * straight out of Firestore and confirm a delivery that never happened. The
+ * source even documented this as a known limitation.
+ *
+ * Three properties fix that:
+ *
+ *   1. The code is unguessable. `crypto.randomInt` draws from the OS entropy
+ *      pool and rejects biased samples rather than taking a modulo.
+ *   2. The driver never receives it. `toOrder` serialises orders per audience
+ *      and the code is present only for the order's own customer (and admins);
+ *      driver and vendor responses omit the field entirely.
+ *   3. It cannot be brute-forced. Verification happens here, on the server,
+ *      compared in constant time, with a per-order attempt counter.
+ *
+ * The code is stored in plaintext rather than hashed because the customer has
+ * to be able to re-read it: they place the order, and forty minutes later
+ * they open the app to read the code to the driver at the door. A one-way
+ * hash cannot serve that. At-rest protection therefore rests on Firestore
+ * access control — the collection is Admin-SDK-only — rather than on hashing.
+ * That is a deliberate trade: the realistic attacker here is the assigned
+ * driver, not someone who has already breached the database.
  */
 
-import { randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomInt, timingSafeEqual } from 'node:crypto';
 
 /** Digits in a delivery code. Six keeps a blind guess at 1-in-a-million. */
-const OTP_LENGTH = 6;
-
-/** scrypt output length in bytes. */
-const KEY_LENGTH = 32;
-
-/** Salt length in bytes. */
-const SALT_BYTES = 16;
+export const OTP_LENGTH = 6;
 
 /** Wrong codes allowed before the order locks and needs support to clear. */
 export const MAX_OTP_ATTEMPTS = 5;
 
-export type OtpSecret = {
-  /** Plaintext — returned to the customer once, never persisted. */
-  code: string;
-  /** Persisted on the order; safe to store, useless to an attacker. */
-  hash: string;
-  /** Persisted alongside the hash. */
-  salt: string;
-};
-
-/** Random numeric string of OTP_LENGTH digits, uniformly distributed. */
-function generateCode(): string {
+/**
+ * Generate a delivery code.
+ *
+ * Uniformly distributed: `randomInt` is rejection-sampled, so every digit is
+ * equally likely and the result is not predictable from previous codes.
+ */
+export function createDeliveryCode(): string {
   let code = '';
   for (let i = 0; i < OTP_LENGTH; i += 1) {
-    // randomInt is rejection-sampled, so every digit is equally likely.
     code += String(randomInt(0, 10));
   }
   return code;
 }
 
-function hashCode(code: string, salt: string): Buffer {
-  return scryptSync(code, salt, KEY_LENGTH);
-}
-
-/** Mint a fresh delivery code plus the material to verify it later. */
-export function createDeliveryOtp(): OtpSecret {
-  const code = generateCode();
-  // 16 random bytes. randomInt cannot be used for this: Node caps its range
-  // at 2^48 - 1, and a salt should not be bounded by that anyway.
-  const salt = randomBytes(SALT_BYTES).toString('hex');
-  return {
-    code,
-    salt,
-    hash: hashCode(code, salt).toString('hex'),
-  };
-}
-
 /**
- * Constant-time check of a submitted code.
+ * Constant-time comparison of a submitted code against the expected one.
  *
- * Returns false for malformed input rather than throwing, so a caller cannot
- * distinguish "wrong shape" from "wrong code" by the error they get back.
+ * Returns false for anything malformed rather than throwing, so a caller
+ * cannot distinguish "wrong shape" from "wrong code" by the error they get.
+ * The comparison itself does not short-circuit on the first differing digit,
+ * so response timing reveals nothing about how much of the code was right.
  */
-export function verifyDeliveryOtp(
-  submitted: string,
-  hash: string,
-  salt: string,
+export function verifyDeliveryCode(
+  submitted: unknown,
+  expected: unknown,
 ): boolean {
-  if (typeof submitted !== 'string' || !/^\d+$/.test(submitted)) return false;
-  if (typeof hash !== 'string' || typeof salt !== 'string') return false;
-
-  let expected: Buffer;
-  try {
-    expected = Buffer.from(hash, 'hex');
-  } catch {
+  if (typeof submitted !== 'string' || typeof expected !== 'string') {
     return false;
   }
-  if (expected.length !== KEY_LENGTH) return false;
+  if (expected.length === 0) return false;
+  // Length inequality is safe to short-circuit: the length of a delivery code
+  // is a fixed, public constant and leaks nothing about its value.
+  if (submitted.length !== expected.length) return false;
 
-  const actual = hashCode(submitted, salt);
-  return timingSafeEqual(expected, actual);
+  return timingSafeEqual(Buffer.from(submitted), Buffer.from(expected));
 }
