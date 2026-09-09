@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/async_states.dart';
+import '../../auth/pages/account_page.dart';
+import '../../auth/providers/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
 import '../widgets/store_card.dart';
@@ -71,31 +73,56 @@ class StoresPage extends ConsumerWidget {
   }
 }
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   const _Header();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final signedIn = ref.watch(isSignedInProvider);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'LokshinEats',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: theme.colorScheme.primary,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'LokshinEats',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Township food. Delivered.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            'Township food. Delivered.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          // Signed out shows an outline; signed in shows a filled icon, so
+          // account state is legible without opening the page.
+          IconButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AccountPage()),
             ),
+            icon: Icon(
+              signedIn
+                  ? Icons.account_circle_rounded
+                  : Icons.account_circle_outlined,
+              size: 30,
+              color: signedIn
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+            tooltip: signedIn ? 'Your account' : 'Sign in',
           ),
         ],
       ),

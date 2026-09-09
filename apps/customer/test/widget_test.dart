@@ -11,8 +11,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:firebase_auth/firebase_auth.dart' show User;
+
 import 'package:lokshineats_customer/core/network/api_exception.dart';
 import 'package:lokshineats_customer/core/theme/app_theme.dart';
+import 'package:lokshineats_customer/features/auth/providers/auth_providers.dart';
 import 'package:lokshineats_customer/features/stores/models/product.dart';
 import 'package:lokshineats_customer/features/stores/models/store.dart';
 import 'package:lokshineats_customer/features/stores/pages/stores_page.dart';
@@ -77,7 +80,13 @@ class FakeStoreRepository implements StoreRepository {
 
 Widget wrap(StoreRepository repository) {
   return ProviderScope(
-    overrides: [storeRepositoryProvider.overrideWithValue(repository)],
+    overrides: [
+      storeRepositoryProvider.overrideWithValue(repository),
+      // The browse screen shows account state, which would otherwise reach
+      // for FirebaseAuth.instance — uninitialised in a test. Signed out is
+      // the state these tests are about anyway.
+      firebaseUserProvider.overrideWith((ref) => Stream<User?>.value(null)),
+    ],
     child: MaterialApp(theme: AppTheme.light, home: const StoresPage()),
   );
 }

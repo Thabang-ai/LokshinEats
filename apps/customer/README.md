@@ -74,10 +74,15 @@ failures into `ApiException` with the API's stable error `code`. Messages come
 from the server, which writes them for customers, so the app shows them rather
 than inventing vaguer wording.
 
-Authentication is pluggable and currently unused: store and menu browsing are
-public endpoints, so the app works signed-out today. When Firebase Auth is
-wired up, `ApiClient.tokenProvider` starts returning an ID token and every
-authenticated call picks it up without that file changing.
+Authentication uses Firebase Auth: `ApiClient.tokenProvider` returns the
+current ID token, refreshed automatically, and the API verifies it with the
+Admin SDK. There is no second session to keep in step.
+
+Browsing stays public, so the app is usable signed-out; an account is needed
+to order. Two facts are tracked separately, because they can disagree: whether
+there is a Firebase session, and whether the API has a profile for it. A
+sign-up interrupted between the two leaves an account with no profile, which
+the account screen offers to finish rather than treating as an error.
 
 Nothing the app sends ever includes a price. Ordering will carry product ids
 and quantities, and the server prices it from its own records — so a stale
@@ -97,13 +102,43 @@ product, with the brand colour pinned so the seed algorithm cannot drift it.
 Amounts use the `en_ZA` locale, so decimals render the South African way —
 `R89,99`. Whole amounts drop the decimals entirely (`R20 delivery`).
 
+## Running against the emulators
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://localhost:4000 \
+  --dart-define=USE_FIREBASE_EMULATORS=true
+```
+
+The API must be pointed at the same emulators, or the tokens minted here will
+not verify against the live project it checks them with. Firebase shows a
+banner in the app when the emulator is in use.
+
+`flutterfire configure` reused the Android, iOS and web apps already
+registered in the project — it created nothing new. It wrote
+`android/app/google-services.json` but no iOS plist, since it only emits that
+on macOS; iOS reads its configuration from `lib/firebase_options.dart`, which
+does carry the iOS app id. Neither file is a secret: both ship inside every
+build, exactly like the web config the Next.js app already commits.
+
+Restarting the Auth emulator invalidates any session the app is holding, and
+the API then rejects its token as invalid — clear the browser's site data (or
+reinstall the app) rather than hunting for a bug.
+
 ## What works
 
-Browsing kitchens and reading a menu, against the real API: search, an
-open-now filter, pull to refresh, per-category menu grouping, and loading,
-error and empty states on every screen. Six widget tests cover the wiring with
-a fake repository.
+Browsing kitchens and reading a menu against the real API: search, an open-now
+filter, pull to refresh, per-category menu grouping, and loading, error and
+empty states on every screen.
 
-Not built yet: authentication, cart, checkout, payment, order tracking,
-wallet, notifications, reviews. The "add to cart" button says so rather than
-pretending to work.
+Accounts: sign up, sign in, password reset, sign out, and the profile the API
+authorises against. `role` is never sent — the API assigns it, and rejects any
+attempt to choose one.
+
+Nineteen tests cover the wiring with a fake repository, plus the form
+validators and the error mapping, since a validator that rejects a valid SA
+mobile number or a banner that leaks `wrong-password` at a customer are both
+silent until they happen to someone.
+
+Not built yet: cart, checkout, payment, order tracking, wallet, notifications,
+reviews. The "add to cart" button says so rather than pretending to work.

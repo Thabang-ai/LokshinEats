@@ -8,20 +8,10 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client.dart';
+import '../../../core/providers.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 import '../repositories/store_repository.dart';
-
-/// The HTTP client, kept alive for the app's lifetime.
-///
-/// Constructed once so connections are reused; a client per request would
-/// mean a new TCP and TLS handshake on every screen.
-final apiClientProvider = Provider<ApiClient>((ref) {
-  final client = ApiClient();
-  ref.onDispose(client.close);
-  return client;
-});
 
 final storeRepositoryProvider = Provider<StoreRepository>((ref) {
   return StoreRepository(ref.watch(apiClientProvider));

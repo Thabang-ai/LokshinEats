@@ -26,6 +26,26 @@ class AppConfig {
   /// True when the app is compiled in release mode.
   static const bool isRelease = bool.fromEnvironment('dart.vm.product');
 
+  /// Point Firebase Auth at the local emulator instead of the live project.
+  ///
+  /// Compile-time, so a release build physically cannot be switched to it:
+  ///   flutter run --dart-define=USE_FIREBASE_EMULATORS=true
+  ///
+  /// The API must be pointed at the same emulators, or the tokens minted here
+  /// will not verify against the live project it is checking them with.
+  static const bool useFirebaseEmulators = bool.fromEnvironment(
+    'USE_FIREBASE_EMULATORS',
+  );
+
+  /// Host the emulators are reachable on. `10.0.2.2` on an Android emulator.
+  static const String emulatorHost = String.fromEnvironment(
+    'EMULATOR_HOST',
+    defaultValue: 'localhost',
+  );
+
+  /// Matches the `auth` port in `firebase.json`.
+  static const int authEmulatorPort = 9099;
+
   /// Whether [apiBaseUrl] points at this machine.
   static bool get isLocalApi =>
       apiBaseUrl.contains('localhost') ||

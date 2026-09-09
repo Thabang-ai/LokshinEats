@@ -118,9 +118,13 @@ for (const port of PORTS) {
     }
 
     console.warn(
-      `Port ${port} is held by pid ${pid}, which is not a Firebase emulator. ` +
-        'Leaving it alone — stop it yourself, or change the emulator port in ' +
-        'firebase.json.',
+      commandLine.trim().length === 0
+        ? `Port ${port} is held by pid ${pid}, whose command line could not be ` +
+            'read — it may be exiting, or owned by another user. Leaving it ' +
+            'alone; re-run in a moment, or stop it yourself.'
+        : `Port ${port} is held by pid ${pid}, which is not a Firebase ` +
+            'emulator. Leaving it alone — stop it yourself, or change the ' +
+            'emulator port in firebase.json.',
     );
   }
 }
