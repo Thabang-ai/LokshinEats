@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/async_states.dart';
 import '../../auth/pages/account_page.dart';
+import '../../cart/widgets/cart_badge_button.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
@@ -107,6 +108,8 @@ class _Header extends ConsumerWidget {
               ],
             ),
           ),
+          const CartBadgeButton(),
+
           // Signed out shows an outline; signed in shows a filled icon, so
           // account state is legible without opening the page.
           IconButton(

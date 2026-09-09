@@ -28,6 +28,15 @@ class FirebaseBootstrap {
       // Local development against the emulator suite: no real accounts are
       // touched, and the API this app calls must be pointed at the same
       // emulators or the tokens it issues will not verify.
+      //
+      // Known local-only behaviour, measured on 2026-09-09: on web, a session
+      // signed in against the Auth emulator is written to IndexedDB and then
+      // removed on the next page load, so the customer starts signed out
+      // every reload. The SDK begins restoring the persisted user when the
+      // Auth instance is created and discards it when the emulator host is
+      // switched underneath. Nothing to fix here — this call is already as
+      // early as FlutterFire allows — and it does not apply to a build
+      // without this flag. Do not go looking for it in the auth code.
       await FirebaseAuth.instance.useAuthEmulator(
         AppConfig.emulatorHost,
         AppConfig.authEmulatorPort,

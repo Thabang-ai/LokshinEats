@@ -7,6 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/money.dart';
 import '../../../shared/widgets/async_states.dart';
+import '../../cart/providers/cart_providers.dart';
+import '../../cart/widgets/cart_badge_button.dart';
+import '../../cart/widgets/quantity_stepper.dart';
+import '../../cart/widgets/view_basket_bar.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
@@ -22,6 +26,9 @@ class StoreDetailPage extends ConsumerWidget {
     final menu = ref.watch(menuByCategoryProvider(storeId));
 
     return Scaffold(
+      // Only shown when this kitchen's basket has something in it, so it never
+      // covers the menu for no reason.
+      bottomNavigationBar: ViewBasketBar(storeId: storeId),
       body: store.when(
         loading: () => const _DetailSkeleton(),
         error: (error, _) => SafeArea(
@@ -57,7 +64,7 @@ class StoreDetailPage extends ConsumerWidget {
                         ),
                       ),
                     ]
-                  : _menuSlivers(grouped),
+                  : _menuSlivers(grouped, data),
             ),
           ],
         ),
@@ -65,7 +72,7 @@ class StoreDetailPage extends ConsumerWidget {
     );
   }
 
-  List<Widget> _menuSlivers(Map<String, List<Product>> grouped) {
+  List<Widget> _menuSlivers(Map<String, List<Product>> grouped, Store store) {
     final slivers = <Widget>[];
 
     for (final entry in grouped.entries) {
@@ -79,7 +86,7 @@ class StoreDetailPage extends ConsumerWidget {
             itemCount: entry.value.length,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) =>
-                _MenuItem(product: entry.value[index]),
+                _MenuItem(product: entry.value[index], store: store),
           ),
         ),
       );
@@ -102,6 +109,10 @@ class _StoreAppBar extends StatelessWidget {
     return SliverAppBar(
       expandedHeight: 200,
       pinned: true,
+      // Over a photo the theme's own icon colour can vanish, so both the back
+      // arrow and the basket are forced to the scrim's contrast colour.
+      foregroundColor: Colors.white,
+      actions: const [CartBadgeButton(onSurface: Colors.white)],
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           store.name,
@@ -311,14 +322,20 @@ class _CategoryHeading extends StatelessWidget {
   }
 }
 
-class _MenuItem extends StatelessWidget {
-  const _MenuItem({required this.product});
+class _MenuItem extends ConsumerWidget {
+  const _MenuItem({required this.product, required this.store});
 
   final Product product;
 
+  /// Needed to name the kitchen a basket belongs to, and to refuse adding to
+  /// one that is closed.
+  final Store store;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final inBasket = ref.watch(cartProvider).quantityOf(product.id);
+    final orderable = store.isOpen && product.available;
 
     return Card(
       child: Padding(
@@ -367,22 +384,87 @@ class _MenuItem extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            // Adding to a cart is the next slice of work; the affordance is
-            // here so the layout is settled, and it says so rather than
-            // pretending to work.
-            IconButton.filledTonal(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cart and checkout are coming next.'),
+
+            // Once an item is in the basket the plus button becomes the
+            // stepper, so quantity is changed where it was chosen rather than
+            // only on the basket screen.
+            if (!orderable)
+              Tooltip(
+                message: product.available
+                    ? 'This kitchen is closed'
+                    : 'Sold out',
+                child: Icon(
+                  Icons.do_not_disturb_on_outlined,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
+              )
+            else if (inBasket > 0)
+              QuantityStepper(
+                quantity: inBasket,
+                onChanged: (quantity) => ref
+                    .read(cartProvider.notifier)
+                    .setQuantity(product.id, quantity),
+              )
+            else
+              IconButton.filledTonal(
+                onPressed: () => _add(context, ref),
+                icon: const Icon(Icons.add_rounded),
+                tooltip: 'Add to basket',
               ),
-              icon: const Icon(Icons.add_rounded),
-              tooltip: 'Add to cart',
-            ),
           ],
         ),
       ),
     );
+  }
+
+  /// Add to the basket, asking first if that means abandoning another kitchen.
+  ///
+  /// One order is cooked by one vendor and carried by one driver, so a basket
+  /// cannot span two kitchens. Replacing silently would lose someone's choices
+  /// without telling them, so the question is asked before anything changes.
+  Future<void> _add(BuildContext context, WidgetRef ref) async {
+    final cart = ref.read(cartProvider);
+    final switching = cart.storeId != null && cart.storeId != product.storeId;
+
+    if (switching) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Start a new basket?'),
+          content: Text(
+            'Your basket has food from ${cart.storeName}. One order comes from '
+            'one kitchen, so adding this will empty it.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Keep ${cart.storeName}'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Start new'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+    }
+
+    ref.read(cartProvider.notifier).add(product, storeName: store.name);
+
+    if (!context.mounted) return;
+    // Replace rather than queue. Adding three things in a row otherwise means
+    // three snackbars shown one after another, and the last of them is still
+    // on screen — over the basket bar — long after the customer has moved on.
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('${product.name} added'),
+          duration: const Duration(milliseconds: 1400),
+        ),
+      );
   }
 }
 
