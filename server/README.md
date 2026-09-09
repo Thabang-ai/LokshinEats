@@ -157,13 +157,63 @@ anything else holding those ports is reported and left alone.
 
 ## Deploying
 
-The image is host-agnostic — `Dockerfile` runs the same on Cloud Run, Render,
-Fly or a plain VM. Cloud Run is the natural fit here: the Firestore project is
-already Google-side, so a service account attached to the service supplies
-credentials with nothing to configure.
+Two supported paths. Vercel needs no Firebase billing, which is why it is
+first; Cloud Run is the better long-term fit but requires the Blaze plan.
+
+### Vercel (no Firebase billing needed)
+
+`api/index.ts` exports the Express app as a serverless function, and
+`vercel.json` rewrites every path to it so the app's own router still owns the
+URL space. `src/index.ts` — the one that calls `listen()` — is not used here.
+
+```bash
+cd server
+npx vercel login
+npx vercel link          # create or select the project
+npx vercel --prod
+```
+
+Set these in the project's environment variables before the first deploy:
+
+| Variable | Value |
+|----------|-------|
+| `FIREBASE_PROJECT_ID` | `kasieats-34391` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | the whole service-account key, as JSON |
+| `PAYMENT_PROVIDER` | `sandbox` |
+| `ALLOW_SANDBOX_PAYMENTS` | `true` |
+| `CORS_ORIGINS` | the web app's origin |
+
+Generate the key in the Firebase console under Project settings → Service
+accounts → Generate new private key. It is a credential: paste it into
+Vercel's encrypted environment variables, never into the repository.
+
+Three things to know before choosing this:
+
+- **Application Default Credentials do not exist off Google infrastructure**,
+  which is why the service-account key is required here and not on Cloud Run.
+- **Rate limiting becomes per-instance.** `express-rate-limit` keeps counters
+  in memory, and each serverless instance has its own. The limits still blunt
+  an attacker hammering a warm instance, but they are not a global budget.
+  A shared store (Redis, Upstash) is the fix when that matters.
+- **Vercel's Hobby tier is for non-commercial use.** A food-delivery platform
+  taking real orders is commercial, so a live LokshinEats belongs on Pro.
+  Hobby is fine for staging and for proving the deployment works.
+
+Cold starts add latency to the first request after idle; for an app where the
+customer is already waiting on a kitchen, that is unlikely to matter.
+
+### Cloud Run
+
+The better fit once billing is on: same Google project, so a service account
+attached to the service supplies credentials with nothing to configure, no
+key to manage, and a long-lived process where the in-memory rate limiter
+behaves as designed.
 
 **Cloud Run requires billing (the Blaze plan) on the project.** The free Spark
-plan cannot run it.
+plan cannot run it — which is also why the Storage-backed photo uploads have
+been inert since August.
+
+`Dockerfile` is host-agnostic and also runs on Render, Fly or a plain VM.
 
 ```bash
 # One-time: install the Google Cloud SDK, then

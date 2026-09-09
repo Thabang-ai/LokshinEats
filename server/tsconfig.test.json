@@ -10,6 +10,13 @@
     "rootDir": ".",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "vitest.config.ts", "vitest.integration.config.ts"],
+  // `api/` is the Vercel entrypoint. The build config roots at src/ and
+  // excludes it, so this is the only place it gets type-checked.
+  "include": [
+    "src/**/*.ts",
+    "api/**/*.ts",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
