@@ -246,11 +246,18 @@ export async function getOrder(
 
   if (!permitted) throw ApiError.notFound('No such order.');
 
-  const order = await repository.findById(
-    orderId,
-    audienceFor(caller, { customerId }),
-  );
+  const audience = audienceFor(caller, { customerId });
+  const order = await repository.findById(orderId, audience);
   if (!order) throw ApiError.notFound('No such order.');
+
+  // The delivery code no longer lives on the order document, so it has to be
+  // fetched and attached — and only for the two audiences allowed to see it.
+  // A driver or vendor never triggers this read at all.
+  if (audience === 'customer' || audience === 'admin') {
+    const code = await repository.findDeliveryCode(orderId);
+    if (code) order.deliveryCode = code;
+  }
+
   return order;
 }
 

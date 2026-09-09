@@ -102,6 +102,15 @@ export const Collections = {
   stores: 'stores',
   products: 'products',
   orders: 'orders',
+  /**
+   * Delivery codes, kept out of the order document.
+   *
+   * Drivers must be able to read their own and unclaimed orders for the live
+   * feeds, and rules cannot hide a field — so a code stored on the order is a
+   * code the driver can see. This collection matches no security rule, which
+   * under rules_version 2 means no client can touch it at all.
+   */
+  orderSecrets: 'orderSecrets',
   drivers: 'drivers',
   reviews: 'reviews',
   driverRatings: 'driverRatings',

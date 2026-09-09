@@ -13,6 +13,7 @@ import {
   actor,
   assertEmulator,
   readOrder,
+  readOrderSecret,
   readWallet,
   resetFirestore,
   seedOrder,
@@ -132,6 +133,28 @@ describe('placeOrder pricing', () => {
 
     // Six digits, and present because this response is for the customer.
     expect(order.deliveryCode).toMatch(/^\d{6}$/);
+  });
+
+  it('keeps the delivery code off the order document', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const productId = await seedProduct({ storeId, price: 100 });
+
+    const order = await orderService.placeOrder(customer, {
+      storeId,
+      items: [{ productId, quantity: 1 }],
+      deliveryAddress: address,
+      paymentMethod: 'cash',
+      customerPhone: '0821234567',
+    });
+
+    // The document a driver can read must not contain the code anywhere.
+    const stored = await readOrder(order.id);
+    expect(stored?.deliveryCode).toBeUndefined();
+    expect(stored?.deliveryOTP).toBeUndefined();
+    expect(JSON.stringify(stored)).not.toContain(order.deliveryCode as string);
+
+    // It lives in orderSecrets, which matches no security rule at all.
+    expect(await readOrderSecret(order.id)).toBe(order.deliveryCode);
   });
 
   it('computes the delivery distance itself', async () => {
@@ -521,6 +544,43 @@ describe('confirming delivery', () => {
     await expect(
       orderService.confirmDelivery(driver, orderId, '482913'),
     ).rejects.toThrow(/collect the order/i);
+  });
+
+  it('still verifies a legacy order whose code sits on the document', async () => {
+    // Orders placed before codes were split out keep theirs inline. Refusing
+    // them would strip drivers of any way to close a historical delivery.
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      status: 'picked_up',
+      deliveryCode: '4321',
+      legacyCodeOnDocument: true,
+    });
+
+    const result = await orderService.confirmDelivery(driver, orderId, '4321');
+    expect(result.outcome).toBe('delivered');
+  });
+
+  it('serves the code to the customer but never to the driver', async () => {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      status: 'picked_up',
+      deliveryCode: '482913',
+    });
+
+    // The customer's view fetches it from the secret store...
+    const asCustomer = await orderService.getOrder(customer, orderId);
+    expect(asCustomer.deliveryCode).toBe('482913');
+
+    // ...and the driver's does not, even though they are party to the order.
+    const asDriver = await orderService.getOrder(driver, orderId);
+    expect(asDriver.deliveryCode).toBeUndefined();
+    expect(JSON.stringify(asDriver)).not.toContain('482913');
   });
 
   it('refuses to deliver the same order twice', async () => {

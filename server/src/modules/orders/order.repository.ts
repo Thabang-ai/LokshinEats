@@ -75,14 +75,52 @@ export type NewOrderDocument = {
   driverDeliveryShare: number;
 };
 
+const secrets = () => db.collection(Collections.orderSecrets);
+
+/**
+ * The delivery code for an order, or null when there is none.
+ *
+ * New orders keep it in `orderSecrets`, which no client can read. Orders
+ * placed before that still carry it on the order document, so the fallback
+ * keeps historical deliveries working — those remain visible to their driver,
+ * which is exactly why new ones are stored apart.
+ */
+export async function findDeliveryCode(
+  orderId: string,
+): Promise<string | null> {
+  const secret = await secrets().doc(orderId).get();
+  if (secret.exists) {
+    const code = secret.get('code');
+    if (typeof code === 'string' && code.length > 0) return code;
+  }
+
+  const order = await collection().doc(orderId).get();
+  if (!order.exists) return null;
+
+  const legacy = order.get('deliveryCode') ?? order.get('deliveryOTP');
+  return typeof legacy === 'string' && legacy.length > 0 ? legacy : null;
+}
+
 export async function create(
   document: NewOrderDocument,
   audience: Audience,
 ): Promise<Order> {
   const ref = collection().doc();
 
-  await ref.set({
-    ...document,
+  // The code is split out rather than written onto the order, and the two
+  // writes go in one batch so an order can never exist without its code.
+  const { deliveryCode, ...orderFields } = document;
+
+  const batch = db.batch();
+
+  batch.set(secrets().doc(ref.id), {
+    orderId: ref.id,
+    code: deliveryCode,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  batch.set(ref, {
+    ...orderFields,
     // Server-owned lifecycle fields. A client never supplies any of these.
     status: 'pending',
     // Always pending at creation, including for card orders. The old web
@@ -100,8 +138,19 @@ export async function create(
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  await batch.commit();
+
   const snapshot = await ref.get();
-  return toOrder(snapshot, audience);
+  const order = toOrder(snapshot, audience);
+
+  // The customer needs the code back — it is not on the document any more,
+  // and this is the one response where they have not yet had a chance to ask
+  // for it.
+  if (audience === 'customer' || audience === 'admin') {
+    order.deliveryCode = deliveryCode;
+  }
+
+  return order;
 }
 
 export async function findById(
@@ -446,10 +495,16 @@ export async function completeDelivery(
   submittedCode: string | undefined,
 ): Promise<DeliveryResult> {
   const ref = collection().doc(orderId);
+  const secretRef = secrets().doc(orderId);
 
   const result = await db.runTransaction(
     async (transaction: Transaction): Promise<DeliveryResult> => {
-      const snapshot = await transaction.get(ref);
+      // Both reads first — Firestore rejects a transaction that reads after
+      // it has written.
+      const [snapshot, secretSnapshot] = await Promise.all([
+        transaction.get(ref),
+        transaction.get(secretRef),
+      ]);
       if (!snapshot.exists) throw ApiError.notFound('No such order.');
 
       if (snapshot.get('driverId') !== driverId) {
@@ -474,8 +529,12 @@ export async function completeDelivery(
         );
       }
 
-      const expected =
-        snapshot.get('deliveryCode') ?? snapshot.get('deliveryOTP');
+      // The code lives in orderSecrets, which no client can read. Orders
+      // written before that still carry it on the document itself, so the
+      // fallback keeps historical deliveries closable.
+      const expected = secretSnapshot.exists
+        ? secretSnapshot.get('code')
+        : (snapshot.get('deliveryCode') ?? snapshot.get('deliveryOTP'));
 
       // Orders placed before delivery codes existed have none stored. The web
       // app skipped verification for those, and refusing them now would strip

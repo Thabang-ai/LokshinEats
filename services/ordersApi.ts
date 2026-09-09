@@ -71,6 +71,19 @@ export async function placeOrder(
   return response.data;
 }
 
+/**
+ * Read one order.
+ *
+ * The customer's own view is the only client path to the delivery code: it is
+ * no longer stored on the order document, so a driver reading that document
+ * from Firestore finds nothing. The server fetches it from a collection no
+ * client can touch and attaches it for the customer alone.
+ */
+export async function getOrder(orderId: string): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(`/api/v1/orders/${orderId}`);
+  return response.data;
+}
+
 /** Start a charge for an order. The amount comes from the order, not from us. */
 export async function initiatePayment(
   orderId: string,

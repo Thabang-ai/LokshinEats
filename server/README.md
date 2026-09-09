@@ -27,12 +27,15 @@ This service is the trusted party that closes those holes. The Admin SDK
 bypasses Firestore security rules by design; the rules are then free to deny
 clients any write to money-bearing collections.
 
-**Checkout now goes through this API.** `app/checkout/page.tsx` sends a store
-id, product ids with quantities, an address and a payment method — and nothing
-else. All three holes above are closed on the path a customer actually takes,
-and `orders` creation is denied to clients in the rules. What remains is the
-vendor, driver and admin order pages, which still write to Firestore directly;
-until they move, the money fields on an *existing* order stay writable.
+**All three are now closed.** Checkout, the vendor order pages and the driver
+pages all go through this API: `app/checkout/page.tsx` sends a store id,
+product ids with quantities, an address and a payment method and nothing else,
+and every order write from a vendor or driver is an API call. The rules deny
+clients order creation outright and allow only the customer's review flags on
+an update, and delivery codes live in a collection no client can read.
+
+Reads still come from Firestore, so the order feeds stay live. It was only the
+writes that were dangerous.
 
 ## Layout
 
@@ -122,11 +125,10 @@ vendor-only route the old one could not.
 *Security-rules* tests (`src/rules/`) are the only ones that exercise what a
 **browser** can do. Every other test goes through the API, which uses the
 Admin SDK and bypasses rules entirely — so a rule could be wide open and the
-rest of the suite would still be green. Checkout has moved onto the API, so a
-browser can no longer create an order at all — but the vendor, driver,
-customer and admin order pages still write to Firestore directly, so these
-rules remain the only thing standing between a signed-in customer and the
-money fields on an order that already exists.
+rest of the suite would still be green. A browser can no longer create an
+order, claim a delivery, advance a status or confirm one; what a client may
+still write directly is the customer's four review flags and the admin
+console's operational reset, and these tests pin exactly that boundary.
 
 They are split in two. One half asserts properties that hold. The other,
 `documented holes`, asserts what the rules currently *allow and should not* —
@@ -416,7 +418,7 @@ serving.
 Built and tested: configuration, logging, Firebase Admin, error contract,
 authentication, RBAC, validation, rate limiting, money maths, delivery codes,
 and the users, stores, products, orders, payments, and wallets modules.
-346 tests — 99 unit, 247 against the emulators (69 of those on the rules).
+354 tests — 99 unit, 255 against the emulators (73 of those on the rules).
 
 Not built yet: withdrawals, notifications, promotions, reports, reviews,
 driver profiles and location. No live payment provider — sandbox only, by
@@ -506,17 +508,29 @@ console's operational reset. Claiming, releasing, advancing status, confirming
 delivery and settling cash all go through endpoints that check the caller and
 the transition.
 
-**Still open — drivers can read delivery codes.** A driver can no longer write
-to an order, so they cannot mark one delivered directly. But the code is stored
-on the order document, and drivers must be able to read their own and unclaimed
-orders for the live feeds — so they can still *see* the code and then submit it
-to the API without meeting the customer. Rules cannot hide a field.
+### Fixed: drivers can no longer read delivery codes
 
-Closing it means moving the code out of the order document into a collection
-with no client access (the API would read it for verification, and serve it to
-the customer through `GET /orders/:id`). That also needs the customer's order
-page to fetch the code from the API rather than from Firestore. Until then,
-this is the last of the original three holes still open.
+**Was:** the code lived on the order document, and drivers must be able to read
+their own and unclaimed orders for the live feeds. Rules cannot hide a field,
+so a driver could see the code and submit it without meeting the customer.
+
+**Now:** codes live in `orderSecrets/{orderId}`, which matches no security rule
+and is therefore denied to every client — including the customer, and including
+admins. The API reads it to verify a delivery, and attaches it to
+`GET /orders/:id` for the order's own customer alone. The customer's order page
+fetches it from there instead of from Firestore.
+
+Orders placed before the split still carry the code inline, and the API falls
+back to reading it there so historical deliveries stay closable. Those remain
+visible to their driver until migrated:
+
+```bash
+FIREBASE_PROJECT_ID=<project> node scripts/migrate-delivery-codes.mjs          # dry run
+FIREBASE_PROJECT_ID=<project> node scripts/migrate-delivery-codes.mjs --apply
+```
+
+It copies each inline code into `orderSecrets` and removes the inline fields.
+Safe to re-run: an existing secret is never overwritten.
 
 **A vendor can take another vendor's product.** The `products` rule checks the
 *incoming* `storeId`, never the existing one, so rewriting `storeId` to a
@@ -527,9 +541,11 @@ store you own moves someone else's menu item into your store.
 evaluating `request.resource.data.storeId` errors and the rule denies
 everyone. Menu deletion from the browser cannot work at all.
 
-The remaining gaps close as the last direct writers move over: the customer's
-review flow and the admin console still write to `orders`, and the delivery
-code still lives on a document drivers can read. The tests keep both visible.
+All three of the original holes are now closed on this side. What remains is
+smaller: a vendor can still set their own store's rating, nobody can delete a
+product, and the customer's review flow and the admin console still write to
+`orders` directly — both deliberately allowed, and both narrowed to specific
+fields.
 
 **The three holes are closed on this side but not yet live.** The web app still
 checks out directly against Firestore, so both paths currently exist. Closing

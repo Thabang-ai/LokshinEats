@@ -152,6 +152,12 @@ export async function seedOrder(input: {
   deliveryFee?: number;
   deliveryCode?: string;
   deliveryCodeAttempts?: number;
+  /**
+   * Write the code onto the order document instead of into `orderSecrets`,
+   * reproducing an order placed before codes were split out. Used to check
+   * that the fallback still lets historical deliveries be closed.
+   */
+  legacyCodeOnDocument?: boolean;
 }): Promise<string> {
   const subtotal = input.subtotal ?? 100;
   const deliveryFee = input.deliveryFee ?? 20;
@@ -191,7 +197,11 @@ export async function seedOrder(input: {
       postalCode: '1804',
       instructions: null,
     },
-    deliveryCode: input.deliveryCode ?? '482913',
+    // Only legacy orders carry the code on the document; the default shape
+    // keeps it in orderSecrets, where no client can read it.
+    ...(input.legacyCodeOnDocument
+      ? { deliveryCode: input.deliveryCode ?? '482913' }
+      : {}),
     deliveryVerified: false,
     deliveryCodeAttempts: input.deliveryCodeAttempts ?? 0,
     deliveredAt: null,
@@ -200,7 +210,25 @@ export async function seedOrder(input: {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  if (!input.legacyCodeOnDocument) {
+    await db.collection(Collections.orderSecrets).doc(ref.id).set({
+      orderId: ref.id,
+      code: input.deliveryCode ?? '482913',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  }
+
   return ref.id;
+}
+
+/** The delivery code as stored in `orderSecrets`, or null if none is there. */
+export async function readOrderSecret(orderId: string): Promise<string | null> {
+  const snapshot = await db
+    .collection(Collections.orderSecrets)
+    .doc(orderId)
+    .get();
+  const code = snapshot.get('code');
+  return typeof code === 'string' ? code : null;
 }
 
 /** Read a wallet's raw balances, or zeros when it has no document. */

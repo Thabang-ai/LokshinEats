@@ -6,7 +6,7 @@
 // advance the order.
 // Live map will be wired up in Phase 5 (driver location tracking).
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import {
   CheckCircle,
   Clock,
@@ -30,6 +30,9 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+// The delivery code comes from the API: it is deliberately absent from the
+// order document, which drivers can read.
+import { getOrder } from '../../../services/ordersApi';
 import { useAuthUser } from '../../../hooks/useAuthUser';
 
 // ---------------------------------------------------------------------------
@@ -112,6 +115,12 @@ export default function OrderTrackingPage({
   const { user, authReady } = useAuthUser();
 
   const [order, setOrder] = useState<OrderView | null>(null);
+  // The delivery code, fetched from the API rather than read off the order
+  // document. Held separately because the snapshot listener replaces `order`
+  // wholesale on every status change and would otherwise wipe it.
+  const [fetchedDeliveryCode, setFetchedDeliveryCode] = useState<string | null>(null);
+  // Which order we have already asked for, so the fetch runs once per order.
+  const deliveryCodeFetched = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -277,15 +286,12 @@ export default function OrderTrackingPage({
           ratingGiven: typeof data.ratingGiven === 'number' ? data.ratingGiven : null,
           driverRated: data.driverRated === true,
           driverRatingGiven: typeof data.driverRatingGiven === 'number' ? data.driverRatingGiven : null,
-          // Orders placed through the API store the code as `deliveryCode`;
-          // ones written by the old browser checkout used `deliveryOTP`.
-          // Reading both keeps every order's code visible to its customer.
+          // Only orders written by the old browser checkout still carry the
+          // code here. Newer ones keep it out of this document entirely — a
+          // driver can read this document, so anything in it is visible to
+          // them. The effect below fetches it from the API instead.
           deliveryOTP:
-            typeof data.deliveryCode === 'string'
-              ? data.deliveryCode
-              : typeof data.deliveryOTP === 'string'
-                ? data.deliveryOTP
-                : null,
+            typeof data.deliveryOTP === 'string' ? data.deliveryOTP : null,
           deliveryOTPVerified: data.deliveryOTPVerified === true,
           cashAmount: typeof data.cashAmount === 'number' ? data.cashAmount : null,
         });
@@ -298,7 +304,41 @@ export default function OrderTrackingPage({
     );
 
     return unsub;
-  }, [id, user, authReady]);
+  }, [authReady, user, id]);
+
+  // The delivery code is not on the order document any more, so it comes from
+  // the API — which serves it to the order's own customer and to nobody else.
+  // Fetched once per order rather than on every snapshot, since it never
+  // changes, and skipped entirely once the delivery is done.
+  useEffect(() => {
+    if (!order || deliveryCodeFetched.current === order.id) return;
+    // Legacy orders still carry it inline, and a finished order never needs it.
+    if (order.deliveryOTP || order.status === 'delivered' || order.status === 'cancelled') {
+      return;
+    }
+
+    deliveryCodeFetched.current = order.id;
+
+    let cancelled = false;
+    getOrder(order.id)
+      .then((fromApi) => {
+        if (!cancelled && fromApi.deliveryCode) {
+          setFetchedDeliveryCode(fromApi.deliveryCode);
+        }
+      })
+      .catch(() => {
+        // Not fatal: the rest of the tracker still works. Clear the marker so
+        // the next render can retry.
+        deliveryCodeFetched.current = null;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [order]);
+
+  // Legacy orders carry the code inline; newer ones get it from the API.
+  const deliveryCode = order?.deliveryOTP ?? fetchedDeliveryCode;
 
   // ---- Render branches ----------------------------------------------------
 
@@ -464,7 +504,7 @@ export default function OrderTrackingPage({
 
             {/* Delivery OTP — shown while order is in transit (picked_up).
                 Hidden before pickup (not needed yet) and after delivery. */}
-            {order.status === 'picked_up' && order.deliveryOTP && !order.deliveryOTPVerified && (
+            {order.status === 'picked_up' && deliveryCode && !order.deliveryOTPVerified && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -477,7 +517,7 @@ export default function OrderTrackingPage({
                 </p>
                 <div className="bg-white/15 rounded-2xl py-6 text-center">
                   <p className="text-5xl md:text-6xl font-bold tracking-widest font-mono">
-                    {order.deliveryOTP}
+                    {deliveryCode}
                   </p>
                 </div>
                 <p className="text-xs text-white/70 mt-3">

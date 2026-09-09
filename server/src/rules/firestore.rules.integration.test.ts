@@ -84,7 +84,8 @@ function orderDoc(overrides: Record<string, unknown> = {}) {
     total: 120,
     paymentMethod: 'yoco',
     paymentStatus: 'pending',
-    deliveryOTP: '482913',
+    // No delivery code here: it lives in orderSecrets, which matches no
+    // rule and is therefore denied to every client.
     deliveryOTPVerified: false,
     vendorPayout: 92,
     driverPayout: 17,
@@ -148,7 +149,13 @@ beforeEach(async () => {
  * nobody wrote a rule saying so.
  */
 describe('collections the API owns are closed to clients', () => {
-  const closed = ['wallets', 'walletTransactions', 'payments', 'sandboxPayments'];
+  const closed = [
+    'wallets',
+    'walletTransactions',
+    'payments',
+    'sandboxPayments',
+    'orderSecrets',
+  ];
 
   beforeEach(async () => {
     await seed(async (db) => {
@@ -169,6 +176,10 @@ describe('collections the API owns are closed to clients', () => {
       await setDoc(doc(db, 'sandboxPayments', 'sbx-1'), {
         orderId: 'order-1',
         status: 'pending',
+      });
+      await setDoc(doc(db, 'orderSecrets', 'order-1'), {
+        orderId: 'order-1',
+        code: '482913',
       });
     });
   });
@@ -456,6 +467,13 @@ describe('orders', () => {
         doc(db, 'orders', 'order-mine'),
         orderDoc({ driverId: DRIVER, status: 'picked_up' }),
       );
+
+      // Each order really does have a code — it just lives somewhere the
+      // driver cannot reach. Without seeding these, the "no code in the
+      // document" assertions below would pass for the wrong reason.
+      for (const id of ['order-1', 'order-ready', 'order-mine']) {
+        await setDoc(doc(db, 'orderSecrets', id), { orderId: id, code: '482913' });
+      }
     });
   });
 
@@ -591,6 +609,39 @@ describe('orders', () => {
     );
   });
 
+  it('lets the assigned driver read their order but finds no code in it', async () => {
+    // Drivers must read their own orders for the live feed. The code is not
+    // in the document any more, so reading it reveals nothing.
+    const db = as(DRIVER);
+    const snapshot = await getDoc(doc(db, 'orders', 'order-mine'));
+
+    expect(snapshot.exists()).toBe(true);
+    expect(snapshot.data()?.deliveryOTP).toBeUndefined();
+    expect(snapshot.data()?.deliveryCode).toBeUndefined();
+    expect(JSON.stringify(snapshot.data())).not.toContain('482913');
+  });
+
+  it('finds no code on an unclaimed order either', async () => {
+    const db = as(DRIVER);
+    const snapshot = await getDoc(doc(db, 'orders', 'order-ready'));
+
+    expect(snapshot.exists()).toBe(true);
+    expect(JSON.stringify(snapshot.data())).not.toContain('482913');
+  });
+
+  it('stops a driver reading the code out of the secret store', async () => {
+    // The document exists and holds the code; the driver simply cannot see it.
+    const db = as(DRIVER);
+    await assertFails(getDoc(doc(db, 'orderSecrets', 'order-mine')));
+  });
+
+  it('stops the customer reading the secret store directly', async () => {
+    // Even the one party allowed to see the code goes through the API for it,
+    // so there is no client path to this collection at all.
+    const db = as(CUSTOMER);
+    await assertFails(getDoc(doc(db, 'orderSecrets', 'order-1')));
+  });
+
   it('stops an admin rewriting money fields through the reset branch', async () => {
     // isAdminOrderReset() restricts the admin branch to operational keys.
     const db = as(ADMIN);
@@ -629,21 +680,6 @@ describe('documented holes — current rules allow these', () => {
         price: 45.5,
       });
     });
-  });
-
-  it('HOLE: the assigned driver can read the delivery code', async () => {
-    // The whole reason delivery confirmation moved server-side.
-    const db = as(DRIVER);
-    const snapshot = await getDoc(doc(db, 'orders', 'order-mine'));
-    expect(snapshot.data()?.deliveryOTP).toBe('482913');
-  });
-
-  it('HOLE: any driver can read the delivery code of an unclaimed order', async () => {
-    // Browsing available deliveries returns the whole document, code included,
-    // before the driver has any relationship to the order at all.
-    const db = as(DRIVER);
-    const snapshot = await getDoc(doc(db, 'orders', 'order-ready'));
-    expect(snapshot.data()?.deliveryOTP).toBe('482913');
   });
 
   it('HOLE: a vendor can move another vendor’s product into their own store', async () => {
