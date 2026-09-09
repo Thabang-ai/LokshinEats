@@ -155,6 +155,62 @@ pretest step clears ports 8080 and 9099 — but only after reading each
 process's command line and confirming it really is a Firebase emulator;
 anything else holding those ports is reported and left alone.
 
+## Deploying
+
+The image is host-agnostic — `Dockerfile` runs the same on Cloud Run, Render,
+Fly or a plain VM. Cloud Run is the natural fit here: the Firestore project is
+already Google-side, so a service account attached to the service supplies
+credentials with nothing to configure.
+
+**Cloud Run requires billing (the Blaze plan) on the project.** The free Spark
+plan cannot run it.
+
+```bash
+# One-time: install the Google Cloud SDK, then
+gcloud auth login
+gcloud config set project kasieats-34391
+
+gcloud run deploy lokshineats-api   --source server   --region europe-west1   --allow-unauthenticated   --set-env-vars FIREBASE_PROJECT_ID=kasieats-34391   --set-env-vars PAYMENT_PROVIDER=sandbox   --set-env-vars ALLOW_SANDBOX_PAYMENTS=true   --set-env-vars CORS_ORIGINS=https://kasieats-34391.web.app
+```
+
+`--allow-unauthenticated` refers to Cloud Run's own IAM layer, not to this
+API: every route still requires a Firebase ID token. Without it, browsers
+could not reach the service at all.
+
+`ALLOW_SANDBOX_PAYMENTS=true` is required while the sandbox provider is the
+one configured — the provider refuses to construct under `NODE_ENV=production`
+otherwise, which is deliberate. Drop it the moment a live provider is wired,
+so a misconfiguration cannot silently accept fake payments.
+
+The service account Cloud Run runs as needs Firestore read/write and the
+`roles/firebaseauth.admin` permission to verify tokens and set role claims.
+
+### Order of operations
+
+Deploying the API alone is safe — nothing points at it yet. The rest must
+follow in this order, because each step depends on the previous one:
+
+1. **API** (this service).
+2. **Web app**, built with `NEXT_PUBLIC_API_BASE_URL` set to the deployed URL.
+   `NEXT_PUBLIC_` values are inlined at build time, so this must be set for the
+   build, not at runtime.
+3. **Rules and indexes** — `firebase deploy --only firestore:rules,firestore:indexes`.
+   Rules deny client order writes, which breaks ordering for anyone still on
+   the old bundle, so this cannot go first. Missing indexes break the driver's
+   available-orders query in production while passing every local test.
+4. **Delivery-code migration** — `scripts/migrate-delivery-codes.mjs`, after
+   the API is live, since it relies on the API's inline-code fallback.
+
+### Verifying a deployment
+
+```bash
+curl https://<service-url>/api/v1/health          # {"status":"ok","version":"v1"}
+curl https://<service-url>/api/v1/orders/mine     # 401 with the error contract
+```
+
+The startup log states the payment provider and whether it is live. Check for
+`"live":false` — that is the sandbox, and it means no real money moves.
+
 ## Authentication
 
 Clients sign in with Firebase Auth as they already do, then send the resulting

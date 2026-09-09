@@ -1,0 +1,12 @@
+# Mirrors .dockerignore for `gcloud run deploy --source`, which uploads the
+# directory before building. Without this the upload includes node_modules and
+# any local .env.
+.gcloudignore
+.git
+.gitignore
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log
