@@ -224,6 +224,11 @@ class PaymentStatusRow extends StatelessWidget {
         status.success,
         'Paid · ${order.paymentMethod.label}',
       ),
+      _ when order.paymentStatus == 'refunded' => (
+        Icons.account_balance_wallet_rounded,
+        status.success,
+        'Refunded to your LokshinEats wallet',
+      ),
       _ when order.status == OrderStatus.cancelled => (
         Icons.block_rounded,
         theme.colorScheme.onSurfaceVariant,

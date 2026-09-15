@@ -14,6 +14,7 @@ import '../providers/auth_providers.dart';
 import '../widgets/auth_error_banner.dart';
 import '../widgets/auth_form_fields.dart';
 import '../../orders/pages/your_orders_page.dart';
+import '../../wallet/pages/wallet_page.dart';
 import 'edit_profile_page.dart';
 import 'sign_in_page.dart';
 import 'sign_up_page.dart';
@@ -266,6 +267,17 @@ class _SignedIn extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const YourOrdersPage()),
+            ),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.account_balance_wallet_rounded),
+            title: const Text('Wallet'),
+            subtitle: const Text('Refunds and credits'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const WalletPage()),
             ),
           ),
         ),

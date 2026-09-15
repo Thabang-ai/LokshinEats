@@ -322,8 +322,8 @@ class _CancelledNotice extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'This order will not be delivered. If you paid by card, the '
-              'refund goes back to the same card.',
+              'This order will not be delivered. If you paid online, the '
+              'refund goes to your LokshinEats wallet once it is processed.',
               style: theme.textTheme.bodyMedium,
             ),
           ),
