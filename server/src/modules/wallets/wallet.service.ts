@@ -260,3 +260,146 @@ export async function creditCustomer(input: {
 export function total(amounts: readonly number[]): number {
   return sumRands(amounts);
 }
+
+/**
+ * Carry out the wallet side of a cancellation plan.
+ *
+ * Every entry is keyed to the order, so running this again — to finish a
+ * cancellation that was interrupted — writes nothing twice. The customer's
+ * refund is credited separately by the caller, keyed the same way.
+ */
+export async function applyCancellation(input: {
+  orderId: string;
+  vendorId: string;
+  driverId: string | null;
+  /** The vendor's share recorded on the order, reversed when the plan says so. */
+  vendorPayout: number;
+  reason: string;
+  plan: {
+    vendorSettlement: 'none' | 'reverse' | 'release' | 'credit';
+    vendorPay: number;
+    driverPay: number;
+    platformReversal: number;
+    goodwill: number;
+  };
+}): Promise<void> {
+  const { orderId, plan } = input;
+
+  if (plan.vendorSettlement === 'reverse' && input.vendorPayout > 0) {
+    await repository.credit({
+      walletId: input.vendorId,
+      type: 'refund',
+      amount: -Math.abs(input.vendorPayout),
+      balance: 'pending',
+      description: `Order ${orderId} — cancelled before preparation: ${input.reason}`,
+      orderId,
+      suffix: 'reversal',
+    });
+  }
+
+  if (plan.vendorSettlement === 'release' && plan.vendorPay > 0) {
+    await repository.clearPending({
+      walletId: input.vendorId,
+      amount: plan.vendorPay,
+      description: `Order ${orderId} — cancelled after preparation began; paid for the food`,
+      orderId,
+    });
+  }
+
+  if (plan.vendorSettlement === 'credit' && plan.vendorPay > 0) {
+    await repository.credit({
+      walletId: input.vendorId,
+      type: 'order_earning',
+      amount: plan.vendorPay,
+      balance: 'available',
+      description: `Order ${orderId} — cancelled after preparation began; food paid for by LokshinEats`,
+      orderId,
+      suffix: 'cancellation',
+    });
+  }
+
+  if (plan.platformReversal > 0) {
+    await repository.credit({
+      walletId: PLATFORM_WALLET_ID,
+      type: 'refund',
+      amount: -Math.abs(plan.platformReversal),
+      balance: 'available',
+      description: `Order ${orderId} — cancelled: ${input.reason}`,
+      orderId,
+      suffix: 'reversal',
+    });
+  }
+
+  if (plan.driverPay > 0 && input.driverId) {
+    await repository.credit({
+      walletId: input.driverId,
+      type: 'order_earning',
+      amount: plan.driverPay,
+      balance: 'available',
+      description: `Order ${orderId} — cancelled after you were dispatched`,
+      orderId,
+      suffix: 'cancellation',
+    });
+  }
+
+  if (plan.goodwill > 0) {
+    await repository.credit({
+      walletId: PLATFORM_WALLET_ID,
+      type: 'goodwill',
+      amount: -Math.abs(plan.goodwill),
+      balance: 'available',
+      description: `Order ${orderId} — platform-covered cancellation: ${input.reason}`,
+      orderId,
+      suffix: 'cancellation_goodwill',
+    });
+  }
+
+  log.info(
+    { orderId, vendorSettlement: plan.vendorSettlement, driverPay: plan.driverPay, goodwill: plan.goodwill },
+    'Cancellation settled.',
+  );
+}
+
+/**
+ * Refund a customer at the platform's expense.
+ *
+ * Used when an admin approves a refund the cancellation policy would not give
+ * — after the kitchen started, or after delivery. The vendor and driver keep
+ * what they were paid; the platform wallet carries the cost as a goodwill
+ * entry, so the expense is visible rather than folded into someone else's
+ * balance. Keyed to the order, so a retry does not refund twice.
+ */
+export async function goodwillRefund(input: {
+  actor: AuthContext;
+  orderId: string;
+  customerId: string;
+  amount: number;
+  reason: string;
+}): Promise<void> {
+  if (input.amount <= 0) return;
+
+  await repository.credit({
+    walletId: PLATFORM_WALLET_ID,
+    type: 'goodwill',
+    amount: -Math.abs(input.amount),
+    balance: 'available',
+    description: `Order ${input.orderId} — goodwill refund: ${input.reason}`,
+    orderId: input.orderId,
+    suffix: 'goodwill_refund',
+  });
+
+  await creditCustomer({
+    actor: input.actor,
+    customerId: input.customerId,
+    amount: input.amount,
+    description: `Goodwill refund for order ${input.orderId}: ${input.reason}`,
+    orderId: input.orderId,
+    type: 'refund',
+    idempotencyKey: 'goodwill_refund',
+  });
+
+  log.warn(
+    { actor: input.actor.uid, orderId: input.orderId, amount: input.amount },
+    'Goodwill refund approved.',
+  );
+}

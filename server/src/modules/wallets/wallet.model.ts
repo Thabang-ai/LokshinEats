@@ -50,6 +50,13 @@ export const LEDGER_ENTRY_TYPES = [
   'bonus',
   'withdrawal',
   'adjustment',
+  /**
+   * Money the platform pays out beyond what a customer paid: a refund an
+   * admin approved after the kitchen started, or a vendor or driver paid for
+   * a cancelled order that was never paid for. Its own type so the expense
+   * can be reported rather than hidden among adjustments.
+   */
+  'goodwill',
 ] as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];

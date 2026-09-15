@@ -308,6 +308,87 @@ describe('refunds', () => {
     expect(order.body.data.paymentStatus).toBe('refunded');
   });
 
+  it('refuses an automatic refund once preparation has started', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      subtotal: 100,
+      deliveryFee: 20,
+      status: 'preparing',
+    });
+    const paymentId = await payFor(orderId);
+
+    const response = await request(app)
+      .post(`/api/v1/payments/${paymentId}/refund`)
+      .set(...admin.authHeader)
+      .send({ reason: 'Customer changed their mind' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toMatch(/goodwill/i);
+
+    const wallet = await request(app)
+      .get('/api/v1/wallets/me')
+      .set(...customer.authHeader);
+    expect(wallet.body.data.availableBalance).toBe(0);
+  });
+
+  it('refunds mid-prep when an admin approves it as goodwill', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      subtotal: 100,
+      deliveryFee: 20,
+      status: 'preparing',
+    });
+    const paymentId = await payFor(orderId);
+
+    const response = await request(app)
+      .post(`/api/v1/payments/${paymentId}/refund`)
+      .set(...admin.authHeader)
+      .send({ reason: 'Kitchen fire', goodwill: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('refunded');
+
+    const wallet = await request(app)
+      .get('/api/v1/wallets/me')
+      .set(...customer.authHeader);
+    expect(wallet.body.data.availableBalance).toBe(120);
+  });
+
+  it('gives a customer who cancels mid-prep a partial refund', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      subtotal: 100,
+      deliveryFee: 20,
+      status: 'preparing',
+    });
+    await payFor(orderId);
+
+    const response = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set(...customer.authHeader)
+      .send({ status: 'cancelled' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('cancelled');
+    expect(response.body.data.paymentStatus).toBe('partially_refunded');
+    expect(response.body.data.refundedAmount).toBe(28);
+    expect(response.body.data.cancellation).toMatchObject({
+      stage: 'in_kitchen',
+      customerRefund: 28,
+      vendorPay: 92,
+    });
+    // The platform's cost figure is not the customer's business.
+    expect(response.body.data.cancellation).not.toHaveProperty('goodwill');
+
+    const wallet = await request(app)
+      .get('/api/v1/wallets/me')
+      .set(...customer.authHeader);
+    expect(wallet.body.data.availableBalance).toBe(28);
+  });
+
   it('requires a reason', async () => {
     const orderId = await seedOrder({ customerId: 'cust-1', storeId });
     const paymentId = await payFor(orderId);

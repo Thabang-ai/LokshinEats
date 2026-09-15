@@ -35,6 +35,9 @@ export const PAYMENT_STATUSES = [
   'pending',
   'paid',
   'failed',
+  // A cancellation after the kitchen started keeps part of the payment for
+  // the vendor and driver and returns the rest.
+  'partially_refunded',
   'refunded',
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -62,21 +65,26 @@ export const ALLOWED_TRANSITIONS: Readonly<
     confirmed: ['vendor', 'admin'],
     cancelled: ['customer', 'vendor', 'admin'],
   },
+  // Who may ask to cancel. What a cancellation costs at each stage, and
+  // whether an order that was never paid for can be cancelled at all, is
+  // decided by cancellation.policy.ts rather than here: a customer can cancel
+  // mid-prep, but pays for the food.
   confirmed: {
     preparing: ['vendor', 'admin'],
-    cancelled: ['vendor', 'admin'],
+    cancelled: ['customer', 'vendor', 'admin'],
   },
   preparing: {
     ready: ['vendor', 'admin'],
-    cancelled: ['vendor', 'admin'],
+    cancelled: ['customer', 'vendor', 'admin'],
   },
   ready: {
     picked_up: ['driver', 'admin'],
-    cancelled: ['admin'],
+    cancelled: ['customer', 'vendor', 'admin'],
   },
   picked_up: {
     // `delivered` is intentionally absent — see the note above.
-    cancelled: ['admin'],
+    // The vendor is absent too: the food has left the kitchen.
+    cancelled: ['customer', 'admin'],
   },
 });
 
@@ -146,6 +154,25 @@ export type Order = {
   createdAt: string | null;
   updatedAt: string | null;
   deliveredAt: string | null;
+  /** Returned to the customer's wallet so far, in rands. */
+  refundedAmount: number;
+  /** Present once the order is cancelled: the tier applied, and who got what. */
+  cancellation: CancellationRecord | null;
+};
+
+/** The outcome recorded on a cancelled order. */
+export type CancellationRecord = {
+  stage: string;
+  initiator: string;
+  fromStatus: string;
+  customerRefund: number;
+  vendorPay: number;
+  driverPay: number;
+  /** Platform-covered amount. Serialised for admins only. */
+  goodwill?: number;
+  /** False while the money movements are still to be completed. */
+  settled: boolean;
+  cancelledAt: string | null;
 };
 
 const addressSchema = z
@@ -366,6 +393,8 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
     deliveredAt: toIso(data.deliveredAt),
+    refundedAmount: toNumber(data.refundedAmount),
+    cancellation: toCancellationRecord(data.cancellation, audience),
   };
 
   if (audience === 'customer' || audience === 'admin') {
@@ -377,4 +406,33 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
   }
 
   return order;
+}
+
+/**
+ * Serialise a cancellation record.
+ *
+ * The goodwill figure is an internal cost of the platform's, so only an admin
+ * receives it; everyone party to the order may see what they were paid or
+ * refunded.
+ */
+function toCancellationRecord(
+  value: unknown,
+  audience: Audience,
+): CancellationRecord | null {
+  if (value === null || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+
+  const record: CancellationRecord = {
+    stage: toStringOr(raw.stage),
+    initiator: toStringOr(raw.initiator),
+    fromStatus: toStringOr(raw.fromStatus),
+    customerRefund: toNumber(raw.customerRefund),
+    vendorPay: toNumber(raw.vendorPay),
+    driverPay: toNumber(raw.driverPay),
+    settled: raw.settled === true,
+    cancelledAt: toIso(raw.cancelledAt),
+  };
+
+  if (audience === 'admin') record.goodwill = toNumber(raw.goodwill);
+  return record;
 }

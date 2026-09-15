@@ -21,6 +21,7 @@ import {
   type Order,
   type OrderStatus,
 } from './order.model';
+import type { CancellationDecision, CancellationPlan } from './cancellation.policy';
 
 const collection = () => db.collection(Collections.orders);
 
@@ -603,6 +604,91 @@ export async function recordPayment(
   await collection().doc(orderId).update({
     paymentStatus,
     paymentTransactionId: transactionId,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Cancel an order, deciding what the cancellation costs inside the same
+ * transaction.
+ *
+ * The plan is computed from the status the write actually applies to. Worked
+ * out beforehand, a driver collecting the food a moment earlier would leave a
+ * customer refunded as if it were still in the kitchen.
+ *
+ * The plan is stored on the order with `settled: false`. The service moves the
+ * money and then marks it settled; if that is interrupted, calling this again
+ * returns the stored plan so the cancellation can be finished rather than
+ * reported as already done.
+ */
+export async function cancelOrder(
+  orderId: string,
+  actorRole: Role,
+  decide: (order: Record<string, unknown>) => CancellationDecision,
+): Promise<{ cancelledNow: boolean; plan: CancellationPlan }> {
+  const ref = collection().doc(orderId);
+
+  return db.runTransaction(async (transaction: Transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw ApiError.notFound('No such order.');
+
+    const data = snapshot.data() ?? {};
+    const current = (data.status ?? 'pending') as OrderStatus;
+
+    if (current === 'cancelled') {
+      const stored = data.cancellation as (CancellationPlan & { settled?: boolean }) | undefined;
+      if (stored && typeof stored === 'object' && stored.settled !== true) {
+        return { cancelledNow: false, plan: stored };
+      }
+      throw ApiError.conflict('This order is already cancelled.');
+    }
+
+    if (!canTransition(current, 'cancelled', actorRole)) {
+      throw ApiError.conflict(
+        `An order that is ${current.replace('_', ' ')} cannot be cancelled by you.`,
+      );
+    }
+
+    const decision = decide(data);
+    if (!decision.allowed) throw ApiError.conflict(decision.reason);
+
+    transaction.update(ref, {
+      status: 'cancelled',
+      cancellation: {
+        ...decision.plan,
+        settled: false,
+        cancelledAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { cancelledNow: true, plan: decision.plan };
+  });
+}
+
+/** Record that a cancellation's money has moved. */
+export async function markCancellationSettled(
+  orderId: string,
+  refundedAmount: number,
+  paymentStatus?: 'refunded' | 'partially_refunded',
+): Promise<void> {
+  await collection().doc(orderId).update({
+    'cancellation.settled': true,
+    refundedAmount,
+    ...(paymentStatus ? { paymentStatus } : {}),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/** Record a refund that did not come from a cancellation, such as goodwill. */
+export async function recordRefund(
+  orderId: string,
+  refundedAmount: number,
+  paymentStatus: 'refunded' | 'partially_refunded',
+): Promise<void> {
+  await collection().doc(orderId).update({
+    refundedAmount,
+    paymentStatus,
     updatedAt: FieldValue.serverTimestamp(),
   });
 }

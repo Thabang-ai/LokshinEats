@@ -28,6 +28,7 @@ import {
   type Order,
   type OrderStatus,
 } from './order.model';
+import * as cancellationService from './cancellation.service';
 import * as repository from './order.repository';
 import type { DeliveryResult, NewOrderDocument } from './order.repository';
 
@@ -316,6 +317,25 @@ export async function changeStatus(
   next: OrderStatus,
 ): Promise<Order> {
   const order = await getOrder(caller, orderId);
+
+  // Cancelling moves money, and how much depends on the stage the order has
+  // reached, so it goes through the cancellation policy rather than a plain
+  // status write. It is routed there before the transition check below: the
+  // policy's transaction checks who may cancel itself, and it must be able to
+  // see an already-cancelled order in order to finish a cancellation that was
+  // interrupted — which an ordinary cancelled -> cancelled check would refuse.
+  if (next === 'cancelled') {
+    const cancelled = await cancellationService.cancelOrder({
+      actor: caller,
+      orderId,
+      audience: audienceFor(caller, order),
+    });
+    log.info(
+      { orderId, from: order.status, to: next, actor: caller.uid },
+      'Order cancelled.',
+    );
+    return cancelled;
+  }
 
   if (!canTransition(order.status, next, caller.role)) {
     throw ApiError.conflict(

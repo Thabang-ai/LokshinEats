@@ -156,6 +156,7 @@ paymentRouter.post(
       requireAuth(req),
       req.params.id as string,
       req.body.reason,
+      { goodwill: req.body.goodwill === true },
     );
     res.json({ data: payment });
   }),

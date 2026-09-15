@@ -382,11 +382,15 @@ describe('advancing an order', () => {
     expect(response.status).toBe(200);
   });
 
-  it('stops the customer cancelling once the kitchen has started', async () => {
+  it('stops the customer cancelling an unpaid order once the kitchen has started', async () => {
+    // Nothing was paid in advance, so there is nothing to take the food cost
+    // from. A paid order can be cancelled here, at a cost: see
+    // cancellation.integration.test.ts and the payment route tests.
     const orderId = await seedOrder({
       customerId: 'cust-1',
       storeId,
       status: 'preparing',
+      paymentMethod: 'cash',
     });
 
     const response = await request(app)
@@ -395,6 +399,7 @@ describe('advancing an order', () => {
       .send({ status: 'cancelled' });
 
     expect(response.status).toBe(409);
+    expect(response.body.error.message).toMatch(/support/i);
   });
 
   it('refuses to let a driver mark an order delivered', async () => {

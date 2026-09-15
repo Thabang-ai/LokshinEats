@@ -45,6 +45,13 @@ const schema = z.object({
   DRIVER_DELIVERY_SHARE: fraction(0.85),
 
   /**
+   * Share of a driver's delivery pay they receive as a base arrival fee when
+   * an order they had been dispatched to is cancelled while the food is still
+   * in the kitchen. See orders/cancellation.policy.ts.
+   */
+  DRIVER_ARRIVAL_FEE_SHARE: fraction(0.5),
+
+  /**
    * Which payment provider handles charges. "sandbox" moves no real money
    * and refuses to run in production unless ALLOW_SANDBOX_PAYMENTS is set.
    */

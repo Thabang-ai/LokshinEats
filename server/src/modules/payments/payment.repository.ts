@@ -65,7 +65,11 @@ export async function findLatestForOrder(
 export async function updateStatus(
   id: string,
   status: PaymentRecordStatus,
-  extra: { transactionId?: string | null; failureReason?: string | null } = {},
+  extra: {
+    transactionId?: string | null;
+    failureReason?: string | null;
+    refundedAmount?: number;
+  } = {},
 ): Promise<Payment> {
   const ref = collection().doc(id);
 
@@ -76,6 +80,9 @@ export async function updateStatus(
       : {}),
     ...(extra.failureReason !== undefined
       ? { failureReason: extra.failureReason }
+      : {}),
+    ...(extra.refundedAmount !== undefined
+      ? { refundedAmount: extra.refundedAmount }
       : {}),
     updatedAt: FieldValue.serverTimestamp(),
   });

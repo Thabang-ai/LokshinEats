@@ -27,6 +27,7 @@ import { SandboxPaymentProvider } from './providers/sandbox.provider';
 import * as paymentService from './payment.service';
 import * as paymentRepository from './payment.repository';
 import * as orderRepository from '../orders/order.repository';
+import * as orderService from '../orders/order.service';
 
 const CUSTOMER = 'customer-uid';
 const VENDOR = 'vendor-uid';
@@ -395,7 +396,7 @@ describe('refundPayment', () => {
   });
 });
 
-describe('refunds close the order', () => {
+describe('admin refunds under the cancellation tiers', () => {
   /** A card order, paid through the sandbox provider. */
   async function paidOrder(input: {
     status?: string;
@@ -420,85 +421,143 @@ describe('refunds close the order', () => {
     return { orderId, paymentId: payment.id };
   }
 
-  it('cancels an order the kitchen had not finished, and takes it off the drivers\' queue', async () => {
-    const { orderId, paymentId } = await paidOrder({ status: 'ready' });
+  it('refunds automatically before prep, cancelling the order and taking it off the drivers\' queue', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'confirmed' });
 
     const before = await orderRepository.listAvailableForDrivers({ limit: 20, audience: 'driver' });
     expect(before.items.map((order) => order.id)).toContain(orderId);
 
-    await paymentService.refundPayment(admin, paymentId, 'Kitchen closed early');
+    const refunded = await paymentService.refundPayment(admin, paymentId, 'Kitchen closed early');
 
+    expect(refunded.status).toBe('refunded');
     expect((await readOrder(orderId))?.status).toBe('cancelled');
-    expect((await readOrder(orderId))?.paymentStatus).toBe('refunded');
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(VENDOR)).pending).toBe(0);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(0);
 
     const after = await orderRepository.listAvailableForDrivers({ limit: 20, audience: 'driver' });
     expect(after.items.map((order) => order.id)).not.toContain(orderId);
   });
 
-  it('stops a driver already on the way from completing the delivery', async () => {
+  it('blocks an automatic refund once the kitchen has started', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'preparing' });
+
+    await expect(
+      paymentService.refundPayment(admin, paymentId, 'Customer changed their mind'),
+    ).rejects.toThrow(/goodwill/i);
+
+    // Nothing moved: the order is still being made and the vendor keeps their share.
+    expect((await readOrder(orderId))?.status).toBe('preparing');
+    expect((await readWallet(CUSTOMER)).available).toBe(0);
+    expect((await readWallet(VENDOR)).pending).toBe(92);
+    expect((await paymentRepository.findById(paymentId))?.status).toBe('succeeded');
+  });
+
+  it('as goodwill mid-prep, pays vendor and driver their tier and covers the rest from the platform', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'preparing', driverId: DRIVER });
+
+    const refunded = await paymentService.refundPayment(admin, paymentId, 'Kitchen fire', {
+      goodwill: true,
+    });
+
+    expect(refunded.status).toBe('refunded');
+    expect((await readOrder(orderId))?.status).toBe('cancelled');
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(VENDOR)).available).toBe(92);
+    expect((await readWallet(VENDOR)).pending).toBe(0);
+    expect((await readWallet(DRIVER)).available).toBe(8.5);
+    // R19.50 came from the order under the policy; R100.50 is the platform's.
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-100.5);
+    const goodwill = (await readLedger(PLATFORM_WALLET_ID)).filter((entry) => entry.type === 'goodwill');
+    expect(goodwill.map((entry) => entry.amount)).toEqual([-100.5]);
+  });
+
+  it('blocks a refund on the way unless it is goodwill, and then keeps the driver from completing it', async () => {
     const { orderId, paymentId } = await paidOrder({
       status: 'picked_up',
       driverId: DRIVER,
       deliveryCode: '123456',
     });
 
-    await paymentService.refundPayment(admin, paymentId, 'Customer no longer at the address');
+    await expect(
+      paymentService.refundPayment(admin, paymentId, 'Customer no longer at the address'),
+    ).rejects.toThrow(/goodwill/i);
+    expect((await readOrder(orderId))?.status).toBe('picked_up');
+
+    await paymentService.refundPayment(admin, paymentId, 'Customer no longer at the address', {
+      goodwill: true,
+    });
 
     expect((await readOrder(orderId))?.status).toBe('cancelled');
-
-    // The right code no longer closes it, so nothing can settle a delivery
-    // for an order whose money has been given back.
+    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(VENDOR)).available).toBe(92);
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-109);
     await expect(
       orderRepository.completeDelivery(orderId, DRIVER, '123456'),
     ).rejects.toThrow(/collect the order/i);
-    expect((await readWallet(DRIVER)).available).toBe(0);
   });
 
-  it('leaves a delivered order delivered, and takes the vendor share back from available', async () => {
+  it('refunds a delivered order only as goodwill, leaving the vendor and driver paid', async () => {
     const { orderId, paymentId } = await paidOrder({ status: 'delivered', driverId: DRIVER });
     await paymentService.settleDelivery(orderId);
 
-    expect((await readWallet(VENDOR)).available).toBe(92);
-    expect((await readWallet(VENDOR)).pending).toBe(0);
+    await expect(
+      paymentService.refundPayment(admin, paymentId, 'Food arrived cold'),
+    ).rejects.toThrow(/goodwill/i);
 
-    await paymentService.refundPayment(admin, paymentId, 'Food arrived cold');
+    await paymentService.refundPayment(admin, paymentId, 'Food arrived cold', { goodwill: true });
 
     expect((await readOrder(orderId))?.status).toBe('delivered');
-    // Before, the reversal debited pending: the vendor kept R92 in available
-    // and showed a pending balance of -R92.
-    expect((await readWallet(VENDOR)).available).toBe(0);
+    expect((await readWallet(VENDOR)).available).toBe(92);
     expect((await readWallet(VENDOR)).pending).toBe(0);
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
-    // The driver did the delivery and keeps their earnings.
     expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-109);
   });
 
-  it('refunds an order the customer had already cancelled', async () => {
-    const { orderId, paymentId } = await paidOrder();
-    await orderRepository.applyStatusChange(orderId, 'cancelled', 'customer', 'customer');
+  it('tops up an order the customer cancelled mid-prep only as goodwill', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'preparing' });
+    await orderService.changeStatus(customer, orderId, 'cancelled');
+    expect((await readWallet(CUSTOMER)).available).toBe(28);
 
-    const refunded = await paymentService.refundPayment(admin, paymentId, 'Cancelled before cooking');
+    await expect(
+      paymentService.refundPayment(admin, paymentId, 'Customer complained'),
+    ).rejects.toThrow(/goodwill/i);
 
-    expect(refunded.status).toBe('refunded');
-    expect((await readOrder(orderId))?.status).toBe('cancelled');
+    await paymentService.refundPayment(admin, paymentId, 'Customer complained', { goodwill: true });
+
     expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(VENDOR)).available).toBe(92);
   });
 
   it('can be retried after an interruption without paying the customer twice', async () => {
-    const { orderId, paymentId } = await paidOrder();
+    const { orderId, paymentId } = await paidOrder({ status: 'preparing' });
 
-    await paymentService.refundPayment(admin, paymentId, 'Order never arrived');
+    await paymentService.refundPayment(admin, paymentId, 'Kitchen fire', { goodwill: true });
 
-    // Reproduce a refund whose last write never landed: the money has moved
-    // and the order is cancelled, but the payment still reads as succeeded,
-    // so an admin runs the refund again.
-    await paymentRepository.updateStatus(paymentId, 'succeeded');
-    const retried = await paymentService.refundPayment(admin, paymentId, 'Order never arrived');
+    // Reproduce a goodwill refund whose last writes never landed: the money
+    // has moved, but neither the order nor the payment recorded it.
+    await db.collection(Collections.orders).doc(orderId).update({ refundedAmount: 28 });
+    await paymentRepository.updateStatus(paymentId, 'partially_refunded', { refundedAmount: 28 });
+
+    const retried = await paymentService.refundPayment(admin, paymentId, 'Kitchen fire', {
+      goodwill: true,
+    });
 
     expect(retried.status).toBe('refunded');
     expect((await readWallet(CUSTOMER)).available).toBe(120);
-    expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(1);
-    expect((await readWallet(VENDOR)).pending).toBe(0);
-    expect((await readOrder(orderId))?.status).toBe('cancelled');
+    expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(2);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-92);
+  });
+
+  it('refuses to refund a payment already refunded in full', async () => {
+    const { paymentId } = await paidOrder({ status: 'pending' });
+    await paymentService.refundPayment(admin, paymentId, 'Duplicate order');
+
+    await expect(
+      paymentService.refundPayment(admin, paymentId, 'Duplicate order', { goodwill: true }),
+    ).rejects.toThrow(/already been refunded/i);
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
   });
 });

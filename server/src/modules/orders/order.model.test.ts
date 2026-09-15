@@ -63,18 +63,27 @@ describe('order lifecycle', () => {
     expect(canTransition('preparing', 'ready', 'customer')).toBe(false);
   });
 
-  it('lets a customer cancel only while the order is still pending', () => {
-    expect(canTransition('pending', 'cancelled', 'customer')).toBe(true);
-    // Once the kitchen has started, food has been committed.
-    expect(canTransition('confirmed', 'cancelled', 'customer')).toBe(false);
-    expect(canTransition('preparing', 'cancelled', 'customer')).toBe(false);
-    expect(canTransition('ready', 'cancelled', 'customer')).toBe(false);
+  it('lets a customer ask to cancel at any stage before delivery', () => {
+    // Asking is not the same as getting a refund. What a cancellation costs
+    // at each stage — and whether an unpaid order can be cancelled at all —
+    // is the cancellation policy's decision: see cancellation.policy.test.ts.
+    for (const from of ['pending', 'confirmed', 'preparing', 'ready', 'picked_up'] as OrderStatus[]) {
+      expect(canTransition(from, 'cancelled', 'customer')).toBe(true);
+    }
   });
 
-  it('does not let a driver cancel an order they have collected', () => {
-    // Only an admin can unwind a collected order, since food has left the
-    // store and someone has to decide who absorbs the cost.
-    expect(canTransition('picked_up', 'cancelled', 'driver')).toBe(false);
+  it('lets a vendor cancel only until the food leaves the kitchen', () => {
+    for (const from of ['pending', 'confirmed', 'preparing', 'ready'] as OrderStatus[]) {
+      expect(canTransition(from, 'cancelled', 'vendor')).toBe(true);
+    }
+    expect(canTransition('picked_up', 'cancelled', 'vendor')).toBe(false);
+  });
+
+  it('never lets a driver cancel', () => {
+    // A driver gives an order back with release, before collecting it.
+    for (const from of ['pending', 'confirmed', 'preparing', 'ready', 'picked_up'] as OrderStatus[]) {
+      expect(canTransition(from, 'cancelled', 'driver')).toBe(false);
+    }
     expect(canTransition('picked_up', 'cancelled', 'admin')).toBe(true);
   });
 

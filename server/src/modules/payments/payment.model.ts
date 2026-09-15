@@ -18,6 +18,7 @@ export const PAYMENT_RECORD_STATUSES = [
   'initiated',
   'succeeded',
   'failed',
+  'partially_refunded',
   'refunded',
 ] as const;
 
@@ -35,6 +36,8 @@ export type Payment = {
   transactionId: string | null;
   status: PaymentRecordStatus;
   failureReason: string | null;
+  /** Returned to the customer so far, in rands. */
+  refundedAmount: number;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -78,6 +81,13 @@ export const sandboxReferenceParamSchema = z.object({
 export const refundSchema = z
   .object({
     reason: z.string().trim().min(3).max(200),
+    /**
+     * Approve the refund as a platform-covered goodwill expense. Required
+     * once the kitchen has started: without it the refund is refused, because
+     * it would otherwise come out of the vendor's food cost or the driver's
+     * pay.
+     */
+    goodwill: z.boolean().optional(),
   })
   .strict();
 
@@ -107,6 +117,7 @@ export function toPayment(snapshot: DocumentSnapshot): Payment {
     status,
     failureReason:
       typeof data.failureReason === 'string' ? data.failureReason : null,
+    refundedAmount: toNumber(data.refundedAmount),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };
