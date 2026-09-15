@@ -16,7 +16,12 @@ enum LedgerEntryType {
   refund,
   bonus,
   withdrawal,
-  adjustment;
+  adjustment,
+
+  /// Money the platform paid out beyond what a customer paid. Customers do
+  /// not receive entries of this type — a goodwill refund reaches them as a
+  /// refund — but it is listed so the app reads every type the API sends.
+  goodwill;
 
   static LedgerEntryType fromWire(Object? value) => switch (value) {
     'order_earning' => LedgerEntryType.orderEarning,
@@ -24,6 +29,7 @@ enum LedgerEntryType {
     'refund' => LedgerEntryType.refund,
     'bonus' => LedgerEntryType.bonus,
     'withdrawal' => LedgerEntryType.withdrawal,
+    'goodwill' => LedgerEntryType.goodwill,
     _ => LedgerEntryType.adjustment,
   };
 
@@ -35,6 +41,7 @@ enum LedgerEntryType {
     LedgerEntryType.withdrawal => 'Withdrawal',
     LedgerEntryType.orderEarning => 'Order earnings',
     LedgerEntryType.commission => 'Commission',
+    LedgerEntryType.goodwill => 'Goodwill',
   };
 }
 

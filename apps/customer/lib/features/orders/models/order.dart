@@ -171,6 +171,8 @@ class CustomerOrder {
     this.createdAt,
     this.updatedAt,
     this.deliveredAt,
+    this.refundedAmount = 0,
+    this.cancellation,
   });
 
   factory CustomerOrder.fromJson(Map<String, dynamic> json) {
@@ -212,6 +214,8 @@ class CustomerOrder {
       createdAt: _date(json['createdAt']),
       updatedAt: _date(json['updatedAt']),
       deliveredAt: _date(json['deliveredAt']),
+      refundedAmount: _money(json['refundedAmount']),
+      cancellation: OrderCancellation.fromJson(json['cancellation']),
     );
   }
 
@@ -238,6 +242,20 @@ class CustomerOrder {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deliveredAt;
+
+  /// Returned to the customer's wallet so far. Includes a goodwill top-up an
+  /// admin approved, so it can exceed the cancellation's own refund.
+  final double refundedAmount;
+
+  /// How a cancelled order was settled, or null for any other order and for
+  /// orders cancelled before cancellations were recorded.
+  final OrderCancellation? cancellation;
+
+  /// Money was taken up front. A cash order is only paid at the door, so a
+  /// cancelled cash order never had anything to refund.
+  bool get wasPrepaid =>
+      paymentMethod != PaymentMethod.cash &&
+      const {'paid', 'partially_refunded', 'refunded'}.contains(paymentStatus);
 
   bool get isPaid => paymentStatus == 'paid';
 
@@ -296,4 +314,51 @@ class PaymentAttempt {
 
   bool get succeeded => status == 'succeeded';
   bool get failed => status == 'failed';
+}
+
+/// How a cancelled order was settled.
+///
+/// The server decides all of this from the stage the order had reached — the
+/// app only explains it. Amounts are in rands.
+class OrderCancellation {
+  const OrderCancellation({
+    required this.stage,
+    required this.initiator,
+    required this.customerRefund,
+    required this.vendorPay,
+    required this.driverPay,
+    required this.settled,
+  });
+
+  static OrderCancellation? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+
+    return OrderCancellation(
+      stage: json['stage'] as String? ?? '',
+      initiator: json['initiator'] as String? ?? '',
+      customerRefund: _money(json['customerRefund']),
+      vendorPay: _money(json['vendorPay']),
+      driverPay: _money(json['driverPay']),
+      settled: json['settled'] == true,
+    );
+  }
+
+  /// `before_prep`, `in_kitchen` or `on_the_way`.
+  final String stage;
+
+  /// `customer`, `vendor` or `admin`.
+  final String initiator;
+
+  /// What the cancellation itself returned, before any goodwill.
+  final double customerRefund;
+
+  /// What the kitchen was paid for food already made.
+  final double vendorPay;
+
+  /// What the driver was paid for the trip.
+  final double driverPay;
+
+  /// False for the moment between the order being cancelled and the money
+  /// being moved.
+  final bool settled;
 }

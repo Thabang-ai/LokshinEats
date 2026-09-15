@@ -52,7 +52,7 @@ class OrderTrackingPage extends ConsumerWidget {
                 _StatusHeader(tracking: data),
                 const SizedBox(height: 16),
                 if (data.order.status == OrderStatus.cancelled)
-                  const _CancelledNotice()
+                  CancellationNotice(order: data.order)
                 else
                   _Timeline(status: data.order.status),
                 const SizedBox(height: 16),
@@ -298,36 +298,6 @@ class _StepDot extends StatelessWidget {
         done ? Icons.check_rounded : icon,
         size: 17,
         color: filled ? scheme.onPrimary : scheme.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-class _CancelledNotice extends StatelessWidget {
-  const _CancelledNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.block_rounded, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'This order will not be delivered. If you paid online, the '
-              'refund goes to your LokshinEats wallet once it is processed.',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
       ),
     );
   }

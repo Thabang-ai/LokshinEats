@@ -219,6 +219,20 @@ class PaymentStatusRow extends StatelessWidget {
     final status = StatusColors.of(context);
 
     final (IconData icon, Color colour, String message) = switch (order) {
+      // A mid-prep cancellation keeps part of the payment for the kitchen and
+      // driver. Checked first: it is neither "paid" nor fully refunded.
+      _ when order.paymentStatus == 'partially_refunded' => (
+        Icons.account_balance_wallet_rounded,
+        status.success,
+        '${formatRands(order.refundedAmount)} refunded to your LokshinEats wallet',
+      ),
+      // Cancelled after pickup: the payment stands, because the food and the
+      // trip were already paid for.
+      _ when order.isPaid && order.status == OrderStatus.cancelled => (
+        Icons.info_outline_rounded,
+        theme.colorScheme.onSurfaceVariant,
+        'Paid · no refund for a cancellation after pickup',
+      ),
       _ when order.isPaid => (
         Icons.check_circle_rounded,
         status.success,
@@ -380,4 +394,125 @@ class AmountRow extends StatelessWidget {
       children: [Text(label, style: style), Text(value, style: style)],
     );
   }
+}
+
+/// Why a cancelled order ended the way it did, and where the money went.
+///
+/// The cancellation rules charge for what was already committed — food being
+/// made, a driver already on the way — so a customer who cancelled late gets
+/// less back. Saying exactly what went where is what makes that feel fair
+/// rather than like money disappeared.
+class CancellationNotice extends StatelessWidget {
+  const CancellationNotice({super.key, required this.order});
+
+  final CustomerOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (headline, detail) = describeCancellation(order);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.block_rounded, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  headline,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (detail != null) ...[
+                  const SizedBox(height: 6),
+                  Text(detail, style: theme.textTheme.bodyMedium),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The headline and money explanation for a cancelled order.
+///
+/// Public so the wording can be tested without pumping a widget.
+(String, String?) describeCancellation(CustomerOrder order) {
+  final cancellation = order.cancellation;
+
+  if (cancellation == null) {
+    return (
+      'This order was cancelled.',
+      order.refundedAmount > 0
+          ? '${formatRands(order.refundedAmount)} is back in your LokshinEats wallet.'
+          : null,
+    );
+  }
+
+  final headline = switch (cancellation.initiator) {
+    'vendor' => 'The kitchen cancelled this order.',
+    'admin' => 'LokshinEats cancelled this order.',
+    _ => switch (cancellation.stage) {
+      'before_prep' => 'You cancelled this order before the kitchen started.',
+      'in_kitchen' => 'You cancelled this order while it was being prepared.',
+      'on_the_way' => 'You cancelled this order after your driver collected it.',
+      _ => 'This order was cancelled.',
+    },
+  };
+
+  if (!cancellation.settled) {
+    return (
+      headline,
+      order.wasPrepaid
+          ? 'Your refund is being processed and will appear in your wallet shortly.'
+          : null,
+    );
+  }
+
+  // Nothing was paid up front, so there is no money to explain.
+  if (!order.wasPrepaid) return (headline, null);
+
+  if (order.total > 0 && order.refundedAmount >= order.total) {
+    return (
+      headline,
+      'Your full payment of ${formatRands(order.total)} is back in your '
+          'LokshinEats wallet.',
+    );
+  }
+
+  if (order.refundedAmount > 0) {
+    final kept = [
+      if (cancellation.vendorPay > 0)
+        '${formatRands(cancellation.vendorPay)} paid the kitchen for food '
+            'already made',
+      if (cancellation.driverPay > 0)
+        '${formatRands(cancellation.driverPay)} paid your driver for the trip',
+    ];
+
+    return (
+      headline,
+      [
+        '${formatRands(order.refundedAmount)} is back in your LokshinEats wallet.',
+        if (kept.isNotEmpty) '${kept.join(' and ')}.',
+      ].join(' '),
+    );
+  }
+
+  return (
+    headline,
+    'There was no refund: the food and the delivery had already been paid for.',
+  );
 }
