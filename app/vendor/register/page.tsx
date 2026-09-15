@@ -4,7 +4,7 @@
 // Allows store owners to register their business
 
 import { useState } from 'react';
-import { Store, Upload, MapPin, Clock, ArrowLeft } from 'lucide-react';
+import { Store, Upload, MapPin, Clock, ArrowLeft, Banknote } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -24,6 +24,10 @@ export default function StoreRegistrationPage() {
     openingTime: '08:00',
     closingTime: '20:00',
     categories: [] as string[],
+    bankName: '',
+    accountHolderName: '',
+    accountNumber: '',
+    accountType: 'savings' as 'savings' | 'checking',
   });
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -84,7 +88,13 @@ export default function StoreRegistrationPage() {
     const ownerId = auth.currentUser.uid;
 
     try {
-      // Mark the user as a vendor (merge so we don't clobber existing fields)
+      // Mark the user as a vendor (merge so we don't clobber existing fields).
+      // Banking details live here, on the private users/{uid} doc, NOT on the
+      // public stores/{storeId} doc below — firestore.rules makes `stores`
+      // world-readable (customers browse without auth), so a bank account
+      // number written there would be exposed to anyone. `users/{uid}` is
+      // readable only by its owner or an admin, which is where payout info
+      // belongs.
       await setDoc(
         doc(db, 'users', ownerId),
         {
@@ -92,6 +102,10 @@ export default function StoreRegistrationPage() {
           email: formData.email,
           phone: formData.phone,
           storeName: formData.storeName,
+          bankName: formData.bankName,
+          accountHolderName: formData.accountHolderName,
+          accountNumber: formData.accountNumber,
+          accountType: formData.accountType,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -349,6 +363,75 @@ export default function StoreRegistrationPage() {
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Banking Information */}
+            <div>
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Banknote className="w-5 h-5 text-primary" />
+                Banking Information
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Used to pay out your share of completed orders. Kept private — never shown on your
+                public store page.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Bank Name</label>
+                  <input
+                    type="text"
+                    value={formData.bankName}
+                    onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="FNB, Standard Bank, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Account Holder Name</label>
+                  <input
+                    type="text"
+                    value={formData.accountHolderName}
+                    onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="As it appears on the account"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Account Number</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.accountNumber}
+                    onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Account Number"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Account Type</label>
+                  <select
+                    value={formData.accountType}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        accountType: e.target.value as 'savings' | 'checking',
+                      })
+                    }
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="savings">Savings Account</option>
+                    <option value="checking">Checking Account</option>
+                  </select>
                 </div>
               </div>
             </div>

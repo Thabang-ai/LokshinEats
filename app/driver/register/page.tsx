@@ -22,6 +22,7 @@ export default function DriverRegistrationPage() {
     vehicleRegistration: '',
     licenseNumber: '',
     bankName: '',
+    accountHolderName: '',
     accountNumber: '',
     accountType: 'savings' as 'savings' | 'checking',
   });
@@ -44,7 +45,11 @@ export default function DriverRegistrationPage() {
     setIsLoading(true);
 
     try {
-      // Update user role to driver in Firestore
+      // Update user role to driver in Firestore. Banking details live here,
+      // on the private users/{uid} doc, NOT on the public drivers/{driverId}
+      // doc (firestore.rules makes `drivers` world-readable — customers see
+      // who's bringing their food — so a bank account number belongs on the
+      // owner/admin-only `users` doc instead, same as the vendor payout fix).
       if (auth.currentUser) {
         await setDoc(doc(db, 'users', auth.currentUser.uid), {
           role: 'driver',
@@ -53,6 +58,10 @@ export default function DriverRegistrationPage() {
           firstName: formData.firstName,
           lastName: formData.lastName,
           vehicleType: formData.vehicleType,
+          bankName: formData.bankName,
+          accountHolderName: formData.accountHolderName,
+          accountNumber: formData.accountNumber,
+          accountType: formData.accountType,
           updatedAt: new Date(),
         }, { merge: true });
       }
@@ -268,6 +277,19 @@ export default function DriverRegistrationPage() {
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="FNB, Standard Bank, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Account Holder Name</label>
+                  <input
+                    type="text"
+                    name="accountHolderName"
+                    value={formData.accountHolderName}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="As it appears on the account"
                   />
                 </div>
 

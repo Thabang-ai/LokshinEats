@@ -11,13 +11,16 @@
 
 import { useEffect, useState } from 'react';
 import { useCart } from '../../context/CartContext';
-import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle } from 'lucide-react';
+import { CreditCard, Smartphone, DollarSign, MapPin, Clock, AlertCircle, LocateFixed } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
 import { ApiError } from '../../services/apiClient';
+import { findNearestTownship, getCurrentLocation } from '../../services/mapService';
 import {
   completeSandboxPayment,
   initiatePayment,
@@ -52,12 +55,77 @@ export default function CheckoutPage() {
     email: '',
   });
 
-  // Pre-fill email from authenticated user once auth resolves
+  const [isLocating, setIsLocating] = useState(false);
+
+  // Pre-fill from the authenticated user's profile once auth resolves —
+  // email from the Auth object, phone/address from the private
+  // users/{uid} Firestore doc (see app/profile/page.tsx, which is what
+  // actually writes these fields). Only fills in fields still blank, so it
+  // never clobbers something the customer already typed on this order.
+  //
+  // Read straight from Firestore rather than GET /api/v1/users/me: the
+  // profile page stores `address` as {street, city, postalCode}, and the API
+  // still models it as a single string, so it would hand back null here.
   useEffect(() => {
-    if (user?.email && !formData.email) {
-      setFormData((prev) => ({ ...prev, email: user.email ?? '' }));
+    if (!user) return;
+    if (user.email) {
+      setFormData((prev) => (prev.email ? prev : { ...prev, email: user.email ?? '' }));
     }
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const address = data.address && typeof data.address === 'object' ? data.address : null;
+        setFormData((prev) => ({
+          ...prev,
+          phone: prev.phone || (typeof data.phone === 'string' ? data.phone : prev.phone),
+          street: prev.street || (typeof address?.street === 'string' ? address.street : prev.street),
+          city: prev.city || (typeof address?.city === 'string' ? address.city : prev.city),
+          postalCode:
+            prev.postalCode || (typeof address?.postalCode === 'string' ? address.postalCode : prev.postalCode),
+        }));
+      } catch (error) {
+        console.error('Failed to pre-fill from profile:', error);
+      }
+    })();
   }, [user]);
+
+  // "Use my location" fills in the nearest township the app recognises.
+  //
+  // The coordinates themselves are not sent with the order. The API's order
+  // schema is strict and has no field for them — it would reject the request
+  // — and the server estimates distance from the city on its own, so the
+  // browser has no say in a figure that feeds driver payouts.
+  const handleUseMyLocation = async () => {
+    setIsLocating(true);
+    try {
+      const position = await getCurrentLocation();
+      const { latitude, longitude } = position.coords;
+      const nearest = findNearestTownship(latitude, longitude);
+
+      if (nearest) {
+        setFormData((prev) => ({ ...prev, city: nearest.area }));
+        toast.success(
+          nearest.distanceKm < 3
+            ? `Set your city to ${nearest.area}`
+            : `Nearest area we recognise is ${nearest.area} (${nearest.distanceKm.toFixed(1)}km away) — please check it's right`,
+        );
+      } else {
+        toast.success('Got your location — please fill in your address below.');
+      }
+    } catch (error) {
+      const message =
+        error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED
+          ? 'Location access denied — you can still enter your address manually.'
+          : 'Could not get your location — please enter your address manually.';
+      toast.error(message);
+      console.error('Geolocation error:', error);
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   // Redirect to login if not authenticated. Firestore rules require
   // request.auth.uid == request.resource.data.customerId on order create.
@@ -272,10 +340,21 @@ export default function CheckoutPage() {
               animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-xl shadow-md p-6"
             >
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-primary" />
-                Delivery Address
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-primary" />
+                  Delivery Address
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleUseMyLocation}
+                  disabled={isLocating}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <LocateFixed className="w-4 h-4" />
+                  {isLocating ? 'Locating…' : 'Use my location'}
+                </button>
+              </div>
 
               <div className="space-y-4">
                 <div>

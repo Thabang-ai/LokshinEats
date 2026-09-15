@@ -375,8 +375,8 @@ export default function RestaurantDetailPage({
                       )}
                     </div>
 
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-2">
                         <h3 className="font-semibold text-lg">{item.name}</h3>
                         <button className="text-gray-400 hover:text-red-500">
                           <Heart className="w-5 h-5" />
@@ -397,29 +397,29 @@ export default function RestaurantDetailPage({
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-bold text-lg">R{item.price}</span>
 
                         {item.available ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
                             {quantities[item.id] && quantities[item.id] > 0 ? (
                               <>
                                 <button
                                   onClick={() => updateQuantity(item.id, -1)}
-                                  className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center hover:bg-gray-300"
+                                  className="w-7 h-7 shrink-0 bg-gray-200 rounded-full flex items-center justify-center hover:bg-gray-300"
                                 >
                                   <Minus className="w-4 h-4" />
                                 </button>
-                                <span className="font-semibold w-6 text-center">{quantities[item.id]}</span>
+                                <span className="font-semibold w-5 text-center shrink-0">{quantities[item.id]}</span>
                                 <button
                                   onClick={() => updateQuantity(item.id, 1)}
-                                  className="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark"
+                                  className="w-7 h-7 shrink-0 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-dark"
                                 >
                                   <Plus className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => handleAddToCart(item.id)}
-                                  className="ml-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm font-semibold"
+                                  className="shrink-0 px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm font-semibold whitespace-nowrap"
                                 >
                                   Add
                                 </button>
@@ -427,7 +427,7 @@ export default function RestaurantDetailPage({
                             ) : (
                               <button
                                 onClick={() => updateQuantity(item.id, 1)}
-                                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm font-semibold"
+                                className="shrink-0 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm font-semibold whitespace-nowrap"
                               >
                                 Add to Cart
                               </button>

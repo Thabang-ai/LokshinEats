@@ -1,6 +1,6 @@
-// Privacy Policy — placeholder content. Replace with real privacy notice
-// reviewed by an attorney before launch. South Africa's POPIA (Protection of
-// Personal Information Act) requires specific disclosures.
+// Privacy Policy — fuller working draft aligned with South Africa's POPIA
+// (Protection of Personal Information Act 4 of 2013). Still not legal
+// advice — have this reviewed by a qualified attorney before public launch.
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
@@ -23,17 +23,40 @@ export default function PrivacyPage() {
         </Link>
 
         <h1 className="text-3xl md:text-4xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: 27 May 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: 26 August 2026</p>
 
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-8 text-sm text-amber-800">
-          <p className="font-semibold mb-1">⚠️ Placeholder text</p>
+          <p className="font-semibold mb-1">⚠️ Working draft — not legal advice</p>
           <p>
-            This privacy notice is a starting draft and is not legal advice. South Africa's
-            POPIA has specific requirements — review with a qualified attorney before launch.
+            This is a fuller draft aligned with South Africa&apos;s POPIA, but it has not been
+            reviewed by a qualified attorney. Review it with one — ideally with POPIA experience —
+            before relying on it for a public launch.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-md p-6 md:p-10 space-y-8 text-gray-700">
+          <section>
+            <p>
+              LokshinEats (&quot;LokshinEats&quot;, &quot;we&quot;, &quot;us&quot;) respects your
+              privacy and is committed to protecting personal information in line with the
+              Protection of Personal Information Act 4 of 2013 (&quot;POPIA&quot;). This Policy
+              explains what we collect, why, and what rights you have.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold mb-3 text-gray-900">Who we are</h2>
+            <p>
+              LokshinEats is the &quot;Responsible Party&quot; for personal information processed
+              through the app. Our Information Officer — the person accountable for privacy
+              matters and POPIA compliance — is Thabang Molefe, Founder, contactable at{' '}
+              <a href="mailto:support@lokshineats.co.za" className="text-primary hover:underline">
+                support@lokshineats.co.za
+              </a>
+              .
+            </p>
+          </section>
+
           <section>
             <h2 className="text-xl font-bold mb-3 text-gray-900">What we collect</h2>
             <p className="mb-3">When you use LokshinEats, we collect:</p>
@@ -47,31 +70,42 @@ export default function PrivacyPage() {
                 it was delivered.
               </li>
               <li>
+                <strong>Location information</strong> — your delivery city/area, used to estimate
+                delivery distance and match your order to a driver whose vehicle can realistically
+                cover that distance.
+              </li>
+              <li>
                 <strong>Payment information</strong> — handled by our payment processors (Yoco or
-                Ozow); we don't store full card numbers.
+                Ozow) once live, or noted as cash on delivery; we don&apos;t store full card
+                numbers.
               </li>
               <li>
                 <strong>Device & usage information</strong> — basic technical info like browser
                 type and IP address, for security and improving the Service.
               </li>
               <li>
-                <strong>For vendors</strong> — business address, banking details (for payouts).
+                <strong>For vendors</strong> — business address, business registration and proof of
+                address documents, and banking details (for payouts).
               </li>
               <li>
-                <strong>For drivers</strong> — ID number, vehicle registration, driver's license,
-                banking details. Bicycle drivers are not asked for license or registration.
+                <strong>For drivers</strong> — ID number, vehicle type and registration, driver&apos;s
+                license, and banking details. Bicycle drivers are not asked for a license or
+                vehicle registration.
               </li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold mb-3 text-gray-900">How we use it</h2>
+            <h2 className="text-xl font-bold mb-3 text-gray-900">Why we collect it</h2>
             <ul className="list-disc pl-6 space-y-1">
-              <li>To process and deliver your orders.</li>
+              <li>To process, prepare, and deliver your orders — necessary to fulfil our contract with you.</li>
+              <li>To verify vendor and driver identity and documents — necessary to fulfil our contract, and in the interest of platform safety.</li>
+              <li>To pay drivers and reconcile vendor payouts — necessary to fulfil our contract.</li>
               <li>To let vendors and drivers contact you about your order.</li>
               <li>To send transactional notifications (order status updates).</li>
+              <li>To respond to support queries and complaints.</li>
               <li>To improve the Service and prevent fraud.</li>
-              <li>To comply with legal obligations.</li>
+              <li>To comply with legal and tax obligations.</li>
             </ul>
           </section>
 
@@ -84,29 +118,28 @@ export default function PrivacyPage() {
                 Payment processors (Yoco, Ozow) for processing payments — they have their own
                 privacy policies.
               </li>
-              <li>Service providers (Firebase / Google Cloud) for hosting and storage.</li>
-              <li>Authorities when required by law.</li>
+              <li>Service providers (Firebase / Google Cloud) for hosting, authentication, and storage.</li>
+              <li>Authorities, when required by law.</li>
             </ul>
-            <p className="mt-3">
-              We don't sell your personal information to third parties.
+            <p className="mt-3">We don&apos;t sell your personal information to third parties.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold mb-3 text-gray-900">Cross-border storage</h2>
+            <p>
+              Our infrastructure provider (Firebase / Google Cloud) may store and process
+              information on servers located outside South Africa. Where this happens, we rely on
+              that provider&apos;s contractual and security safeguards to keep your information
+              protected to a standard consistent with POPIA, as required by section 72 of the Act.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold mb-3 text-gray-900">Your rights</h2>
-            <p className="mb-3">Under POPIA, you have the right to:</p>
-            <ul className="list-disc pl-6 space-y-1">
-              <li>Access the personal information we hold about you.</li>
-              <li>Correct it if it's wrong.</li>
-              <li>Have it deleted (subject to legal/operational retention requirements).</li>
-              <li>Object to certain processing.</li>
-            </ul>
-            <p className="mt-3">
-              To exercise these rights, email{' '}
-              <a href="mailto:support@lokshineats.co.za" className="text-primary hover:underline">
-                support@lokshineats.co.za
-              </a>
-              .
+            <h2 className="text-xl font-bold mb-3 text-gray-900">How long we keep it</h2>
+            <p>
+              We keep personal information for as long as necessary to provide the Service, meet
+              legal and tax record-keeping requirements, and resolve any disputes, after which it
+              is deleted or anonymised.
             </p>
           </section>
 
@@ -120,18 +153,58 @@ export default function PrivacyPage() {
           </section>
 
           <section>
+            <h2 className="text-xl font-bold mb-3 text-gray-900">Cookies & local storage</h2>
+            <p>
+              The app uses your browser&apos;s local storage to remember things like your cart
+              contents between visits. We don&apos;t currently use third-party advertising
+              trackers.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold mb-3 text-gray-900">Your rights</h2>
+            <p className="mb-3">Under POPIA, you have the right to:</p>
+            <ul className="list-disc pl-6 space-y-1">
+              <li>Access the personal information we hold about you.</li>
+              <li>Correct it if it&apos;s wrong.</li>
+              <li>Have it deleted (subject to legal/operational retention requirements).</li>
+              <li>Object to certain processing.</li>
+              <li>
+                Lodge a complaint with the{' '}
+                <a
+                  href="https://inforegulator.org.za"
+                  className="text-primary hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Information Regulator of South Africa
+                </a>{' '}
+                if you believe your information has been mishandled.
+              </li>
+            </ul>
+            <p className="mt-3">
+              To exercise these rights, email{' '}
+              <a href="mailto:support@lokshineats.co.za" className="text-primary hover:underline">
+                support@lokshineats.co.za
+              </a>
+              .
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-xl font-bold mb-3 text-gray-900">Children</h2>
             <p>
-              LokshinEats isn't directed at children under 18. We don't knowingly collect personal
-              information from children. If you believe we have, contact us and we'll delete it.
+              LokshinEats isn&apos;t directed at children under 18. We don&apos;t knowingly collect
+              personal information from children. If you believe we have, contact us and we&apos;ll
+              delete it.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-bold mb-3 text-gray-900">Changes</h2>
             <p>
-              We may update this Privacy Policy from time to time. We'll do our best to notify you
-              of significant changes via email or an in-app notice.
+              We may update this Privacy Policy from time to time. We&apos;ll do our best to notify
+              you of significant changes via email or an in-app notice.
             </p>
           </section>
         </div>

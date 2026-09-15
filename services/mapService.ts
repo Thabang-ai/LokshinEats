@@ -66,6 +66,23 @@ export function calculateDeliveryFee(distanceKm: number): number {
 }
 
 /**
+ * Mock coordinates for South African townships. Module-level (not just
+ * geocodeAddress-local) so findNearestTownship can reuse the same data —
+ * this is the one place that knows what areas the app currently recognises.
+ * In production this dictionary goes away entirely in favour of a real
+ * Google Maps Geocoding API call.
+ */
+export const TOWNSHIP_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  'Soweto': { lat: -26.2675, lng: 27.8585 },
+  'Meadowlands': { lat: -26.2258, lng: 27.8712 }, // Soweto suburb — both seeded stores are here
+  'Alexandra': { lat: -26.1097, lng: 28.0991 },
+  'Tembisa': { lat: -26.0239, lng: 28.2233 },
+  'Katlehong': { lat: -26.3486, lng: 28.1639 },
+  'Vosloorus': { lat: -26.3833, lng: 28.2000 },
+  'Thokoza': { lat: -26.3500, lng: 28.2833 },
+};
+
+/**
  * Geocode address to coordinates
  * In production, this would use Google Maps Geocoding API
  */
@@ -74,20 +91,9 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
   // - Call Google Maps Geocoding API
   // - Parse the response
   // - Return coordinates
-  
-  // For now, return mock coordinates for South African townships
-  const mockCoordinates: Record<string, { lat: number; lng: number }> = {
-    'Soweto': { lat: -26.2675, lng: 27.8585 },
-    'Meadowlands': { lat: -26.2258, lng: 27.8712 }, // Soweto suburb — both seeded stores are here
-    'Alexandra': { lat: -26.1097, lng: 28.0991 },
-    'Tembisa': { lat: -26.0239, lng: 28.2233 },
-    'Katlehong': { lat: -26.3486, lng: 28.1639 },
-    'Vosloorus': { lat: -26.3833, lng: 28.2000 },
-    'Thokoza': { lat: -26.3500, lng: 28.2833 },
-  };
 
-  // Find matching area
-  for (const [area, coords] of Object.entries(mockCoordinates)) {
+  // Find matching area from the free-text address
+  for (const [area, coords] of Object.entries(TOWNSHIP_COORDINATES)) {
     if (address.toLowerCase().includes(area.toLowerCase())) {
       return coords;
     }
@@ -95,6 +101,28 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
 
   // Default to Johannesburg if no match
   return { lat: -26.2041, lng: 28.0473 };
+}
+
+/**
+ * Match a real (lat, lng) — e.g. from the browser's Geolocation API — to the
+ * nearest township this app actually recognises. Not true reverse
+ * geocoding (that needs a real Geocoding API and a Google Maps key this
+ * project doesn't have yet); this is an honest approximation using the same
+ * mock coordinate set the rest of the app already relies on, so "use my
+ * location" degrades to "closest known area" instead of silently lying.
+ */
+export function findNearestTownship(
+  lat: number,
+  lng: number,
+): { area: string; distanceKm: number } | null {
+  let closest: { area: string; distanceKm: number } | null = null;
+  for (const [area, coords] of Object.entries(TOWNSHIP_COORDINATES)) {
+    const distanceKm = calculateDistance({ lat, lng }, coords);
+    if (!closest || distanceKm < closest.distanceKm) {
+      closest = { area, distanceKm };
+    }
+  }
+  return closest;
 }
 
 /**
@@ -128,6 +156,22 @@ export async function estimateOrderDistanceKm(
   ]);
   if (!origin || !destination) return null;
   return calculateDistance(origin, destination);
+}
+
+/**
+ * Same purpose as estimateOrderDistanceKm, but for when the customer shared
+ * their real GPS coordinates (via "use my location" at checkout) instead of
+ * typing a city name. Skips one leg of mock-geocoding entirely, so it's
+ * strictly more accurate than the city-name version whenever it's available.
+ */
+export async function estimateOrderDistanceKmFromCoords(
+  storeCity: string,
+  customerCoords: { lat: number; lng: number },
+): Promise<number | null> {
+  if (!storeCity) return null;
+  const origin = await geocodeAddress(storeCity);
+  if (!origin) return null;
+  return calculateDistance(origin, customerCoords);
 }
 
 /**
@@ -194,11 +238,12 @@ export function getCurrentLocation(): Promise<GeolocationPosition> {
 }
 
 /**
- * Format coordinates to address
- * In production, this would use Google Maps Reverse Geocoding API
+ * Format coordinates to an address-ish string.
+ * In production, this would use Google Maps Reverse Geocoding API. For now
+ * it degrades honestly to the nearest township this app recognises, rather
+ * than a hardcoded 'Unknown Location' — see findNearestTownship.
  */
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  // In production, you would call Google Maps Reverse Geocoding API
-  // For now, return a mock address
-  return 'Unknown Location';
+  const nearest = findNearestTownship(lat, lng);
+  return nearest ? nearest.area : 'Unknown Location';
 }
