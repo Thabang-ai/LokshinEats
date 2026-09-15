@@ -31,6 +31,7 @@ import { auth, db } from '../../../firebase/config';
 import { settleCashReceipt } from '../../../services/ordersApi';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { readVendorPayout } from '../../../services/economics';
+import { readOrderItems } from '../../../services/orderItems';
 
 type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled';
 
@@ -149,12 +150,7 @@ export default function VendorDashboard() {
           const created = data.createdAt instanceof Timestamp
             ? data.createdAt.toDate()
             : data.createdAt?.toDate?.() ?? new Date();
-          const items = Array.isArray(data.items)
-            ? data.items.map((it: any) => ({
-                name: it.product?.name ?? 'Item',
-                quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-              }))
-            : [];
+          const items = readOrderItems(data.items);
           return {
             id: d.id,
             customerName: data.customerName ?? 'Customer',

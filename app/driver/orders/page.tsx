@@ -30,6 +30,7 @@ import {
 import { completeDelivery } from '../../../services/ordersApi';
 import { db } from '../../../firebase/config';
 import { useAuthUser } from '../../../hooks/useAuthUser';
+import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,12 +114,7 @@ export default function DriverOrdersPage() {
         );
         const rows: DriverOrder[] = snapshot.docs.map((d) => {
           const data = d.data();
-          const items = Array.isArray(data.items)
-            ? data.items.map((it: any) => ({
-                name: it.product?.name ?? 'Item',
-                quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-              }))
-            : [];
+          const items = readOrderItems(data.items);
           return {
             id: d.id,
             storeName: data.storeName ?? 'Unknown store',

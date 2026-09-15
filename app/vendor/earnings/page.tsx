@@ -23,6 +23,7 @@ import { collection, getDocs, query, Timestamp, where } from 'firebase/firestore
 import { db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { readVendorPayout } from '../../../services/economics';
+import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,13 +99,7 @@ export default function EarningsPage() {
             data.createdAt instanceof Timestamp
               ? data.createdAt.toDate()
               : data.createdAt?.toDate?.() ?? new Date();
-          const items = Array.isArray(data.items)
-            ? data.items.map((it: any) => ({
-                name: it.product?.name ?? 'Item',
-                quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-                price: typeof it.product?.price === 'number' ? it.product.price : 0,
-              }))
-            : [];
+          const items = readOrderItems(data.items);
           return {
             id: d.id,
             total: typeof data.total === 'number' ? data.total : 0,

@@ -35,6 +35,7 @@ import { settleCashReceipt, updateOrderStatus } from '../../../services/ordersAp
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 import { Bell } from 'lucide-react';
+import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,13 +130,7 @@ export default function VendorOrdersPage() {
               ? data.createdAt.toDate()
               : data.createdAt?.toDate?.() ?? new Date();
 
-          const items = Array.isArray(data.items)
-            ? data.items.map((it: any) => ({
-                name: it.product?.name ?? 'Item',
-                quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-                price: typeof it.product?.price === 'number' ? it.product.price : 0,
-              }))
-            : [];
+          const items = readOrderItems(data.items);
 
           return {
             id: d.id,

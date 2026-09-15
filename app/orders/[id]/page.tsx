@@ -34,6 +34,7 @@ import { db } from '../../../firebase/config';
 // order document, which drivers can read.
 import { getOrder } from '../../../services/ordersApi';
 import { useAuthUser } from '../../../hooks/useAuthUser';
+import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -256,13 +257,7 @@ export default function OrderTrackingPage({
           return;
         }
         const data = snap.data();
-        const items = Array.isArray(data.items)
-          ? data.items.map((it: any) => ({
-              name: it.product?.name ?? 'Item',
-              price: typeof it.product?.price === 'number' ? it.product.price : 0,
-              quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-            }))
-          : [];
+        const items = readOrderItems(data.items);
 
         setOrder({
           id: snap.id,

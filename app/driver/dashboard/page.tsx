@@ -51,6 +51,7 @@ import {
 import { readDriverPayout } from '../../../services/economics';
 import { useBrowserNotifications } from '../../../hooks/useBrowserNotifications';
 import { isWithinVehicleRadius } from '../../../services/mapService';
+import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -107,12 +108,7 @@ function mapOrderDoc(d: any): DriverOrder {
     data.createdAt instanceof Timestamp
       ? data.createdAt.toDate()
       : data.createdAt?.toDate?.() ?? new Date();
-  const items = Array.isArray(data.items)
-    ? data.items.map((it: any) => ({
-        name: it.product?.name ?? 'Item',
-        quantity: typeof it.quantity === 'number' ? it.quantity : 1,
-      }))
-    : [];
+  const items = readOrderItems(data.items);
   return {
     id: d.id,
     storeName: data.storeName ?? 'Unknown store',
