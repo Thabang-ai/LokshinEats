@@ -14,6 +14,7 @@ import '../providers/auth_providers.dart';
 import '../widgets/auth_error_banner.dart';
 import '../widgets/auth_form_fields.dart';
 import '../../orders/pages/your_orders_page.dart';
+import 'edit_profile_page.dart';
 import 'sign_in_page.dart';
 import 'sign_up_page.dart';
 
@@ -238,7 +239,23 @@ class _SignedIn extends ConsumerWidget {
 
         _Detail(label: 'Name', value: profile.displayName),
         _Detail(label: 'Mobile', value: profile.phone ?? 'Not set'),
-        _Detail(label: 'Address', value: profile.address ?? 'Not set'),
+        _Detail(
+          label: 'Address',
+          value: profile.address?.oneLine ?? 'Not set',
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => EditProfilePage(profile: profile),
+              ),
+            ),
+            icon: const Icon(Icons.edit_rounded),
+            label: const Text('Edit profile'),
+          ),
+        ),
 
         const SizedBox(height: 20),
         Card(

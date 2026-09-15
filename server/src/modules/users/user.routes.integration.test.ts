@@ -12,6 +12,7 @@ import request from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Application } from 'express';
 import { createApp } from '../../app';
+import { auth as adminAuth, Collections, db } from '../../config/firebase';
 import { assertEmulator, resetFirestore, seedUser } from '../../test/support';
 import {
   assertAuthEmulator,
@@ -376,5 +377,122 @@ describe('response contract', () => {
       .set(...account.authHeader);
 
     expect(JSON.stringify(response.body)).not.toContain(account.idToken);
+  });
+});
+
+describe('profile address', () => {
+  const address = {
+    street: '88 Ndaba Street',
+    city: 'Meadowlands',
+    postalCode: '1852',
+  };
+
+  it('saves a structured address and returns it', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me')
+      .set(...account.authHeader)
+      .send({ address });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.address).toEqual(address);
+
+    // Stored in the shape the web profile page and checkout read.
+    const stored = await db.collection(Collections.users).doc('cust-1').get();
+    expect(stored.data()?.address).toEqual(address);
+  });
+
+  it('clears a saved address when sent null', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+    await db.collection(Collections.users).doc('cust-1').update({ address });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me')
+      .set(...account.authHeader)
+      .send({ address: null });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.address).toBeNull();
+  });
+
+  it('rejects a partial address with a message the form can show', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me')
+      .set(...account.authHeader)
+      .send({ address: { street: '88 Ndaba Street', city: 'Meadowlands', postalCode: '18' } });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('validation_failed');
+    expect(
+      Object.keys(response.body.error.details ?? {}).some((key) => key.startsWith('address')),
+    ).toBe(true);
+  });
+
+  it('reads an address the web profile page wrote straight to Firestore', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+    // Exactly what app/profile/page.tsx writes with setDoc(..., { merge: true }).
+    await db.collection(Collections.users).doc('cust-1').update({ address, phone: '0821234567' });
+
+    const response = await request(app)
+      .get('/api/v1/users/me')
+      .set(...account.authHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.address).toEqual(address);
+  });
+
+  it('still reads an old single-line address, as the street', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+    await db.collection(Collections.users).doc('cust-1').update({ address: '12 Vilakazi Street' });
+
+    const response = await request(app)
+      .get('/api/v1/users/me')
+      .set(...account.authHeader);
+
+    expect(response.body.data.address).toEqual({
+      street: '12 Vilakazi Street',
+      city: '',
+      postalCode: '',
+    });
+  });
+});
+
+describe('display name', () => {
+  it('keeps the Firebase Auth name in step with the profile', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me')
+      .set(...account.authHeader)
+      .send({ displayName: 'Thabo Nkosi' });
+
+    expect(response.status).toBe(200);
+
+    // The web app greets customers by this field, not by the profile document.
+    const authUser = await adminAuth.getUser('cust-1');
+    expect(authUser.displayName).toBe('Thabo Nkosi');
+  });
+
+  it('leaves the Auth name alone when the name is not being changed', async () => {
+    const account = await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+    await adminAuth.updateUser('cust-1', { displayName: 'Set On The Web' });
+
+    await request(app)
+      .patch('/api/v1/users/me')
+      .set(...account.authHeader)
+      .send({ phone: '0821234567' });
+
+    const authUser = await adminAuth.getUser('cust-1');
+    expect(authUser.displayName).toBe('Set On The Web');
   });
 });

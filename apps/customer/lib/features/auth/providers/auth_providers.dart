@@ -149,3 +149,40 @@ class AuthController extends AsyncNotifier<void> {
 final authControllerProvider = AsyncNotifierProvider<AuthController, void>(
   AuthController.new,
 );
+
+/// Saving changes to the profile.
+///
+/// Separate from [AuthController] so a failed save cannot leave an error
+/// showing on the sign-in screen, and auto-disposed so a stale error does not
+/// greet the customer the next time they open the edit screen.
+class ProfileController extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  Future<bool> save({
+    required String displayName,
+    required String phone,
+    required ProfileAddress? address,
+  }) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(() async {
+      await ref.read(profileRepositoryProvider).updateMe(
+        displayName: displayName,
+        phone: phone,
+        address: address,
+      );
+      // The account page and checkout's prefill both read from here.
+      ref.invalidate(profileProvider);
+    });
+
+    if (!ref.mounted) return !result.hasError;
+    state = result;
+    return !result.hasError;
+  }
+}
+
+final profileControllerProvider =
+    AsyncNotifierProvider.autoDispose<ProfileController, void>(
+      ProfileController.new,
+    );

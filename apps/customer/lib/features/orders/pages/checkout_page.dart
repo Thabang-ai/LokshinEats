@@ -130,12 +130,14 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       _phone.text = phone;
     }
 
-    // The profile keeps one free-text address, so it seeds the street line and
-    // the customer completes the rest — better than an empty form, and honest
-    // about not knowing which part is which.
+    // The profile stores the same {street, city, postalCode} shape checkout
+    // sends, so each part lands in its own field. Only blank fields are
+    // filled, so nothing the customer already typed is overwritten.
     final address = profile.address;
-    if (address != null && address.isNotEmpty && _street.text.isEmpty) {
-      _street.text = address;
+    if (address != null) {
+      if (_street.text.isEmpty) _street.text = address.street;
+      if (_city.text.isEmpty) _city.text = address.city;
+      if (_postalCode.text.isEmpty) _postalCode.text = address.postalCode;
     }
   }
 

@@ -11,12 +11,27 @@ import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { ROLES, type Role } from '../../middleware/auth';
 import { toIso, toStringOr } from '../../lib/serialize';
 
+/**
+ * A delivery address on a profile.
+ *
+ * The same `{ street, city, postalCode }` shape as an order's
+ * `deliveryAddress`, and the shape the web profile page already writes
+ * straight to Firestore. The API used to model this as a single string, so it
+ * read every address that page saved back as null — and the Flutter app, which
+ * reads profiles through the API, showed "Not set" for them.
+ */
+export type ProfileAddress = {
+  street: string;
+  city: string;
+  postalCode: string;
+};
+
 export type UserProfile = {
   id: string;
   email: string;
   displayName: string;
   phone: string | null;
-  address: string | null;
+  address: ProfileAddress | null;
   role: Role;
   createdAt: string | null;
   updatedAt: string | null;
@@ -32,6 +47,30 @@ const phoneSchema = z
   );
 
 /**
+ * An address a user may save. All three parts or none: a street with no city
+ * cannot prefill a checkout, and checkout would reject it anyway.
+ */
+const profileAddressSchema = z
+  .object({
+    // Messages are the API's, written for customers: a form shows them as-is.
+    street: z
+      .string()
+      .trim()
+      .min(3, 'Enter your street address.')
+      .max(200, 'That street address is too long.'),
+    city: z
+      .string()
+      .trim()
+      .min(2, 'Enter your town or city.')
+      .max(80, 'That town or city name is too long.'),
+    postalCode: z
+      .string()
+      .trim()
+      .regex(/^[0-9]{4}$/, 'Enter a 4-digit postal code.'),
+  })
+  .strict();
+
+/**
  * Fields a user may set on their own profile.
  *
  * `role` is deliberately absent: a customer who could PATCH their own role to
@@ -42,7 +81,8 @@ export const updateProfileSchema = z
   .object({
     displayName: z.string().trim().min(2).max(80).optional(),
     phone: phoneSchema.optional(),
-    address: z.string().trim().min(3).max(200).optional(),
+    // `null` removes a saved address; leaving the key out keeps it.
+    address: profileAddressSchema.nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -56,7 +96,7 @@ export const createProfileSchema = z
   .object({
     displayName: z.string().trim().min(2).max(80),
     phone: phoneSchema.optional(),
-    address: z.string().trim().min(3).max(200).optional(),
+    address: profileAddressSchema.optional(),
     // Customers and drivers self-select at sign-up. Vendor and admin are not
     // self-assignable: a vendor account is promoted once its store is
     // approved, and admin is granted out of band.
@@ -85,12 +125,44 @@ export function toUserProfile(snapshot: DocumentSnapshot): UserProfile {
     email: toStringOr(data.email),
     displayName: toStringOr(data.displayName),
     phone: typeof data.phone === 'string' && data.phone ? data.phone : null,
-    address:
-      typeof data.address === 'string' && data.address ? data.address : null,
+    address: toProfileAddress(data.address),
     role: (ROLES as readonly string[]).includes(role)
       ? (role as Role)
       : 'customer',
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };
+}
+
+/**
+ * Read a stored address in either of the shapes that exist.
+ *
+ *  - `{ street, city, postalCode }` — the web profile page, and this API from
+ *    now on.
+ *  - A single string — what this API wrote before. There is no telling which
+ *    part is the city, so the whole line is kept as the street rather than
+ *    guessed at or dropped.
+ *
+ * Anything else, or an object with every part empty, reads as no address.
+ */
+export function toProfileAddress(value: unknown): ProfileAddress | null {
+  if (typeof value === 'string') {
+    const street = value.trim();
+    return street ? { street, city: '', postalCode: '' } : null;
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const raw = value as Record<string, unknown>;
+    const read = (part: unknown) => (typeof part === 'string' ? part.trim() : '');
+    const address = {
+      street: read(raw.street),
+      city: read(raw.city),
+      postalCode: read(raw.postalCode),
+    };
+    return address.street || address.city || address.postalCode
+      ? address
+      : null;
+  }
+
+  return null;
 }

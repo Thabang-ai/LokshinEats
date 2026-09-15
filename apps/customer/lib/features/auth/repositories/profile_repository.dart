@@ -54,17 +54,26 @@ class ProfileRepository {
     return response.data;
   }
 
+  /// Save the profile form.
+  ///
+  /// Every field is sent every time, so the saved profile is exactly what the
+  /// form showed. `address: null` is how the API is told to remove a saved
+  /// address; leaving the key out would silently keep the old one.
+  ///
+  /// The name also updates the Firebase Auth record server-side, which is the
+  /// name the web app shows - so both apps greet the customer the same way.
   Future<UserProfile> updateMe({
-    String? displayName,
-    String? phone,
-    String? address,
+    required String displayName,
+    required String phone,
+    required ProfileAddress? address,
   }) async {
     final response = await _client.patch<UserProfile>(
       '/api/v1/users/me',
       body: {
-        if (displayName != null) 'displayName': displayName.trim(),
-        if (phone != null) 'phone': phone.trim(),
-        if (address != null) 'address': address.trim(),
+        'displayName': displayName.trim(),
+        // The API's pattern has no room for spaces; people type them anyway.
+        'phone': phone.replaceAll(' ', ''),
+        'address': address?.toJson(),
       },
       decode: (json) => UserProfile.fromJson(json! as Map<String, dynamic>),
     );

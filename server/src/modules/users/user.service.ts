@@ -63,6 +63,14 @@ export async function updateOwnProfile(
   if (!(await repository.exists(caller.uid))) {
     throw ApiError.notFound('No profile exists for this account yet.');
   }
+
+  // The web app reads the name from the Firebase Auth record, the Flutter app
+  // from this profile. Updating only one would leave the two apps greeting
+  // the same customer by different names.
+  if (input.displayName !== undefined) {
+    await syncDisplayName(caller.uid, input.displayName);
+  }
+
   return repository.update(caller.uid, input);
 }
 
@@ -114,6 +122,21 @@ export async function getUserAsAdmin(uid: string): Promise<UserProfile> {
   const profile = await repository.findById(uid);
   if (!profile) throw ApiError.notFound('No such user.');
   return profile;
+}
+
+/**
+ * Mirror a changed name onto the Firebase Auth record.
+ *
+ * Written before the profile document, the same ordering as the role claim:
+ * if the document write then fails, retrying the request repairs both.
+ */
+async function syncDisplayName(uid: string, displayName: string): Promise<void> {
+  try {
+    await adminAuth.updateUser(uid, { displayName });
+  } catch (error) {
+    log.error({ uid, err: error }, 'Failed to update the Auth display name.');
+    throw ApiError.internal('Could not save your name. Try again.');
+  }
 }
 
 /**
