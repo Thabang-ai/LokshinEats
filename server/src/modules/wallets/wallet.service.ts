@@ -167,12 +167,19 @@ export async function reverseOrderSettlement(input: {
   vendorPayout: number;
   platformEarnings: number;
   reason: string;
+  /**
+   * Where the vendor's share currently sits. It lands in `pending` when the
+   * order is paid and moves to `available` on delivery, so a refund after
+   * delivery has to take it back from `available`. Debiting `pending` there
+   * left the vendor holding the money and showing a negative pending balance.
+   */
+  vendorBalance: 'pending' | 'available';
 }): Promise<void> {
   await repository.credit({
     walletId: input.vendorId,
     type: 'refund',
     amount: -Math.abs(input.vendorPayout),
-    balance: 'pending',
+    balance: input.vendorBalance,
     description: `Order ${input.orderId} — reversed: ${input.reason}`,
     orderId: input.orderId,
     suffix: 'reversal',
@@ -207,6 +214,13 @@ export async function creditCustomer(input: {
   description: string;
   orderId?: string | null;
   type: 'refund' | 'bonus' | 'adjustment';
+  /**
+   * Makes the credit safe to repeat: the same key always writes the same
+   * ledger entry, so a retried refund cannot credit the customer twice.
+   * Left out for one-off admin credits, where two identical goodwill credits
+   * are two credits.
+   */
+  idempotencyKey?: string;
 }): Promise<Wallet> {
   if (input.amount <= 0) {
     throw ApiError.unprocessable('Credit amount must be positive.');
@@ -219,9 +233,11 @@ export async function creditCustomer(input: {
     balance: 'available',
     description: input.description,
     orderId: input.orderId ?? null,
-    // Admin credits are deliberate one-offs, so they must not collapse onto
-    // an existing entry's id the way an automated settlement does.
-    suffix: `manual_${Date.now()}`,
+    // Admin credits are deliberate one-offs, so without a key they must not
+    // collapse onto an existing entry's id the way an automated settlement
+    // does. A refund passes its payment id, so a retry lands on the same
+    // entry instead of a second one.
+    suffix: input.idempotencyKey ?? `manual_${Date.now()}`,
   });
 
   log.warn(

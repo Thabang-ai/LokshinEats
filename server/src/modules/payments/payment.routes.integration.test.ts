@@ -283,6 +283,31 @@ describe('refunds', () => {
     expect(wallet.body.data.availableBalance).toBe(120);
   });
 
+  it('cancels an order that had not been delivered', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      subtotal: 100,
+      deliveryFee: 20,
+    });
+    const paymentId = await payFor(orderId);
+
+    await request(app)
+      .post(`/api/v1/payments/${paymentId}/refund`)
+      .set(...admin.authHeader)
+      .send({ reason: 'Kitchen closed early' })
+      .expect(200);
+
+    // What the customer's app reads: closed, and refunded.
+    const order = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set(...customer.authHeader);
+
+    expect(order.status).toBe(200);
+    expect(order.body.data.status).toBe('cancelled');
+    expect(order.body.data.paymentStatus).toBe('refunded');
+  });
+
   it('requires a reason', async () => {
     const orderId = await seedOrder({ customerId: 'cust-1', storeId });
     const paymentId = await payFor(orderId);

@@ -284,6 +284,7 @@ describe('reverseOrderSettlement', () => {
       vendorPayout: economics.vendorPayout,
       platformEarnings: economics.platformEarnings,
       reason: 'Customer never received the order',
+      vendorBalance: 'pending',
     });
 
     expect((await readWallet(VENDOR)).pending).toBe(0);
@@ -305,6 +306,7 @@ describe('reverseOrderSettlement', () => {
       vendorPayout: economics.vendorPayout,
       platformEarnings: economics.platformEarnings,
       reason: 'Customer never received the order',
+      vendorBalance: 'pending',
     });
 
     const ledger = await readLedger(VENDOR);
@@ -324,6 +326,7 @@ describe('reverseOrderSettlement', () => {
       vendorPayout: economics.vendorPayout,
       platformEarnings: economics.platformEarnings,
       reason: 'Duplicate reversal attempt',
+      vendorBalance: 'pending' as const,
     };
 
     await walletService.settleOrderPayment({

@@ -13,6 +13,7 @@ import { Collections, db } from '../../config/firebase';
 import {
   actor,
   assertEmulator,
+  readLedger,
   readOrder,
   readWallet,
   resetFirestore,
@@ -24,6 +25,8 @@ import { getProvider, resetProviders } from './payment.provider';
 import { PLATFORM_WALLET_ID } from '../wallets/wallet.service';
 import { SandboxPaymentProvider } from './providers/sandbox.provider';
 import * as paymentService from './payment.service';
+import * as paymentRepository from './payment.repository';
+import * as orderRepository from '../orders/order.repository';
 
 const CUSTOMER = 'customer-uid';
 const VENDOR = 'vendor-uid';
@@ -389,5 +392,113 @@ describe('refundPayment', () => {
     ).rejects.toThrow(/successful payment/i);
 
     expect((await readWallet(CUSTOMER)).available).toBe(0);
+  });
+});
+
+describe('refunds close the order', () => {
+  /** A card order, paid through the sandbox provider. */
+  async function paidOrder(input: {
+    status?: string;
+    driverId?: string | null;
+    deliveryCode?: string;
+  } = {}): Promise<{ orderId: string; paymentId: string }> {
+    const storeId = await seedStore({ ownerId: VENDOR });
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      subtotal: 100,
+      deliveryFee: 20,
+      status: input.status,
+      driverId: input.driverId ?? null,
+      deliveryCode: input.deliveryCode,
+    });
+
+    const { payment } = await paymentService.initiatePayment(customer, { orderId });
+    await completeSandboxCharge(payment.providerReference!, 'succeed');
+    await paymentService.verifyPayment(customer, payment.id);
+
+    return { orderId, paymentId: payment.id };
+  }
+
+  it('cancels an order the kitchen had not finished, and takes it off the drivers\' queue', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'ready' });
+
+    const before = await orderRepository.listAvailableForDrivers({ limit: 20, audience: 'driver' });
+    expect(before.items.map((order) => order.id)).toContain(orderId);
+
+    await paymentService.refundPayment(admin, paymentId, 'Kitchen closed early');
+
+    expect((await readOrder(orderId))?.status).toBe('cancelled');
+    expect((await readOrder(orderId))?.paymentStatus).toBe('refunded');
+
+    const after = await orderRepository.listAvailableForDrivers({ limit: 20, audience: 'driver' });
+    expect(after.items.map((order) => order.id)).not.toContain(orderId);
+  });
+
+  it('stops a driver already on the way from completing the delivery', async () => {
+    const { orderId, paymentId } = await paidOrder({
+      status: 'picked_up',
+      driverId: DRIVER,
+      deliveryCode: '123456',
+    });
+
+    await paymentService.refundPayment(admin, paymentId, 'Customer no longer at the address');
+
+    expect((await readOrder(orderId))?.status).toBe('cancelled');
+
+    // The right code no longer closes it, so nothing can settle a delivery
+    // for an order whose money has been given back.
+    await expect(
+      orderRepository.completeDelivery(orderId, DRIVER, '123456'),
+    ).rejects.toThrow(/collect the order/i);
+    expect((await readWallet(DRIVER)).available).toBe(0);
+  });
+
+  it('leaves a delivered order delivered, and takes the vendor share back from available', async () => {
+    const { orderId, paymentId } = await paidOrder({ status: 'delivered', driverId: DRIVER });
+    await paymentService.settleDelivery(orderId);
+
+    expect((await readWallet(VENDOR)).available).toBe(92);
+    expect((await readWallet(VENDOR)).pending).toBe(0);
+
+    await paymentService.refundPayment(admin, paymentId, 'Food arrived cold');
+
+    expect((await readOrder(orderId))?.status).toBe('delivered');
+    // Before, the reversal debited pending: the vendor kept R92 in available
+    // and showed a pending balance of -R92.
+    expect((await readWallet(VENDOR)).available).toBe(0);
+    expect((await readWallet(VENDOR)).pending).toBe(0);
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    // The driver did the delivery and keeps their earnings.
+    expect((await readWallet(DRIVER)).available).toBe(17);
+  });
+
+  it('refunds an order the customer had already cancelled', async () => {
+    const { orderId, paymentId } = await paidOrder();
+    await orderRepository.applyStatusChange(orderId, 'cancelled', 'customer', 'customer');
+
+    const refunded = await paymentService.refundPayment(admin, paymentId, 'Cancelled before cooking');
+
+    expect(refunded.status).toBe('refunded');
+    expect((await readOrder(orderId))?.status).toBe('cancelled');
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+  });
+
+  it('can be retried after an interruption without paying the customer twice', async () => {
+    const { orderId, paymentId } = await paidOrder();
+
+    await paymentService.refundPayment(admin, paymentId, 'Order never arrived');
+
+    // Reproduce a refund whose last write never landed: the money has moved
+    // and the order is cancelled, but the payment still reads as succeeded,
+    // so an admin runs the refund again.
+    await paymentRepository.updateStatus(paymentId, 'succeeded');
+    const retried = await paymentService.refundPayment(admin, paymentId, 'Order never arrived');
+
+    expect(retried.status).toBe('refunded');
+    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(1);
+    expect((await readWallet(VENDOR)).pending).toBe(0);
+    expect((await readOrder(orderId))?.status).toBe('cancelled');
   });
 });

@@ -314,6 +314,23 @@ export async function settleDelivery(orderId: string): Promise<void> {
  *
  * Admin-only, and it reverses the wallet entries rather than deleting them,
  * so the history still shows what was earned and then given back.
+ *
+ * A refund of an order that has not been delivered also cancels it. Before
+ * this, a refunded order stayed open: the kitchen could still accept and cook
+ * it and a driver could still claim and deliver it, after the customer had
+ * their money back and the vendor's share had been reversed — and delivering
+ * it would then pay the driver and release a vendor balance that no longer
+ * existed. A delivered order keeps its status; the food arrived, and the
+ * refund is a goodwill decision made after the fact.
+ *
+ * The steps are ordered so an interruption at any point leaves nothing worse
+ * than a refund to retry:
+ *
+ *   1. Cancel the order first, so nobody can act on it while money moves.
+ *   2. Reverse the settlement and credit the customer. Both are keyed to
+ *      this order and payment, so repeating them writes nothing new.
+ *   3. Mark the payment refunded last. Until then it is still `succeeded`,
+ *      which is what lets an admin simply run the refund again.
  */
 export async function refundPayment(
   actor: AuthContext,
@@ -333,12 +350,15 @@ export async function refundPayment(
   const store = await storeRepository.findById(String(order.storeId ?? ''));
   if (!store) throw ApiError.internal('Cannot refund: store missing.');
 
+  const delivered = await closeOrderForRefund(payment.orderId);
+
   await walletService.reverseOrderSettlement({
     orderId: payment.orderId,
     vendorId: store.ownerId,
     vendorPayout: Number(order.vendorPayout ?? 0),
     platformEarnings: Number(order.platformEarnings ?? 0),
     reason,
+    vendorBalance: delivered ? 'available' : 'pending',
   });
 
   await walletService.creditCustomer({
@@ -348,6 +368,7 @@ export async function refundPayment(
     description: `Refund for order ${payment.orderId}: ${reason}`,
     orderId: payment.orderId,
     type: 'refund',
+    idempotencyKey: `refund_${paymentId}`,
   });
 
   await orderRepository.recordPayment(
@@ -362,6 +383,46 @@ export async function refundPayment(
   );
 
   return repository.updateStatus(paymentId, 'refunded');
+}
+
+/**
+ * Cancel an order that is being refunded, unless it has been delivered.
+ *
+ * Returns whether the order was delivered, which decides where the vendor's
+ * share is reversed from.
+ *
+ * Races are settled by the status transaction, not by the read before it: if
+ * a driver confirms delivery between that read and the cancellation, the
+ * transaction refuses `delivered -> cancelled`, and the refund carries on as a
+ * refund of a delivered order.
+ */
+async function closeOrderForRefund(orderId: string): Promise<boolean> {
+  const current = await orderRepository.findRawById(orderId);
+  const status = String(current?.status ?? 'pending');
+
+  if (status === 'delivered') return true;
+  // Already cancelled — by the customer, the vendor, or an earlier attempt at
+  // this same refund. Nothing to close.
+  if (status === 'cancelled') return false;
+
+  try {
+    await orderRepository.applyStatusChange(orderId, 'cancelled', 'admin', 'admin');
+    log.warn({ orderId, from: status }, 'Order cancelled because its payment was refunded.');
+    return false;
+  } catch (error) {
+    const after = await orderRepository.findRawById(orderId);
+    const afterStatus = String(after?.status ?? '');
+
+    if (afterStatus === 'delivered') {
+      log.warn({ orderId }, 'Order was delivered while being refunded; refunding a delivered order.');
+      return true;
+    }
+    if (afterStatus === 'cancelled') return false;
+
+    // Anything else means the order could not be closed. Stop before any
+    // money moves, rather than refund an order that is still open.
+    throw error;
+  }
 }
 
 export async function getPayment(
