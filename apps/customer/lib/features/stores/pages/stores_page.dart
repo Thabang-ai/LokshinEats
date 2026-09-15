@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/widgets/async_states.dart';
 import '../../auth/pages/account_page.dart';
 import '../../cart/widgets/cart_badge_button.dart';
+import '../../orders/pages/your_orders_page.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
@@ -108,6 +109,17 @@ class _Header extends ConsumerWidget {
               ],
             ),
           ),
+          // Only for signed-in customers: orders belong to an account, and a
+          // button that leads straight to "sign in" adds nothing the account
+          // button beside it does not already offer.
+          if (signedIn)
+            IconButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const YourOrdersPage()),
+              ),
+              icon: const Icon(Icons.receipt_long_outlined),
+              tooltip: 'Your orders',
+            ),
           const CartBadgeButton(),
 
           // Signed out shows an outline; signed in shows a filled icon, so

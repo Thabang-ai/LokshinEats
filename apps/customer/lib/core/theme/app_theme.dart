@@ -37,6 +37,46 @@ class AppColors {
   static const Color chilli = Color(0xFFC0392B);
 }
 
+/// Status colours that stay readable in both themes.
+///
+/// [AppColors.leaf], [AppColors.chilli] and [AppColors.maize] are brand
+/// colours, and as text they failed WCAG AA: in dark mode leaf measured
+/// 3.3:1 and chilli 3.1:1 against the card surface, and in light mode maize
+/// measured 1.9:1 on white. Every value here was checked to reach at least
+/// 4.5:1 both on the card surface and on a 15% tint of itself, so the same
+/// colour works as plain text and inside a status chip.
+class StatusColors {
+  const StatusColors._({
+    required this.success,
+    required this.danger,
+    required this.warning,
+  });
+
+  /// Delivered, paid.
+  final Color success;
+
+  /// Failed, could not refresh.
+  final Color danger;
+
+  /// Waiting on something outside the customer's control.
+  final Color warning;
+
+  static const StatusColors _light = StatusColors._(
+    success: Color(0xFF256B42),
+    danger: Color(0xFFB03427),
+    warning: Color(0xFF8A5A00),
+  );
+
+  static const StatusColors _dark = StatusColors._(
+    success: Color(0xFF7BD19E),
+    danger: Color(0xFFFF8A7A),
+    warning: Color(0xFFF2B233),
+  );
+
+  static StatusColors of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? _dark : _light;
+}
+
 class AppTheme {
   const AppTheme._();
 

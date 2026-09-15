@@ -14,10 +14,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
 import '../models/order.dart';
 import '../providers/checkout_providers.dart';
+import '../widgets/order_sections.dart';
+import 'order_tracking_page.dart';
 
 class OrderConfirmationPage extends ConsumerStatefulWidget {
   const OrderConfirmationPage({super.key, required this.order});
@@ -103,15 +103,27 @@ class _OrderConfirmationPageState
               ),
 
               const SizedBox(height: 28),
-              _DeliveryCodeCard(order: order),
+              DeliveryCodeCard(order: order),
 
               const SizedBox(height: 20),
-              _TotalsCard(order: order),
+              OrderTotalsCard(order: order),
 
               const SizedBox(height: 20),
-              _AddressCard(order: order),
+              OrderAddressCard(order: order),
 
               const SizedBox(height: 28),
+              // Replaces this screen rather than stacking on it: tracking shows
+              // everything the confirmation does, and keeps it current.
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).pushReplacement(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OrderTrackingPage(orderId: order.id),
+                  ),
+                ),
+                icon: const Icon(Icons.delivery_dining_rounded),
+                label: const Text('Track your order'),
+              ),
+              const SizedBox(height: 12),
               FilledButton.tonal(
                 onPressed: () =>
                     // Everything between here and the kitchen list is either
@@ -123,280 +135,6 @@ class _OrderConfirmationPageState
           ),
         ),
       ),
-    );
-  }
-}
-
-/// The code the customer reads out at the door.
-class _DeliveryCodeCard extends StatelessWidget {
-  const _DeliveryCodeCard({required this.order});
-
-  final CustomerOrder order;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final code = order.deliveryCode;
-
-    if (order.deliveryVerified) {
-      return _Card(
-        icon: Icons.verified_rounded,
-        iconColor: AppColors.leaf,
-        title: 'Delivered',
-        child: Text(
-          'Your code has been used. Enjoy your food.',
-          style: theme.textTheme.bodyMedium,
-        ),
-      );
-    }
-
-    if (code == null || code.isEmpty) {
-      // Orders placed before delivery codes existed have none. Saying so is
-      // better than showing an empty box the customer will stare at.
-      return _Card(
-        icon: Icons.lock_open_rounded,
-        title: 'No delivery code',
-        child: Text(
-          'This order does not use a delivery code.',
-          style: theme.textTheme.bodyMedium,
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [scheme.primary, AppColors.clay],
-        ),
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.key_rounded, size: 18, color: scheme.onPrimary),
-              const SizedBox(width: 8),
-              Text(
-                'YOUR DELIVERY CODE',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: scheme.onPrimary,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            // Spaced out so it can be read aloud a digit at a time.
-            code.split('').join(' '),
-            style: theme.textTheme.displaySmall?.copyWith(
-              color: scheme.onPrimary,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Give this to your driver only when your food is in your hands. '
-            'They cannot see it, and they cannot close the order without it.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onPrimary.withValues(alpha: 0.9),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TotalsCard extends StatelessWidget {
-  const _TotalsCard({required this.order});
-
-  final CustomerOrder order;
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      icon: Icons.receipt_long_rounded,
-      title: 'What you owe',
-      child: Column(
-        children: [
-          _Row(label: 'Items', value: formatRands(order.subtotal)),
-          const SizedBox(height: 6),
-          _Row(label: 'Delivery', value: formatRands(order.deliveryFee)),
-          const Divider(height: 22),
-          _Row(
-            label: 'Total',
-            value: formatRands(order.total),
-            emphasis: true,
-          ),
-          const SizedBox(height: 14),
-          _PaymentStatusChip(order: order),
-        ],
-      ),
-    );
-  }
-}
-
-/// Whether this order is paid for, and what the customer should do about it.
-class _PaymentStatusChip extends StatelessWidget {
-  const _PaymentStatusChip({required this.order});
-
-  final CustomerOrder order;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final (IconData icon, Color colour, String message) = switch (order) {
-      _ when order.isPaid => (
-        Icons.check_circle_rounded,
-        AppColors.leaf,
-        'Paid · ${order.paymentMethod.label}',
-      ),
-      _ when order.paymentMethod == PaymentMethod.cash => (
-        Icons.payments_rounded,
-        theme.colorScheme.onSurfaceVariant,
-        'Pay ${formatRands(order.total)} in cash when your food arrives',
-      ),
-      _ when order.paymentStatus == 'failed' => (
-        Icons.error_outline_rounded,
-        AppColors.chilli,
-        'Payment failed — the kitchen is waiting for payment',
-      ),
-      _ => (
-        Icons.schedule_rounded,
-        AppColors.maize,
-        'Payment not confirmed yet',
-      ),
-    };
-
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: colour),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colour,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.order});
-
-  final CustomerOrder order;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final instructions = order.address.instructions;
-
-    return _Card(
-      icon: Icons.place_outlined,
-      title: 'Delivering to',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(order.address.oneLine, style: theme.textTheme.bodyMedium),
-          if (instructions != null && instructions.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              instructions,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({
-    required this.icon,
-    required this.title,
-    required this.child,
-    this.iconColor,
-  });
-
-  final IconData icon;
-  final String title;
-  final Widget child;
-  final Color? iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: iconColor ?? theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({
-    required this.label,
-    required this.value,
-    this.emphasis = false,
-  });
-
-  final String label;
-  final String value;
-  final bool emphasis;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final style = emphasis
-        ? theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)
-        : theme.textTheme.bodyMedium;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(label, style: style), Text(value, style: style)],
     );
   }
 }

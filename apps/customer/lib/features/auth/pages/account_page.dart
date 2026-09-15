@@ -13,6 +13,7 @@ import '../models/user_profile.dart';
 import '../providers/auth_providers.dart';
 import '../widgets/auth_error_banner.dart';
 import '../widgets/auth_form_fields.dart';
+import '../../orders/pages/your_orders_page.dart';
 import 'sign_in_page.dart';
 import 'sign_up_page.dart';
 
@@ -238,6 +239,19 @@ class _SignedIn extends ConsumerWidget {
         _Detail(label: 'Name', value: profile.displayName),
         _Detail(label: 'Mobile', value: profile.phone ?? 'Not set'),
         _Detail(label: 'Address', value: profile.address ?? 'Not set'),
+
+        const SizedBox(height: 20),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.receipt_long_rounded),
+            title: const Text('Your orders'),
+            subtitle: const Text('Track an order or find a delivery code'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const YourOrdersPage()),
+            ),
+          ),
+        ),
 
         const SizedBox(height: 28),
         OutlinedButton.icon(

@@ -52,6 +52,25 @@ class OrderRepository {
     return response.data;
   }
 
+  /// The signed-in customer's orders, newest first, one page at a time.
+  ///
+  /// Pass the previous page's [OrdersPage.nextCursor] to continue. The server
+  /// scopes the query to the caller's own uid, so there is no customer id to
+  /// send — and no way to ask for someone else's.
+  Future<OrdersPage> fetchMyOrders({String? cursor, int limit = 20}) async {
+    final response = await _client.get<List<CustomerOrder>>(
+      '/api/v1/orders/mine',
+      authenticated: true,
+      query: {
+        'limit': '$limit',
+        'cursor': ?cursor,
+      },
+      decode: (json) => decodeList(json, CustomerOrder.fromJson),
+    );
+
+    return OrdersPage(orders: response.data, nextCursor: response.nextCursor);
+  }
+
   Future<CustomerOrder> fetchOrder(String orderId) async {
     final response = await _client.get<CustomerOrder>(
       '/api/v1/orders/$orderId',
@@ -99,4 +118,15 @@ class OrderRepository {
       decode: (_) {},
     );
   }
+}
+
+/// One page of a customer's orders.
+class OrdersPage {
+  const OrdersPage({required this.orders, required this.nextCursor});
+
+  final List<CustomerOrder> orders;
+
+  /// Pass back to [OrderRepository.fetchMyOrders] for the next page; null
+  /// when there are no more.
+  final String? nextCursor;
 }

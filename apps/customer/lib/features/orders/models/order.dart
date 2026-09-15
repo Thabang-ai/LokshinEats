@@ -28,6 +28,104 @@ enum PaymentMethod {
   };
 }
 
+/// Where an order is in its life.
+///
+/// Mirrors `ORDER_STATUSES` in `server/src/modules/orders/order.model.ts`. An
+/// unknown value reads as [pending] — the same fallback the server's own
+/// serialiser uses — so a status added server-side later degrades to "placed"
+/// rather than crashing the order list.
+enum OrderStatus {
+  pending,
+  confirmed,
+  preparing,
+  ready,
+  pickedUp,
+  delivered,
+  cancelled;
+
+  static OrderStatus fromWire(Object? value) => switch (value) {
+    'confirmed' => OrderStatus.confirmed,
+    'preparing' => OrderStatus.preparing,
+    'ready' => OrderStatus.ready,
+    'picked_up' => OrderStatus.pickedUp,
+    'delivered' => OrderStatus.delivered,
+    'cancelled' => OrderStatus.cancelled,
+    _ => OrderStatus.pending,
+  };
+
+  /// Short, for chips and list rows.
+  String get label => switch (this) {
+    OrderStatus.pending => 'Placed',
+    OrderStatus.confirmed => 'Accepted',
+    OrderStatus.preparing => 'Preparing',
+    OrderStatus.ready => 'Ready for pickup',
+    OrderStatus.pickedUp => 'On the way',
+    OrderStatus.delivered => 'Delivered',
+    OrderStatus.cancelled => 'Cancelled',
+  };
+
+  /// A sentence for the top of the tracking screen.
+  String get description => switch (this) {
+    OrderStatus.pending => 'Waiting for the kitchen to accept your order.',
+    OrderStatus.confirmed => 'The kitchen has accepted your order.',
+    OrderStatus.preparing => 'The kitchen is making your food.',
+    OrderStatus.ready => 'Your food is ready and waiting for a driver.',
+    OrderStatus.pickedUp => 'Your driver is on the way.',
+    OrderStatus.delivered => 'Delivered. Enjoy your food.',
+    OrderStatus.cancelled => 'This order was cancelled.',
+  };
+
+  /// Still moving — worth watching for changes.
+  bool get isActive =>
+      this != OrderStatus.delivered && this != OrderStatus.cancelled;
+}
+
+/// One line of an order, priced at the moment it was placed.
+class OrderLine {
+  const OrderLine({
+    required this.productId,
+    required this.name,
+    required this.price,
+    required this.quantity,
+    required this.lineTotal,
+    this.specialInstructions,
+  });
+
+  factory OrderLine.fromJson(Map<String, dynamic> json) {
+    final price = _money(json['price']);
+    final quantity = switch (json['quantity']) {
+      final num n when n.isFinite && n > 0 => n.toInt(),
+      _ => 1,
+    };
+
+    return OrderLine(
+      productId: json['productId'] as String? ?? '',
+      name: switch (json['name']) {
+        final String s when s.isNotEmpty => s,
+        _ => 'Item',
+      },
+      price: price,
+      quantity: quantity,
+      // The server always sends it; the fallback only guards a hand-built
+      // payload, and matches how the server derives it.
+      lineTotal: json['lineTotal'] is num
+          ? _money(json['lineTotal'])
+          : (price * quantity * 100).round() / 100,
+      specialInstructions: switch (json['specialInstructions']) {
+        final String s when s.isNotEmpty => s,
+        _ => null,
+      },
+    );
+  }
+
+  final String productId;
+  final String name;
+  final double price;
+  final int quantity;
+  final double lineTotal;
+  final String? specialInstructions;
+}
+
 class DeliveryAddress {
   const DeliveryAddress({
     required this.street,
@@ -66,6 +164,13 @@ class CustomerOrder {
     required this.deliveryCode,
     required this.deliveryVerified,
     required this.address,
+    this.storeId = '',
+    this.items = const [],
+    this.driverId,
+    this.cashAmount,
+    this.createdAt,
+    this.updatedAt,
+    this.deliveredAt,
   });
 
   factory CustomerOrder.fromJson(Map<String, dynamic> json) {
@@ -73,14 +178,19 @@ class CustomerOrder {
 
     return CustomerOrder(
       id: json['id'] as String? ?? '',
-      status: json['status'] as String? ?? 'pending',
+      status: OrderStatus.fromWire(json['status']),
       paymentStatus: json['paymentStatus'] as String? ?? 'pending',
       paymentMethod: switch (json['paymentMethod']) {
         'yoco' => PaymentMethod.yoco,
         'ozow' => PaymentMethod.ozow,
         _ => PaymentMethod.cash,
       },
+      storeId: json['storeId'] as String? ?? '',
       storeName: json['storeName'] as String? ?? '',
+      items: (json['items'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(OrderLine.fromJson)
+          .toList(growable: false),
       subtotal: _money(json['subtotal']),
       deliveryFee: _money(json['deliveryFee']),
       total: _money(json['total']),
@@ -88,38 +198,68 @@ class CustomerOrder {
       // keeps it in a collection no client can read.
       deliveryCode: json['deliveryCode'] as String?,
       deliveryVerified: json['deliveryVerified'] == true,
+      driverId: switch (json['driverId']) {
+        final String s when s.isNotEmpty => s,
+        _ => null,
+      },
+      cashAmount: json['cashAmount'] is num ? _money(json['cashAmount']) : null,
       address: DeliveryAddress(
         street: address['street'] as String? ?? '',
         city: address['city'] as String? ?? '',
         postalCode: address['postalCode'] as String? ?? '',
         instructions: address['instructions'] as String?,
       ),
+      createdAt: _date(json['createdAt']),
+      updatedAt: _date(json['updatedAt']),
+      deliveredAt: _date(json['deliveredAt']),
     );
   }
 
   final String id;
-  final String status;
+  final OrderStatus status;
   final String paymentStatus;
   final PaymentMethod paymentMethod;
+  final String storeId;
   final String storeName;
+  final List<OrderLine> items;
   final double subtotal;
   final double deliveryFee;
   final double total;
   final String? deliveryCode;
   final bool deliveryVerified;
+  final String? driverId;
+
+  /// The note the customer said they would pay with, on a cash order.
+  final double? cashAmount;
+
   final DeliveryAddress address;
+
+  /// Null only on documents too old to carry a timestamp.
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? deliveredAt;
 
   bool get isPaid => paymentStatus == 'paid';
 
   /// Short id, for showing a customer which order they are looking at.
   String get reference =>
       id.length <= 6 ? id.toUpperCase() : id.substring(0, 6).toUpperCase();
+
+  /// "2 × Slap Chips, 1 × Braai Pack", for a list row.
+  String get itemSummary =>
+      items.map((line) => '${line.quantity} × ${line.name}').join(', ');
+
+  int get itemCount => items.fold(0, (sum, line) => sum + line.quantity);
 }
 
 double _money(Object? value) => switch (value) {
   final num n when n.isFinite => n.toDouble(),
   _ => 0,
 };
+
+/// The API sends ISO-8601 strings. Shown in the device's local time.
+DateTime? _date(Object? value) =>
+    value is String ? DateTime.tryParse(value)?.toLocal() : null;
 
 /// A payment attempt.
 class PaymentAttempt {
