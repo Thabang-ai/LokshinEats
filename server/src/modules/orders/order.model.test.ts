@@ -16,6 +16,7 @@ import {
   canTransition,
   createOrderSchema,
   toOrder,
+  updateStatusSchema,
   type OrderStatus,
 } from './order.model';
 import { ROLES } from '../../middleware/auth';
@@ -299,5 +300,26 @@ describe('toOrder normalisation', () => {
     ]) {
       expect(Number.isNaN(value)).toBe(false);
     }
+  });
+});
+
+describe('updateStatusSchema', () => {
+  it('accepts the stage a customer was shown when cancelling', () => {
+    expect(
+      updateStatusSchema.safeParse({ status: 'cancelled', expectedStage: 'in_kitchen' }).success,
+    ).toBe(true);
+    expect(updateStatusSchema.safeParse({ status: 'cancelled' }).success).toBe(true);
+  });
+
+  it('refuses a stage on anything but a cancellation', () => {
+    expect(
+      updateStatusSchema.safeParse({ status: 'preparing', expectedStage: 'before_prep' }).success,
+    ).toBe(false);
+  });
+
+  it('refuses a stage that does not exist', () => {
+    expect(
+      updateStatusSchema.safeParse({ status: 'cancelled', expectedStage: 'whenever' }).success,
+    ).toBe(false);
   });
 });

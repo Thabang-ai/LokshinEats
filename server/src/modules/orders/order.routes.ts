@@ -10,6 +10,7 @@
  * | GET    | /orders/available       | driver              |
  * | GET    | /orders                 | admin               |
  * | GET    | /orders/:id             | party to the order  |
+ * | GET    | /orders/:id/cancellation-preview | party to the order |
  * | PATCH  | /orders/:id/status      | party to the order  |
  * | POST   | /orders/:id/accept      | driver              |
  * | POST   | /orders/:id/release     | assigned driver     |
@@ -134,6 +135,22 @@ orderRouter.get(
   }),
 );
 
+/**
+ * What cancelling would cost the caller right now. Changes nothing; pass the
+ * returned `stage` back as `expectedStage` when cancelling.
+ */
+orderRouter.get(
+  '/:id/cancellation-preview',
+  validate({ params: orderIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const preview = await service.previewCancellation(
+      requireAuth(req),
+      req.params.id as string,
+    );
+    res.json({ data: preview });
+  }),
+);
+
 orderRouter.patch(
   '/:id/status',
   validate({ params: orderIdParamSchema, body: updateStatusSchema }),
@@ -142,6 +159,7 @@ orderRouter.patch(
       requireAuth(req),
       req.params.id as string,
       req.body.status,
+      { expectedStage: req.body.expectedStage },
     );
     res.json({ data: order });
   }),

@@ -11,8 +11,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_states.dart';
+import '../../wallet/providers/wallet_providers.dart';
 import '../models/order.dart';
 import '../providers/order_tracking_providers.dart';
+import '../widgets/cancel_order_button.dart';
 import '../widgets/order_sections.dart';
 import 'your_orders_page.dart';
 
@@ -63,6 +65,20 @@ class OrderTrackingPage extends ConsumerWidget {
                 OrderTotalsCard(order: data.order),
                 const SizedBox(height: 16),
                 OrderAddressCard(order: data.order),
+                if (data.order.status.isActive) ...[
+                  const SizedBox(height: 28),
+                  CancelOrderButton(
+                    order: data.order,
+                    // Called when the order was cancelled, or turned out to
+                    // have moved on: either way the screen, the order list
+                    // and the wallet balance may all be out of date.
+                    onOrderChanged: () {
+                      notifier.refresh();
+                      ref.invalidate(myOrdersProvider);
+                      ref.invalidate(walletProvider);
+                    },
+                  ),
+                ],
               ],
             ),
           ),

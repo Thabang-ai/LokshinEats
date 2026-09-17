@@ -105,6 +105,37 @@ class OrderRepository {
     return PaymentAttempt.fromJson(response.data);
   }
 
+  /// What cancelling this order would cost right now. Changes nothing.
+  Future<CancellationPreview> previewCancellation(String orderId) async {
+    final response = await _client.get<CancellationPreview>(
+      '/api/v1/orders/$orderId/cancellation-preview',
+      authenticated: true,
+      decode: (json) =>
+          CancellationPreview.fromJson(json! as Map<String, dynamic>),
+    );
+
+    return response.data;
+  }
+
+  /// Cancel an order at the cost the customer was shown.
+  ///
+  /// [expectedStage] is the stage from the preview. If the order has moved on
+  /// since — a driver collected the food while the confirmation was open —
+  /// the API refuses with a conflict instead of settling at a price the
+  /// customer never agreed to.
+  Future<CustomerOrder> cancelOrder(
+    String orderId, {
+    required String expectedStage,
+  }) async {
+    final response = await _client.patch<CustomerOrder>(
+      '/api/v1/orders/$orderId/status',
+      body: {'status': 'cancelled', 'expectedStage': expectedStage},
+      decode: (json) => CustomerOrder.fromJson(json! as Map<String, dynamic>),
+    );
+
+    return response.data;
+  }
+
   /// Resolve a sandbox charge.
   ///
   /// Stands in for the customer finishing payment on a real provider's page.

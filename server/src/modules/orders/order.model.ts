@@ -15,6 +15,7 @@ import { z } from 'zod';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { toIso, toNumber, toStringOr } from '../../lib/serialize';
 import type { Role } from '../../middleware/auth';
+import { CANCELLATION_STAGES } from './cancellation.policy';
 
 export const ORDER_STATUSES = [
   'pending',
@@ -242,8 +243,21 @@ export const createOrderSchema = z
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
 export const updateStatusSchema = z
-  .object({ status: z.enum(ORDER_STATUSES) })
-  .strict();
+  .object({
+    status: z.enum(ORDER_STATUSES),
+    /**
+     * For a cancellation: the stage the customer was shown the cost for, from
+     * GET /orders/:id/cancellation-preview. If the order has moved on since —
+     * a driver collected the food while the confirmation was open — the
+     * cancellation is refused rather than settled at a price nobody agreed to.
+     */
+    expectedStage: z.enum(CANCELLATION_STAGES).optional(),
+  })
+  .strict()
+  .refine((body) => body.expectedStage === undefined || body.status === 'cancelled', {
+    message: 'expectedStage only applies to a cancellation.',
+    path: ['expectedStage'],
+  });
 
 export const completeDeliverySchema = z
   .object({

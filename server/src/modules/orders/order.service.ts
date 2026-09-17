@@ -29,6 +29,7 @@ import {
   type OrderStatus,
 } from './order.model';
 import * as cancellationService from './cancellation.service';
+import type { CancellationStage } from './cancellation.policy';
 import * as repository from './order.repository';
 import type { DeliveryResult, NewOrderDocument } from './order.repository';
 
@@ -315,6 +316,7 @@ export async function changeStatus(
   caller: AuthContext,
   orderId: string,
   next: OrderStatus,
+  options: { expectedStage?: CancellationStage } = {},
 ): Promise<Order> {
   const order = await getOrder(caller, orderId);
 
@@ -329,6 +331,7 @@ export async function changeStatus(
       actor: caller,
       orderId,
       audience: audienceFor(caller, order),
+      expectedStage: options.expectedStage,
     });
     log.info(
       { orderId, from: order.status, to: next, actor: caller.uid },
@@ -477,4 +480,22 @@ export async function confirmDelivery(
   }
 
   return result;
+}
+
+/**
+ * What cancelling this order would cost the caller right now.
+ *
+ * Changes nothing. Access is the same as reading the order, so an order id
+ * cannot be probed for its prices.
+ */
+export async function previewCancellation(
+  caller: AuthContext,
+  orderId: string,
+): Promise<cancellationService.CancellationPreview> {
+  await getOrder(caller, orderId);
+
+  const raw = await repository.findRawById(orderId);
+  if (!raw) throw ApiError.notFound('No such order.');
+
+  return cancellationService.previewForOrder(raw, caller.role);
 }

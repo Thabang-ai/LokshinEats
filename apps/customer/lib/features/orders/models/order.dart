@@ -362,3 +362,47 @@ class OrderCancellation {
   /// being moved.
   final bool settled;
 }
+
+/// What cancelling an order would cost right now, as the API works it out.
+///
+/// The app never calculates this itself: the tiers live on the server, and a
+/// copy here would drift. [stage] goes back with the cancellation, so the API
+/// can refuse if the order has moved on since the customer saw these figures.
+class CancellationPreview {
+  const CancellationPreview({
+    required this.allowed,
+    required this.customerRefund,
+    required this.vendorPay,
+    required this.driverPay,
+    this.stage,
+    this.code,
+    this.reason,
+  });
+
+  factory CancellationPreview.fromJson(Map<String, dynamic> json) {
+    return CancellationPreview(
+      allowed: json['allowed'] == true,
+      code: json['code'] as String?,
+      reason: json['reason'] as String?,
+      stage: json['stage'] as String?,
+      customerRefund: _money(json['customerRefund']),
+      vendorPay: _money(json['vendorPay']),
+      driverPay: _money(json['driverPay']),
+    );
+  }
+
+  final bool allowed;
+
+  /// `terminal`, `not_permitted` or `needs_admin` when not allowed.
+  final String? code;
+
+  /// Why it is not allowed, written by the API for the customer.
+  final String? reason;
+
+  /// `before_prep`, `in_kitchen` or `on_the_way`.
+  final String? stage;
+
+  final double customerRefund;
+  final double vendorPay;
+  final double driverPay;
+}

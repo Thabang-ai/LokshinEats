@@ -24,8 +24,11 @@ import * as storeRepository from '../stores/store.repository';
 import * as walletService from '../wallets/wallet.service';
 import {
   planCancellation,
+  stageFor,
+  type CancellationDecision,
   type CancellationInitiator,
   type CancellationPlan,
+  type CancellationStage,
 } from './cancellation.policy';
 import type { Audience, Order, OrderStatus } from './order.model';
 import * as repository from './order.repository';
@@ -49,25 +52,36 @@ export async function cancelOrder(input: {
   orderId: string;
   audience: Audience;
   reason?: string;
+  /** The stage the caller was shown the cost for. See `updateStatusSchema`. */
+  expectedStage?: CancellationStage;
 }): Promise<Order> {
   const initiator = initiatorFor(input.actor.role);
 
   const { cancelledNow, plan } = await repository.cancelOrder(
     input.orderId,
     input.actor.role,
-    (order) =>
-      planCancellation({
-        status: String(order.status ?? 'pending') as OrderStatus,
-        initiator,
-        paymentMethod: String(order.paymentMethod ?? 'cash'),
-        paymentStatus: String(order.paymentStatus ?? 'pending'),
-        driverAssigned: Boolean(order.driverId),
-        total: Number(order.total ?? 0),
-        vendorPayout: Number(order.vendorPayout ?? 0),
-        driverPayout: Number(order.driverPayout ?? 0),
-        platformEarnings: Number(order.platformEarnings ?? 0),
-        arrivalFeeShare: env.DRIVER_ARRIVAL_FEE_SHARE,
-      }),
+    (order) => {
+      const decision = planForOrder(order, initiator);
+
+      // Decided inside the transaction, against the status being written —
+      // so a driver collecting the food a moment ago is seen here even if the
+      // customer's preview predates it.
+      if (
+        decision.allowed &&
+        input.expectedStage !== undefined &&
+        decision.plan.stage !== input.expectedStage
+      ) {
+        return {
+          allowed: false,
+          code: 'not_permitted',
+          reason:
+            'This order has moved on since you checked what cancelling would cost. ' +
+            'Check again before cancelling.',
+        };
+      }
+
+      return decision;
+    },
   );
 
   await settle(input.orderId, plan, input.reason ?? `cancelled by the ${plan.initiator}`, input.actor);
@@ -167,4 +181,80 @@ async function settle(
   }
 
   await repository.markCancellationSettled(orderId, plan.customerRefund, paymentStatus);
+}
+
+/** The policy's answer for an order as it stands, for this initiator. */
+export function planForOrder(
+  order: Record<string, unknown>,
+  initiator: CancellationInitiator,
+): CancellationDecision {
+  return planCancellation({
+    status: String(order.status ?? 'pending') as OrderStatus,
+    initiator,
+    paymentMethod: String(order.paymentMethod ?? 'cash'),
+    paymentStatus: String(order.paymentStatus ?? 'pending'),
+    driverAssigned: Boolean(order.driverId),
+    total: Number(order.total ?? 0),
+    vendorPayout: Number(order.vendorPayout ?? 0),
+    driverPayout: Number(order.driverPayout ?? 0),
+    platformEarnings: Number(order.platformEarnings ?? 0),
+    arrivalFeeShare: env.DRIVER_ARRIVAL_FEE_SHARE,
+  });
+}
+
+/** What cancelling would cost, as shown before anyone confirms. */
+export type CancellationPreview = {
+  allowed: boolean;
+  code: 'terminal' | 'not_permitted' | 'needs_admin' | null;
+  /** Why it is not allowed, written for the person asking. */
+  reason: string | null;
+  /** Send back as `expectedStage` when cancelling. */
+  stage: CancellationStage | null;
+  customerRefund: number;
+  vendorPay: number;
+  driverPay: number;
+  /** Platform-covered amount. Admins only. */
+  goodwill?: number;
+};
+
+/**
+ * Preview a cancellation for whoever is asking.
+ *
+ * Advisory only: it reads the order as it stands. The cancellation itself
+ * re-plans inside its transaction, and refuses when given a stage the order
+ * has since left — which is what stops a preview becoming a stale price.
+ */
+export function previewForOrder(
+  order: Record<string, unknown>,
+  role: AuthContext['role'],
+): CancellationPreview {
+  const stage = stageFor(String(order.status ?? 'pending') as OrderStatus);
+  const nothing = { customerRefund: 0, vendorPay: 0, driverPay: 0 };
+
+  if (role === 'driver') {
+    return {
+      allowed: false,
+      code: 'not_permitted',
+      reason: 'Drivers cannot cancel orders. Release the order instead.',
+      stage,
+      ...nothing,
+    };
+  }
+
+  const decision = planForOrder(order, role);
+  if (!decision.allowed) {
+    return { allowed: false, code: decision.code, reason: decision.reason, stage, ...nothing };
+  }
+
+  const { plan } = decision;
+  return {
+    allowed: true,
+    code: null,
+    reason: null,
+    stage: plan.stage,
+    customerRefund: plan.customerRefund,
+    vendorPay: plan.vendorPay,
+    driverPay: plan.driverPay,
+    ...(role === 'admin' ? { goodwill: plan.goodwill } : {}),
+  };
 }

@@ -558,3 +558,138 @@ describe('accepting and delivering', () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe('cancellation preview', () => {
+  it('tells a customer what cancelling mid-prep would cost, and changes nothing', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      status: 'preparing',
+      paymentStatus: 'paid',
+      subtotal: 100,
+      deliveryFee: 20,
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${orderId}/cancellation-preview`)
+      .set(...customer.authHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      allowed: true,
+      stage: 'in_kitchen',
+      customerRefund: 28,
+      vendorPay: 92,
+      driverPay: 0,
+    });
+    // The platform's cost is not the customer's business.
+    expect(response.body.data).not.toHaveProperty('goodwill');
+
+    const order = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set(...customer.authHeader);
+    expect(order.body.data.status).toBe('preparing');
+  });
+
+  it('includes the arrival fee once a driver has been dispatched', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      status: 'preparing',
+      paymentStatus: 'paid',
+      driverId: 'drv-1',
+      subtotal: 100,
+      deliveryFee: 20,
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${orderId}/cancellation-preview`)
+      .set(...customer.authHeader);
+
+    expect(response.body.data).toMatchObject({ customerRefund: 19.5, driverPay: 8.5 });
+  });
+
+  it('explains why an unpaid order cannot be cancelled by the customer mid-prep', async () => {
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      status: 'preparing',
+      paymentMethod: 'cash',
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${orderId}/cancellation-preview`)
+      .set(...customer.authHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ allowed: false, code: 'needs_admin' });
+    expect(response.body.data.reason).toMatch(/support/i);
+  });
+
+  it('says a delivered order cannot be cancelled', async () => {
+    const orderId = await seedOrder({ customerId: 'cust-1', storeId, status: 'delivered' });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${orderId}/cancellation-preview`)
+      .set(...customer.authHeader);
+
+    expect(response.body.data).toMatchObject({ allowed: false, code: 'terminal' });
+  });
+
+  it('keeps the preview from a vendor who does not own the store', async () => {
+    const orderId = await seedOrder({ customerId: 'cust-1', storeId, status: 'preparing' });
+
+    const response = await request(app)
+      .get(`/api/v1/orders/${orderId}/cancellation-preview`)
+      .set(...otherVendor.authHeader);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('refuses a cancellation when the order has moved on since the preview', async () => {
+    // The customer was shown the mid-prep cost, then the driver collected it.
+    const orderId = await seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      status: 'picked_up',
+      paymentStatus: 'paid',
+      driverId: 'drv-1',
+    });
+
+    const response = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set(...customer.authHeader)
+      .send({ status: 'cancelled', expectedStage: 'in_kitchen' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toMatch(/moved on/i);
+
+    const order = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set(...customer.authHeader);
+    expect(order.body.data.status).toBe('picked_up');
+  });
+
+  it('cancels when the order is still at the stage the customer was shown', async () => {
+    const orderId = await seedOrder({ customerId: 'cust-1', storeId });
+
+    const response = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set(...customer.authHeader)
+      .send({ status: 'cancelled', expectedStage: 'before_prep' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('cancelled');
+  });
+
+  it('rejects a stage sent with any other status change', async () => {
+    const orderId = await seedOrder({ customerId: 'cust-1', storeId });
+
+    const response = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set(...vendor.authHeader)
+      .send({ status: 'confirmed', expectedStage: 'before_prep' });
+
+    expect(response.status).toBe(422);
+  });
+});
