@@ -66,7 +66,7 @@ abstract class _PollingDeliveries extends AsyncNotifier<DeliveryListState> {
   /// How often to ask again while the driver is looking.
   Duration get pollInterval;
 
-  Future<DeliveryPage> fetch(DeliveryRepository repository);
+  Future<PagedDeliveries> fetch(DeliveryRepository repository);
 
   @override
   Future<DeliveryListState> build() async {
@@ -165,7 +165,7 @@ class AvailableDeliveriesNotifier extends _PollingDeliveries {
   Duration get pollInterval => const Duration(seconds: 10);
 
   @override
-  Future<DeliveryPage> fetch(DeliveryRepository repository) =>
+  Future<PagedDeliveries> fetch(DeliveryRepository repository) =>
       repository.fetchAvailable();
 }
 
@@ -181,7 +181,7 @@ class MyDeliveriesNotifier extends _PollingDeliveries {
   Duration get pollInterval => const Duration(seconds: 20);
 
   @override
-  Future<DeliveryPage> fetch(DeliveryRepository repository) =>
+  Future<PagedDeliveries> fetch(DeliveryRepository repository) =>
       repository.fetchMine();
 }
 
@@ -200,3 +200,102 @@ List<Delivery> activeOf(DeliveryListState state) => state.deliveries
 List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
     .where((delivery) => !delivery.status.isActive)
     .toList(growable: false);
+
+// ---------------------------------------------------------------------------
+// One delivery, while the driver is working it
+// ---------------------------------------------------------------------------
+
+/// One delivery, re-read while its screen is open.
+///
+/// A driver who claimed an order early is waiting for the kitchen, and the
+/// only way they find out the food is ready is this poll — so it keeps going
+/// on a delivery that is still active and stops once it is finished.
+class DeliveryDetailNotifier extends AsyncNotifier<Delivery> {
+  DeliveryDetailNotifier(this.orderId);
+
+  final String orderId;
+
+  static const pollInterval = Duration(seconds: 15);
+
+  Timer? _timer;
+  bool _inFlight = false;
+
+  @override
+  Future<Delivery> build() async {
+    final lifecycle = AppLifecycleListener(
+      onHide: () => _timer?.cancel(),
+      onShow: () => unawaited(refresh()),
+    );
+
+    ref.onDispose(() {
+      _timer?.cancel();
+      lifecycle.dispose();
+    });
+
+    final delivery = await ref
+        .read(deliveryRepositoryProvider)
+        .fetchOne(orderId);
+    _scheduleNext(delivery);
+
+    return delivery;
+  }
+
+  void _scheduleNext(Delivery delivery) {
+    _timer?.cancel();
+    // Nothing more will change on its own once it is delivered or cancelled.
+    if (!delivery.status.isActive) return;
+    _timer = Timer(pollInterval, () => unawaited(refresh()));
+  }
+
+  /// Re-read it now.
+  Future<void> refresh() async {
+    if (_inFlight) return;
+    _inFlight = true;
+    _timer?.cancel();
+
+    try {
+      final delivery = await ref
+          .read(deliveryRepositoryProvider)
+          .fetchOne(orderId);
+      if (!ref.mounted) return;
+
+      state = AsyncData(delivery);
+      _scheduleNext(delivery);
+    } catch (error) {
+      if (!ref.mounted) return;
+
+      final current = state.value;
+      if (current == null) {
+        state = AsyncError(error, StackTrace.current);
+      } else {
+        // Keep what is on screen: the address and the customer's number are
+        // what the driver is standing there needing, and losing them because
+        // a poll failed would be worse than showing them a minute late.
+        _scheduleNext(current);
+      }
+    } finally {
+      _inFlight = false;
+    }
+  }
+
+  /// Replace the delivery with what an action just returned.
+  ///
+  /// The API answers every action with the updated order, so acting on it is
+  /// its own refresh - no second call, and no window where the screen still
+  /// offers a button for a step already taken.
+  void applyResult(Delivery delivery) {
+    if (!ref.mounted) return;
+    state = AsyncData(delivery);
+    _scheduleNext(delivery);
+
+    // The lists behind this screen are now out of date too.
+    ref.invalidate(myDeliveriesProvider);
+    ref.invalidate(availableDeliveriesProvider);
+  }
+}
+
+final deliveryProvider = AsyncNotifierProvider.autoDispose
+    .family<DeliveryDetailNotifier, Delivery, String>(
+      DeliveryDetailNotifier.new,
+      retry: _noRetry,
+    );

@@ -15,6 +15,7 @@ import 'package:lokshineats_core/widgets/async_states.dart';
 import '../models/delivery.dart';
 import '../providers/delivery_providers.dart';
 import '../widgets/delivery_card.dart';
+import 'delivery_page.dart';
 
 class AvailableDeliveriesPage extends ConsumerWidget {
   const AvailableDeliveriesPage({super.key});
@@ -65,6 +66,7 @@ class _ClaimButtonState extends ConsumerState<_ClaimButton> {
   Future<void> _claim() async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     try {
       final claimed = await ref
@@ -84,6 +86,16 @@ class _ClaimButtonState extends ConsumerState<_ClaimButton> {
           ),
         ),
       );
+
+      // Straight onto the delivery: it is what they just took, and it is
+      // where the next thing they have to do lives.
+      if (mounted) {
+        await navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => DeliveryPage(orderId: claimed.id),
+          ),
+        );
+      }
     } on ApiException catch (error) {
       // Usually another driver got there first, which is ordinary and not a
       // fault worth an error screen.

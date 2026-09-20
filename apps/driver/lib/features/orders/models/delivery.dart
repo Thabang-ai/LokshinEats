@@ -116,6 +116,7 @@ class Delivery {
     required this.customerName,
     required this.address,
     required this.items,
+    required this.subtotal,
     required this.total,
     required this.deliveryFee,
     required this.driverPayout,
@@ -124,8 +125,12 @@ class Delivery {
     required this.driverId,
     this.customerPhone,
     this.cashAmount,
+    this.cashGivenToVendor = false,
+    this.vendorCashConfirmed = false,
+    this.vendorCashDisputed = false,
     this.distanceKm,
     this.createdAt,
+    this.deliveredAt,
   });
 
   factory Delivery.fromJson(Map<String, dynamic> json) {
@@ -145,6 +150,7 @@ class Delivery {
           .whereType<Map<String, dynamic>>()
           .map(DeliveryItem.fromJson)
           .toList(growable: false),
+      subtotal: _money(json['subtotal']),
       total: _money(json['total']),
       deliveryFee: _money(json['deliveryFee']),
       driverPayout: _money(json['driverPayout']),
@@ -155,10 +161,17 @@ class Delivery {
         _ => null,
       },
       cashAmount: json['cashAmount'] is num ? _money(json['cashAmount']) : null,
+      cashGivenToVendor: json['cashGivenToVendor'] == true,
+      vendorCashConfirmed: json['vendorCashConfirmed'] == true,
+      vendorCashDisputed: json['vendorCashDisputed'] == true,
       distanceKm: json['estimatedDistanceKm'] is num
           ? (json['estimatedDistanceKm'] as num).toDouble()
           : null,
       createdAt: switch (json['createdAt']) {
+        final String s => DateTime.tryParse(s)?.toLocal(),
+        _ => null,
+      },
+      deliveredAt: switch (json['deliveredAt']) {
         final String s => DateTime.tryParse(s)?.toLocal(),
         _ => null,
       },
@@ -172,6 +185,11 @@ class Delivery {
   final String? customerPhone;
   final DeliveryAddress address;
   final List<DeliveryItem> items;
+
+  /// The food, before the delivery fee. On a cash order this is what the
+  /// driver owes the kitchen once the customer has paid them.
+  final double subtotal;
+
   final double total;
   final double deliveryFee;
 
@@ -186,14 +204,42 @@ class Delivery {
   /// On a cash order, what the customer said they would pay with.
   final double? cashAmount;
 
+  /// The driver has said they handed the kitchen its share.
+  final bool cashGivenToVendor;
+
+  /// The kitchen agreed they received it.
+  final bool vendorCashConfirmed;
+
+  /// The kitchen says they did not. A person has to sort this out; the app's
+  /// job is to stop pretending it is settled.
+  final bool vendorCashDisputed;
+
   final double? distanceKm;
   final DateTime? createdAt;
+  final DateTime? deliveredAt;
 
   /// The driver collects the money at the door and owes the kitchen its share.
   bool get isCash => paymentMethod == 'cash';
 
   /// Nobody has claimed this one yet.
   bool get isUnclaimed => driverId == null;
+
+  /// Claimed, but the kitchen has not finished cooking.
+  ///
+  /// A driver can claim from the moment the kitchen accepts, so this is the
+  /// ordinary state of an order somebody is already driving towards. The API
+  /// only allows collection from `ready`, and the screen says so rather than
+  /// offering a button that would 409.
+  bool get isWaitingOnKitchen =>
+      status == DeliveryStatus.confirmed || status == DeliveryStatus.preparing;
+
+  /// Still on the driver: cash collected from the customer that the kitchen
+  /// has not been given yet.
+  bool get owesKitchenCash =>
+      isCash && status == DeliveryStatus.delivered && !cashGivenToVendor;
+
+  /// What the driver hands the kitchen: the food, not the delivery fee.
+  double get kitchenCashDue => subtotal;
 
   /// A short "2x Kota, 1x Chips" for a card.
   String get itemSummary => items

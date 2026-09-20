@@ -12,6 +12,7 @@ import 'package:lokshineats_core/widgets/async_states.dart';
 
 import '../providers/delivery_providers.dart';
 import '../widgets/delivery_card.dart';
+import 'delivery_page.dart';
 
 class MyDeliveriesPage extends ConsumerWidget {
   const MyDeliveriesPage({super.key});
@@ -59,7 +60,10 @@ class MyDeliveriesPage extends ConsumerWidget {
                       ),
                       const SizedBox(height: 10),
                       for (final delivery in active)
-                        DeliveryCard(delivery: delivery),
+                        DeliveryCard(
+                          delivery: delivery,
+                          onTap: () => _open(context, delivery.id),
+                        ),
                     ],
                     if (finished.isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -71,7 +75,10 @@ class MyDeliveriesPage extends ConsumerWidget {
                       ),
                       const SizedBox(height: 10),
                       for (final delivery in finished)
-                        DeliveryCard(delivery: delivery),
+                        DeliveryCard(
+                          delivery: delivery,
+                          onTap: () => _open(context, delivery.id),
+                        ),
                     ],
                   ],
                 ),
@@ -79,4 +86,10 @@ class MyDeliveriesPage extends ConsumerWidget {
       },
     );
   }
+}
+
+void _open(BuildContext context, String orderId) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => DeliveryPage(orderId: orderId)),
+  );
 }
