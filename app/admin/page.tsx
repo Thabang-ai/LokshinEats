@@ -5,11 +5,17 @@
 // marketplace during the pilot: every order as it comes in, the money moving
 // through the platform, and anything that needs a human to step in.
 //
-// Mostly read-only, with two narrow escape hatches for cleanup: Reset (clear
-// a stuck order's status/driver/cash-OTP state back to pending) and Delete
-// (remove an order from the list entirely). Both are scoped in Firestore
-// rules to operational fields only — admin can never touch the frozen money
-// fields (total, payouts, commission) on any order.
+// Everything here comes from the API (see services/adminApi.ts). This screen
+// used to hold an onSnapshot listener over the whole orders collection, which
+// meant an admin's browser read raw documents — including delivery codes that
+// belong only to the customer whose order it is. The API decides what an
+// admin may see; this screen only asks.
+//
+// Read-only except for one action: cancelling an order. That goes through the
+// API's cancellation tiers, which decide what the cancellation costs and move
+// the money to match. It replaces the old Reset and Delete buttons, which
+// wrote to Firestore directly and could leave an order in a state its money
+// had already moved past.
 //
 // The admin role is granted manually on a trusted user doc (Firebase console
 // → users/{uid}.role = "admin"); there is no admin self-signup.
@@ -25,15 +31,19 @@ import {
   Clock,
   PackageCheck,
   RefreshCw,
-  RotateCcw,
   ShoppingBag,
-  Trash2,
   TrendingUp,
   Wallet,
+  XCircle,
 } from 'lucide-react';
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, Timestamp, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { db } from '../../firebase/config';
+import { ApiError } from '../../services/apiClient';
+import {
+  cancelOrder,
+  fetchAllOrders,
+  fetchPlatformWallet,
+  previewCancellation,
+} from '../../services/adminApi';
 
 type OrderStatus =
   | 'pending'
@@ -123,6 +133,10 @@ export default function AdminConsole() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('active');
+  // What has actually settled into the platform's wallet, as opposed to what
+  // the orders on screen are expected to yield.
+  const [platformBalance, setPlatformBalance] = useState<number | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   // Bumped every 30s so relative times ("5 min ago") and stale-order
   // detection stay fresh even when no new snapshot arrives.
   const [, setTick] = useState(0);
@@ -132,111 +146,128 @@ export default function AdminConsole() {
     return () => clearInterval(interval);
   }, []);
 
+  // Polling, not a listener. The API is what decides that an admin may see
+  // all of this, and it cannot push — so the console asks every ten seconds,
+  // which on a board somebody is watching is indistinguishable from live.
   useEffect(() => {
-    // Initial state is already { isLoading: true, error: null }, and this
-    // subscription is set up once on mount — so we don't re-set those here
-    // (avoids a synchronous setState-in-effect cascade).
+    let cancelled = false;
 
-    // Live subscription to the entire orders collection. For a township pilot
-    // (tens to low-hundreds of orders/day) this is fine; once volume grows
-    // this should be paginated / date-bounded.
-    const unsub = onSnapshot(
-      query(collection(db, 'orders'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const rows: AdminOrder[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          const created =
-            data.createdAt instanceof Timestamp
-              ? data.createdAt.toDate()
-              : data.createdAt?.toDate?.() ?? null;
-          const itemCount = Array.isArray(data.items)
-            ? data.items.reduce(
-                (sum: number, it: { quantity?: number }) =>
-                  sum + (typeof it.quantity === 'number' ? it.quantity : 1),
-                0,
-              )
-            : 0;
-          return {
-            id: d.id,
-            customerName: data.customerName ?? 'Customer',
-            storeName: data.storeName ?? 'Unknown store',
-            itemCount,
-            total: typeof data.total === 'number' ? data.total : 0,
-            subtotal: typeof data.subtotal === 'number' ? data.subtotal : 0,
-            platformEarnings:
-              typeof data.platformEarnings === 'number' ? data.platformEarnings : 0,
-            status: (data.status as OrderStatus) ?? 'pending',
-            paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : 'cash',
-            paymentStatus: typeof data.paymentStatus === 'string' ? data.paymentStatus : 'pending',
-            driverId: typeof data.driverId === 'string' ? data.driverId : null,
-            cashGivenToVendor: data.cashGivenToVendor === true,
-            vendorCashConfirmed: data.vendorCashConfirmed === true,
-            vendorCashDisputed: data.vendorCashDisputed === true,
-            createdAt: created,
-          };
-        });
-        setOrders(rows);
-        setIsLoading(false);
-      },
-      (err) => {
-        setError(err instanceof Error ? err.message : String(err));
-        setIsLoading(false);
-      },
-    );
+    // Skipping a poll while the tab is in the background saves a request and
+    // a token refresh. Skipping the FIRST load does not: a console opened in a
+    // background tab would sit on its skeleton and still be blank when
+    // somebody finally looked at it.
+    const load = async ({ poll = false }: { poll?: boolean } = {}) => {
+      if (poll && typeof document !== 'undefined' && document.hidden) return;
 
-    return unsub;
-  }, []);
+      try {
+        const [page, wallet] = await Promise.all([
+          fetchAllOrders({ limit: 100 }),
+          // A failure here must not cost the order feed: the balance is the
+          // nice-to-have, the feed is the job.
+          fetchPlatformWallet().catch(() => null),
+        ]);
+        if (cancelled) return;
 
-  // ---- Order actions: reset or remove -------------------------------------
-  // Both are scoped by Firestore rules to operational fields only — neither
-  // can ever touch total/payouts/commission on an order.
+        setOrders(
+          page.orders.map((o) => ({
+            id: o.id,
+            customerName: o.customerName || 'Customer',
+            storeName: o.storeName || 'Unknown store',
+            itemCount: (o.items ?? []).reduce(
+              (sum, item) => sum + (item.quantity ?? 1),
+              0,
+            ),
+            total: o.total,
+            subtotal: o.subtotal,
+            platformEarnings: o.platformEarnings,
+            status: o.status,
+            paymentMethod: o.paymentMethod,
+            paymentStatus: o.paymentStatus,
+            driverId: o.driverId,
+            cashGivenToVendor: o.cashGivenToVendor,
+            vendorCashConfirmed: o.vendorCashConfirmed,
+            vendorCashDisputed: o.vendorCashDisputed,
+            createdAt: o.createdAt ? new Date(o.createdAt) : null,
+          })),
+        );
+        setPlatformBalance(wallet ? wallet.availableBalance : null);
+        setError(null);
+      } catch (err) {
+        if (cancelled) return;
+        // Keep whatever is already on screen: a stale feed is more use to an
+        // operator than an empty one.
+        setError(
+          err instanceof ApiError ? err.message : 'Could not reach the API.',
+        );
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void load();
+    const interval = setInterval(() => void load({ poll: true }), 10000);
+
+    // Coming back to the tab should not mean waiting out the interval: what
+    // changed while it was hidden is exactly what the operator came back to
+    // look at.
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refreshKey]);
+
+  // ---- The one action: cancel ---------------------------------------------
+  // What a cancellation costs depends on how far the order got, so the
+  // operator is shown the figures the API worked out and cancels at those or
+  // not at all. Goodwill is the part the platform absorbs to make it balance.
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const handleResetOrder = async (orderId: string) => {
+  const handleCancelOrder = async (orderId: string, label: string) => {
     if (typeof window === 'undefined') return;
-    if (
-      !window.confirm(
-        'Reset this order back to pending? This clears the assigned driver, delivery OTP, and cash-handoff state — use it to recover a stuck or miscategorized order.',
-      )
-    ) {
-      return;
-    }
     setBusyId(orderId);
+
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: 'pending',
-        driverId: null,
-        deliveryOTPVerified: false,
-        cashGivenToVendor: false,
-        cashGivenAmount: null,
-        vendorCashConfirmed: false,
-        vendorCashConfirmedAt: null,
-        vendorCashDisputed: false,
-        vendorCashDisputedAt: null,
-      });
-      toast.success('Order reset to pending');
+      const preview = await previewCancellation(orderId);
+
+      if (!preview.allowed || !preview.stage) {
+        toast.error(preview.reason ?? 'This order cannot be cancelled.');
+        return;
+      }
+
+      const lines = [
+        'Cancel ' + label + '?',
+        '',
+        'Refund to the customer: R' + preview.customerRefund.toFixed(2),
+        'Paid to the kitchen: R' + preview.vendorPay.toFixed(2),
+        'Paid to the driver: R' + preview.driverPay.toFixed(2),
+      ];
+      if (preview.goodwill && preview.goodwill > 0) {
+        lines.push(
+          '',
+          'LokshinEats absorbs R' + preview.goodwill.toFixed(2) + ' of this.',
+        );
+      }
+
+      if (!window.confirm(lines.join(String.fromCharCode(10)))) return;
+
+      await cancelOrder(orderId, preview.stage);
+      toast.success('Order cancelled and settled');
+      setRefreshKey((key) => key + 1);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reset order');
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not cancel that order.',
+      );
+      // Either it moved on, or something else is wrong. Re-read, don't guess.
+      setRefreshKey((key) => key + 1);
     } finally {
       setBusyId(null);
     }
-  };
-
-  const handleDeleteOrder = async (orderId: string, label: string) => {
-    if (typeof window === 'undefined') return;
-    if (!window.confirm(`Delete "${label}" permanently? This removes it from the list and can't be undone.`)) {
-      return;
-    }
-    setBusyId(orderId);
-    try {
-      await deleteDoc(doc(db, 'orders', orderId));
-      toast.success('Order removed');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete order');
-      setBusyId(null);
-    }
-    // No finally-reset on success: the row unmounts via the live snapshot,
-    // so there's nothing left to un-busy.
   };
 
   // ---- Derived headline numbers ------------------------------------------
@@ -332,9 +363,9 @@ export default function AdminConsole() {
               <p className="font-semibold mb-1">Could not load orders</p>
               <p className="font-mono break-all">{error}</p>
               <p className="mt-2 text-red-700">
-                If this says &quot;Missing or insufficient permissions&quot;, your account
-                doesn&apos;t have the admin role yet, or the updated Firestore rules haven&apos;t
-                been deployed.
+                If this says your account is not permitted, it does not have the
+                admin role yet. If it says LokshinEats could not be reached, the
+                API is not running or this build points at the wrong one.
               </p>
             </div>
           ) : null}
@@ -360,7 +391,13 @@ export default function AdminConsole() {
                 icon={<Wallet className="w-5 h-5 text-primary" />}
                 value={`R${stats.platformEarningsToday.toLocaleString()}`}
                 label="Your earnings today"
-                sub={`R${stats.platformEarningsAll.toLocaleString()} all-time`}
+                sub={
+                  platformBalance === null
+                    ? `R${stats.platformEarningsAll.toLocaleString()} all-time`
+                    // What is actually in the platform wallet, which is the
+                    // all-time figure minus anything refunded as goodwill.
+                    : `R${platformBalance.toLocaleString()} in your wallet`
+                }
               />
               <KpiCard
                 icon={<Activity className="w-5 h-5 text-primary" />}
@@ -530,26 +567,24 @@ export default function AdminConsole() {
                         </p>
                       </div>
 
-                      {/* Cleanup actions */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleResetOrder(o.id)}
-                          disabled={busyId === o.id}
-                          title="Reset to pending — clears driver, OTP, and cash state"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-40 transition-colors"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteOrder(o.id, `${o.storeName} → ${o.customerName}`)}
-                          disabled={busyId === o.id}
-                          title="Delete order permanently"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {/* The only write this console makes */}
+                      <div className="flex items-center gap-1 shrink-0 w-9">
+                        {ACTIVE_STATUSES.includes(o.status) && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCancelOrder(
+                                o.id,
+                                `${o.storeName} → ${o.customerName}`,
+                              )
+                            }
+                            disabled={busyId === o.id}
+                            title="Cancel this order — you will be shown what it costs first"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
 
                       {o.vendorCashDisputed && (
@@ -566,8 +601,8 @@ export default function AdminConsole() {
           </div>
 
           <p className="text-xs text-gray-400 mt-4 text-center">
-            &quot;+R&quot; is your platform earnings (realized on delivery) · Reset/delete never
-            touch money fields · Updates live
+            &quot;+R&quot; is your platform earnings (realized on delivery) · cancelling settles
+            the money through the API · Updates every 10s
           </p>
         </div>
       </div>

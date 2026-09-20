@@ -11,6 +11,7 @@
 // expiry, and the API verifies it with the Admin SDK. There is no second login
 // and no separate token to store.
 
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
 
 /** Base URL of the API. Inlined at build time, so it is set per environment. */
@@ -76,12 +77,48 @@ type RequestOptions = {
 };
 
 /**
+ * Resolves once Firebase has decided who is signed in.
+ *
+ * On a fresh page load the SDK restores the session from IndexedDB
+ * asynchronously, so `auth.currentUser` is null for the first moments even
+ * for someone who is signed in. Any screen that fetches on mount would
+ * otherwise be told to log in while it was already logged in — which is what
+ * the operator console did on every refresh.
+ *
+ * Created once and reused: the listener fires on the first resolution and
+ * unsubscribes itself.
+ */
+let authResolved: Promise<void> | null = null;
+
+function authReady(): Promise<void> {
+  authResolved ??= new Promise<void>((resolve) => {
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      () => {
+        unsubscribe();
+        resolve();
+      },
+      () => {
+        // A listener failure is still an answer: nobody is signed in.
+        unsubscribe();
+        resolve();
+      },
+    );
+  });
+
+  return authResolved;
+}
+
+/**
  * Current Firebase ID token.
  *
  * Throws rather than sending an anonymous request, so a signed-out user gets a
- * clear "log in" message instead of an opaque 401 from the server.
+ * clear "log in" message instead of an opaque 401 from the server — but only
+ * once Firebase has actually said there is nobody signed in.
  */
 async function idToken(): Promise<string> {
+  if (!auth.currentUser) await authReady();
+
   const user = auth.currentUser;
   if (!user) {
     throw new ApiError({
