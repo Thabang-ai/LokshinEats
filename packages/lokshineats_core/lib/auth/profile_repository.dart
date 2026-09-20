@@ -6,9 +6,9 @@
 /// rather than an error, because it is recoverable by retrying the call.
 library;
 
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_exception.dart';
-import '../models/user_profile.dart';
+import 'package:lokshineats_core/network/api_client.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
 
 class ProfileRepository {
   const ProfileRepository(this._client);
@@ -35,18 +35,21 @@ class ProfileRepository {
 
   /// Create the profile that every other endpoint authorises against.
   ///
-  /// `role` is deliberately not sent: the API rejects it on this endpoint, and
-  /// only allows `customer` or `driver` to be self-assigned at all. A customer
-  /// app has no business asking for anything else.
+  /// [role] is the only role this account will ever have asked for itself: the
+  /// API accepts `customer` or `driver` here and nothing else, so no app can
+  /// sign someone up as a vendor or an admin. Which of the two is a property
+  /// of the app doing the asking — see `signUpRoleProvider`.
   Future<UserProfile> createMe({
     required String displayName,
     String? phone,
+    String? role,
   }) async {
     final response = await _client.post<UserProfile>(
       '/api/v1/users/me',
       body: {
         'displayName': displayName.trim(),
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+        'role': ?role,
       },
       decode: (json) => UserProfile.fromJson(json! as Map<String, dynamic>),
     );

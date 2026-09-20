@@ -8,11 +8,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/account_page.dart';
 import '../../cart/widgets/cart_badge_button.dart';
 import '../../orders/pages/your_orders_page.dart';
-import '../../auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
 import '../widgets/store_card.dart';

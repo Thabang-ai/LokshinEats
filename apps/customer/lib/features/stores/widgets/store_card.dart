@@ -3,8 +3,8 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import '../models/store.dart';
 
 class StoreCard extends StatelessWidget {

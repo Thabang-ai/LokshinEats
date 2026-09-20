@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../core/network/api_exception.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
 
 /// A failure the customer can act on.
 ///

@@ -14,12 +14,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:lokshineats_customer/core/network/api_client.dart';
-import 'package:lokshineats_customer/core/providers.dart';
-import 'package:lokshineats_customer/core/theme/app_theme.dart';
-import 'package:lokshineats_customer/features/auth/models/user_profile.dart';
+import 'package:lokshineats_core/network/api_client.dart';
+import 'package:lokshineats_core/providers.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
 import 'package:lokshineats_customer/features/auth/pages/edit_profile_page.dart';
-import 'package:lokshineats_customer/features/auth/repositories/profile_repository.dart';
+import 'package:lokshineats_core/auth/profile_repository.dart';
 
 const _address = ProfileAddress(
   street: '88 Ndaba Street',

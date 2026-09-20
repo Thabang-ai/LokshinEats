@@ -8,9 +8,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:lokshineats_core/config/app_config.dart';
+import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
+
 import 'app.dart';
-import 'core/config/app_config.dart';
-import 'core/firebase/firebase_bootstrap.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +23,9 @@ Future<void> main() async {
 
   // Firebase supplies the ID token every authenticated API call carries, so
   // it has to be up before the first request rather than lazily on sign-in.
-  await FirebaseBootstrap.initialise();
+  await FirebaseBootstrap.initialise(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   runApp(const ProviderScope(child: LokshinEatsApp()));
 }

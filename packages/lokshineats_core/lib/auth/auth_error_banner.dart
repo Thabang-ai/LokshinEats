@@ -7,8 +7,8 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/auth_repository.dart';
-import '../../../core/network/api_exception.dart';
+import 'package:lokshineats_core/auth/auth_repository.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
 
 /// Shows whatever went wrong, in the customer's terms.
 class AuthErrorBanner extends StatelessWidget {

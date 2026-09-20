@@ -15,10 +15,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:lokshineats_customer/core/network/api_client.dart';
-import 'package:lokshineats_customer/core/providers.dart';
-import 'package:lokshineats_customer/core/theme/app_theme.dart';
-import 'package:lokshineats_customer/features/auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/network/api_client.dart';
+import 'package:lokshineats_core/providers.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_customer/features/orders/models/order.dart';
 import 'package:lokshineats_customer/features/orders/pages/your_orders_page.dart';
 import 'package:lokshineats_customer/features/orders/providers/checkout_providers.dart';

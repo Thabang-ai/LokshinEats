@@ -9,7 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/utils/money.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import '../providers/cart_providers.dart';
 import 'cart_badge_button.dart';
 

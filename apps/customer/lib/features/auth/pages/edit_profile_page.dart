@@ -13,11 +13,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_exception.dart';
-import '../../../core/theme/app_theme.dart';
-import '../models/user_profile.dart';
-import '../providers/auth_providers.dart';
-import '../widgets/auth_form_fields.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_form_fields.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   const EditProfilePage({super.key, required this.profile});

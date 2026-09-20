@@ -4,9 +4,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers/auth_providers.dart';
-import '../widgets/auth_error_banner.dart';
-import '../widgets/auth_form_fields.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_error_banner.dart';
+import 'package:lokshineats_core/auth/auth_form_fields.dart';
 import 'sign_up_page.dart';
 
 class SignInPage extends ConsumerStatefulWidget {

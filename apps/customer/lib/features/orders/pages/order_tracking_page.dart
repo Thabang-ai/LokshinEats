@@ -9,8 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../models/order.dart';
 import '../providers/order_tracking_providers.dart';

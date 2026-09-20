@@ -10,12 +10,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lokshineats_customer/core/auth/auth_repository.dart';
-import 'package:lokshineats_customer/core/network/api_exception.dart';
-import 'package:lokshineats_customer/core/theme/app_theme.dart';
-import 'package:lokshineats_customer/features/auth/models/user_profile.dart';
-import 'package:lokshineats_customer/features/auth/widgets/auth_error_banner.dart';
-import 'package:lokshineats_customer/features/auth/widgets/auth_form_fields.dart';
+import 'package:lokshineats_core/auth/auth_repository.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
+import 'package:lokshineats_core/auth/auth_error_banner.dart';
+import 'package:lokshineats_core/auth/auth_form_fields.dart';
 
 void main() {
   group('phone validation', () {

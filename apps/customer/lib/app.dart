@@ -6,7 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
-import 'core/theme/app_theme.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
 import 'features/stores/pages/stores_page.dart';
 
 class LokshinEatsApp extends StatelessWidget {

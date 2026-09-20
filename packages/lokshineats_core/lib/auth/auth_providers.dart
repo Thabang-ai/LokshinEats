@@ -10,13 +10,21 @@ library;
 import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers.dart';
-import '../models/user_profile.dart';
-import '../repositories/profile_repository.dart';
+import 'package:lokshineats_core/providers.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
+import 'package:lokshineats_core/auth/profile_repository.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepository(ref.watch(apiClientProvider));
 });
+
+/// The role this app signs people up as.
+///
+/// The customer app leaves it alone; the driver app overrides it in its
+/// `ProviderScope`. The API only ever accepts `customer` or `driver` from the
+/// account itself, so overriding this cannot grant anything privileged — a
+/// vendor or an admin is made by an admin, not by installing an app.
+final signUpRoleProvider = Provider<String>((ref) => 'customer');
 
 /// The Firebase session, or null. Emits on sign-in and sign-out.
 final firebaseUserProvider = StreamProvider<User?>((ref) {
@@ -100,6 +108,7 @@ class AuthController extends AsyncNotifier<void> {
       await ref.read(profileRepositoryProvider).createMe(
         displayName: displayName,
         phone: phone,
+        role: ref.read(signUpRoleProvider),
       );
 
       ref.invalidate(profileProvider);
@@ -120,6 +129,7 @@ class AuthController extends AsyncNotifier<void> {
       await ref.read(profileRepositoryProvider).createMe(
         displayName: displayName,
         phone: phone,
+        role: ref.read(signUpRoleProvider),
       );
       ref.invalidate(profileProvider);
     });

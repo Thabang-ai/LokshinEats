@@ -240,6 +240,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
+  lokshineats_core:
+    dependency: "direct main"
+    description:
+      path: "../../packages/lokshineats_core"
+      relative: true
+    source: path
+    version: "1.0.0"
   matcher:
     dependency: transitive
     description:

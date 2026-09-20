@@ -9,11 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/sign_in_page.dart';
-import '../../auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../../orders/pages/order_tracking_page.dart';
 import '../models/wallet.dart';
 import '../providers/wallet_providers.dart';

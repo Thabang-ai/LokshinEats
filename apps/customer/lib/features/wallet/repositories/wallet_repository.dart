@@ -4,7 +4,7 @@
 /// wallet id to send, so there is no way to ask for someone else's.
 library;
 
-import '../../../core/network/api_client.dart';
+import 'package:lokshineats_core/network/api_client.dart';
 import '../models/wallet.dart';
 
 class WalletRepository {

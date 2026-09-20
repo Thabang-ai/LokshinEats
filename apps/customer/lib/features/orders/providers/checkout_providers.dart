@@ -8,8 +8,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_exception.dart';
-import '../../../core/providers.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/providers.dart';
 import '../../cart/providers/cart_providers.dart';
 import '../models/order.dart';
 import '../repositories/order_repository.dart';
@@ -71,13 +71,15 @@ class CheckoutController extends Notifier<CheckoutState> {
 
     final CustomerOrder order;
     try {
-      order = await ref.read(orderRepositoryProvider).placeOrder(
-        cart: cart,
-        address: address,
-        paymentMethod: paymentMethod,
-        customerPhone: customerPhone,
-        cashAmount: paymentMethod == PaymentMethod.cash ? cashAmount : null,
-      );
+      order = await ref
+          .read(orderRepositoryProvider)
+          .placeOrder(
+            cart: cart,
+            address: address,
+            paymentMethod: paymentMethod,
+            customerPhone: customerPhone,
+            cashAmount: paymentMethod == PaymentMethod.cash ? cashAmount : null,
+          );
     } catch (error) {
       state = CheckoutFailed(error);
       return;
@@ -165,6 +167,4 @@ class CheckoutController extends Notifier<CheckoutState> {
 }
 
 final checkoutControllerProvider =
-    NotifierProvider<CheckoutController, CheckoutState>(
-      CheckoutController.new,
-    );
+    NotifierProvider<CheckoutController, CheckoutState>(CheckoutController.new);

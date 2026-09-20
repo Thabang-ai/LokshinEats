@@ -8,7 +8,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers.dart';
+import 'package:lokshineats_core/providers.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 import '../repositories/store_repository.dart';

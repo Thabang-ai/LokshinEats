@@ -12,14 +12,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_exception.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/account_page.dart';
-import '../../auth/models/user_profile.dart';
-import '../../auth/providers/auth_providers.dart';
-import '../../auth/widgets/auth_form_fields.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_form_fields.dart';
 import '../../cart/models/cart.dart';
 import '../../cart/providers/cart_providers.dart';
 import '../../stores/providers/store_providers.dart';
@@ -160,17 +160,19 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     // Dismiss the keyboard so the result is visible without scrolling.
     FocusScope.of(context).unfocus();
 
-    await ref.read(checkoutControllerProvider.notifier).submit(
-      address: DeliveryAddress(
-        street: _street.text,
-        city: _city.text,
-        postalCode: _postalCode.text,
-        instructions: _addressNote.text,
-      ),
-      paymentMethod: _method,
-      customerPhone: _phone.text,
-      cashAmount: double.tryParse(_cashAmount.text.replaceAll(',', '.')),
-    );
+    await ref
+        .read(checkoutControllerProvider.notifier)
+        .submit(
+          address: DeliveryAddress(
+            street: _street.text,
+            city: _city.text,
+            postalCode: _postalCode.text,
+            instructions: _addressNote.text,
+          ),
+          paymentMethod: _method,
+          customerPhone: _phone.text,
+          cashAmount: double.tryParse(_cashAmount.text.replaceAll(',', '.')),
+        );
   }
 }
 
@@ -544,14 +546,11 @@ class _PaymentOption extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                switch (option) {
-                  PaymentMethod.cash => Icons.payments_rounded,
-                  PaymentMethod.yoco => Icons.credit_card_rounded,
-                  PaymentMethod.ozow => Icons.account_balance_rounded,
-                },
-                color: selected ? scheme.primary : scheme.onSurfaceVariant,
-              ),
+              Icon(switch (option) {
+                PaymentMethod.cash => Icons.payments_rounded,
+                PaymentMethod.yoco => Icons.credit_card_rounded,
+                PaymentMethod.ozow => Icons.account_balance_rounded,
+              }, color: selected ? scheme.primary : scheme.onSurfaceVariant),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

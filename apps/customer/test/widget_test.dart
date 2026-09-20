@@ -13,9 +13,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:firebase_auth/firebase_auth.dart' show User;
 
-import 'package:lokshineats_customer/core/network/api_exception.dart';
-import 'package:lokshineats_customer/core/theme/app_theme.dart';
-import 'package:lokshineats_customer/features/auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_customer/features/stores/models/product.dart';
 import 'package:lokshineats_customer/features/stores/models/store.dart';
 import 'package:lokshineats_customer/features/stores/pages/stores_page.dart';

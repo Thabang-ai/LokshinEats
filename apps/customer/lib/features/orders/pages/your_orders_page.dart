@@ -9,11 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/sign_in_page.dart';
-import '../../auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../models/order.dart';
 import '../providers/order_tracking_providers.dart';
 import 'order_tracking_page.dart';
@@ -286,7 +286,8 @@ class _SignedOut extends StatelessWidget {
           children: [
             const EmptyState(
               title: 'Sign in to see your orders',
-              subtitle: 'Your orders and their delivery codes live with your '
+              subtitle:
+                  'Your orders and their delivery codes live with your '
                   'account.',
               emoji: '🧾',
             ),

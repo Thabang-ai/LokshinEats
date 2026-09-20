@@ -4,9 +4,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../cart/providers/cart_providers.dart';
 import '../../cart/widgets/cart_badge_button.dart';
 import '../../cart/widgets/quantity_stepper.dart';

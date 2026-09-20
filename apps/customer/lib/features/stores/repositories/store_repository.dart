@@ -5,7 +5,7 @@
 /// calls need a signed-in customer.
 library;
 
-import '../../../core/network/api_client.dart';
+import 'package:lokshineats_core/network/api_client.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 

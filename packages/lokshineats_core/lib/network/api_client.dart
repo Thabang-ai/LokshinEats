@@ -16,8 +16,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../config/app_config.dart';
-import 'api_exception.dart';
+import 'package:lokshineats_core/config/app_config.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
 
 /// Supplies the current Firebase ID token, or null when signed out.
 typedef TokenProvider = Future<String?> Function();

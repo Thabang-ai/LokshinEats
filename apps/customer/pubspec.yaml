@@ -41,6 +41,10 @@ dependencies:
   firebase_auth: ^6.6.1
   shared_preferences: ^2.5.5
 
+  # The API client, authentication and theme every LokshinEats app shares.
+  lokshineats_core:
+    path: ../../packages/lokshineats_core
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

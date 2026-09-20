@@ -11,11 +11,11 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
-import '../../../shared/widgets/async_states.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
+import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/sign_in_page.dart';
-import '../../auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../../orders/pages/checkout_page.dart';
 import '../../stores/models/store.dart';
 import '../../stores/providers/store_providers.dart';

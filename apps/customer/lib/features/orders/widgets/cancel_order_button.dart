@@ -14,8 +14,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_exception.dart';
-import '../../../core/utils/money.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import '../models/order.dart';
 import '../providers/checkout_providers.dart';
 

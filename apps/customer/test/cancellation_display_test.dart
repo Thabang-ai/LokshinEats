@@ -12,7 +12,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lokshineats_customer/core/theme/app_theme.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_customer/features/orders/models/order.dart';
 import 'package:lokshineats_customer/features/orders/widgets/order_sections.dart';
 

@@ -7,8 +7,8 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'auth/auth_repository.dart';
-import 'network/api_client.dart';
+import 'package:lokshineats_core/auth/auth_repository.dart';
+import 'package:lokshineats_core/network/api_client.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository();

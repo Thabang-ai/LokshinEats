@@ -8,7 +8,7 @@
 /// mint a paid order at a price it chose.
 library;
 
-import '../../../core/network/api_client.dart';
+import 'package:lokshineats_core/network/api_client.dart';
 import '../../cart/models/cart.dart';
 import '../models/order.dart';
 

@@ -16,9 +16,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:lokshineats_customer/core/network/api_client.dart';
-import 'package:lokshineats_customer/core/network/api_exception.dart';
-import 'package:lokshineats_customer/core/providers.dart';
+import 'package:lokshineats_core/network/api_client.dart';
+import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/providers.dart';
 import 'package:lokshineats_customer/features/cart/models/cart.dart';
 import 'package:lokshineats_customer/features/cart/providers/cart_providers.dart';
 import 'package:lokshineats_customer/features/orders/models/order.dart';

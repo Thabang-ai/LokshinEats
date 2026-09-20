@@ -21,7 +21,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../auth/providers/auth_providers.dart';
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../models/order.dart';
 import 'checkout_providers.dart';
 

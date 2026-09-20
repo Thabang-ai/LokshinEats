@@ -8,8 +8,8 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/money.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import '../models/order.dart';
 
 /// The code the customer reads out at the door.
@@ -391,7 +391,10 @@ class AmountRow extends StatelessWidget {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(label, style: style), Text(value, style: style)],
+      children: [
+        Text(label, style: style),
+        Text(value, style: style),
+      ],
     );
   }
 }
@@ -468,7 +471,8 @@ class CancellationNotice extends StatelessWidget {
     _ => switch (cancellation.stage) {
       'before_prep' => 'You cancelled this order before the kitchen started.',
       'in_kitchen' => 'You cancelled this order while it was being prepared.',
-      'on_the_way' => 'You cancelled this order after your driver collected it.',
+      'on_the_way' =>
+        'You cancelled this order after your driver collected it.',
       _ => 'This order was cancelled.',
     },
   };
