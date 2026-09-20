@@ -73,7 +73,7 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Order from kitchens near you.',
+                ref.watch(authCopyProvider).signUp,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -88,9 +88,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                     const SizedBox(height: 14),
                     EmailField(controller: _email),
                     const SizedBox(height: 14),
-                    // Required rather than optional: the driver needs a way to
-                    // reach the customer at the door, and asking later means
-                    // asking mid-checkout.
+                    // Required rather than optional: a delivery needs a
+                    // phone number on both ends, and asking later means asking
+                    // in the middle of something.
                     PhoneField(controller: _phone),
                     const SizedBox(height: 14),
                     PasswordField(

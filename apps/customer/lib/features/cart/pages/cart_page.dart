@@ -14,7 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/utils/money.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
-import '../../auth/pages/sign_in_page.dart';
+import 'package:lokshineats_core/auth/sign_in_page.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../../orders/pages/checkout_page.dart';
 import '../../stores/models/store.dart';

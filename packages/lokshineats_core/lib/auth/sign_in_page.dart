@@ -90,7 +90,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Sign in to order and track deliveries.',
+                ref.watch(authCopyProvider).signIn,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

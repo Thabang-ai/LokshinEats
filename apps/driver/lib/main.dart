@@ -1,8 +1,9 @@
-/// LokshinEats — customer app.
+/// LokshinEats - driver app.
 ///
-/// Talks to the LokshinEats REST API in `server/`. There is no mock data
-/// anywhere in this app: every screen shows what the API returns, and an
-/// empty database looks empty rather than looking populated.
+/// The app a driver works from: claim a delivery, collect it, hand it over.
+/// It talks to the LokshinEats REST API in `server/` and to nothing else —
+/// no Firestore, no mock data. What a driver may see and do is decided by the
+/// API from their role, not by which screens this app happens to show.
 library;
 
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Catches a release build that was never pointed at a real API, which would
-  // otherwise look like a network outage to every customer.
+  // otherwise look like a network outage to every driver.
   AppConfig.assertConfigured();
 
   // Firebase supplies the ID token every authenticated API call carries, so
@@ -31,14 +32,18 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
+        // Anyone who signs up in this app is signing up to deliver. The API
+        // only accepts `customer` or `driver` from the account itself, so this
+        // is a choice between those two and not a way to grant anything.
+        signUpRoleProvider.overrideWithValue('driver'),
         authCopyProvider.overrideWithValue(
           const AuthCopy(
-            signIn: 'Sign in to order and track deliveries.',
-            signUp: 'Order from kitchens near you.',
+            signIn: 'Sign in to pick up deliveries.',
+            signUp: 'Deliver for kitchens near you.',
           ),
         ),
       ],
-      child: const LokshinEatsApp(),
+      child: const LokshinEatsDriverApp(),
     ),
   );
 }

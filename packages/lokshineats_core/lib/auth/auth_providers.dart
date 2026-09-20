@@ -26,6 +26,28 @@ final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
 /// vendor or an admin is made by an admin, not by installing an app.
 final signUpRoleProvider = Provider<String>((ref) => 'customer');
 
+/// The lines of copy that differ between the apps on the shared auth screens.
+///
+/// Everything else about signing in is identical everywhere — the same
+/// Firebase account, the same API profile, the same mistakes to explain — so
+/// the screens are shared and only the sentence naming the job is not.
+class AuthCopy {
+  const AuthCopy({required this.signIn, required this.signUp});
+
+  /// Under "Welcome back" on the sign-in screen.
+  final String signIn;
+
+  /// Under "Join LokshinEats" on the sign-up screen.
+  final String signUp;
+}
+
+final authCopyProvider = Provider<AuthCopy>(
+  (ref) => const AuthCopy(
+    signIn: 'Sign in to continue.',
+    signUp: 'Create your LokshinEats account.',
+  ),
+);
+
 /// The Firebase session, or null. Emits on sign-in and sign-out.
 final firebaseUserProvider = StreamProvider<User?>((ref) {
   return ref.watch(authRepositoryProvider).authStateChanges();
