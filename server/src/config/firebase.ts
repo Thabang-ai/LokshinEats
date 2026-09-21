@@ -118,4 +118,6 @@ export const Collections = {
   wallets: 'wallets',
   walletTransactions: 'walletTransactions',
   notifications: 'notifications',
+  /** Push tokens, one document per device, keyed by the token's hash. */
+  deviceTokens: 'deviceTokens',
 } as const;

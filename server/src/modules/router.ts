@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { notificationRouter } from './notifications/notification.routes';
 import { orderRouter } from './orders/order.routes';
 import { registerPaymentProviders } from './payments/payment.bootstrap';
 import { paymentRouter } from './payments/payment.routes';
@@ -37,3 +38,4 @@ apiRouter.use('/products', productRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/payments', paymentRouter);
 apiRouter.use('/wallets', walletRouter);
+apiRouter.use('/notifications', notificationRouter);

@@ -21,6 +21,7 @@ import * as productRepository from '../products/product.repository';
 import * as storeRepository from '../stores/store.repository';
 import * as userRepository from '../users/user.repository';
 import * as walletService from '../wallets/wallet.service';
+import * as notificationService from '../notifications/notification.service';
 import {
   canTransition,
   type Audience,
@@ -365,6 +366,25 @@ export async function changeStatus(
     'Order status changed.',
   );
 
+  // The kitchen taking the order, and the food leaving with a driver, are
+  // the two moments in this function a customer is waiting for. Each is
+  // notified once, however many ways the order passes through it.
+  if (next === 'confirmed' || next === 'preparing') {
+    await notificationService.notifyCustomer({
+      customerId: updated.customerId,
+      orderId,
+      kind: 'order_accepted',
+      facts: { storeName: updated.storeName },
+    });
+  } else if (next === 'picked_up') {
+    await notificationService.notifyCustomer({
+      customerId: updated.customerId,
+      orderId,
+      kind: 'order_on_the_way',
+      facts: { storeName: updated.storeName },
+    });
+  }
+
   return updated;
 }
 
@@ -379,6 +399,17 @@ export async function acceptOrder(
   const assigned = await repository.assignDriver(orderId, caller.uid);
 
   log.info({ orderId, driverId: caller.uid }, 'Driver accepted order.');
+
+  // Claiming food that is already waiting is the collection itself.
+  if (assigned.status === 'picked_up') {
+    await notificationService.notifyCustomer({
+      customerId: assigned.customerId,
+      orderId,
+      kind: 'order_on_the_way',
+      facts: { storeName: assigned.storeName },
+    });
+  }
+
   return assigned;
 }
 
@@ -506,6 +537,13 @@ export async function confirmDelivery(
       'Delivery recorded but settlement failed; wallets need reconciliation.',
     );
   }
+
+  await notificationService.notifyCustomer({
+    customerId: result.order.customerId,
+    orderId,
+    kind: 'order_delivered',
+    facts: { storeName: result.order.storeName },
+  });
 
   return result;
 }

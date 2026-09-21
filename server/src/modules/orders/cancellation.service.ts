@@ -32,6 +32,7 @@ import {
 } from './cancellation.policy';
 import type { Audience, Order, OrderStatus } from './order.model';
 import * as repository from './order.repository';
+import * as notificationService from '../notifications/notification.service';
 
 const log = moduleLogger('cancellations');
 
@@ -102,6 +103,22 @@ export async function cancelOrder(input: {
 
   const order = await repository.findById(input.orderId, input.audience);
   if (!order) throw ApiError.notFound('No such order.');
+
+  // The customer hears about a cancellation with what it cost them. When they
+  // cancelled it themselves they have just seen that on screen, so it is kept
+  // in their inbox - the refund is worth a record - but not pushed.
+  await notificationService.notifyCustomer({
+    customerId: order.customerId,
+    orderId: input.orderId,
+    kind: 'order_cancelled',
+    facts: {
+      storeName: order.storeName,
+      refundedAmount: plan.customerRefund,
+      prepaid: plan.prepaid,
+    },
+    push: input.actor.role !== 'customer',
+  });
+
   return order;
 }
 

@@ -63,6 +63,14 @@ const schema = z.object({
   /** Where a redirect-style provider returns the customer afterwards. */
   PAYMENT_RETURN_URL: z.string().trim().url().optional(),
 
+  /**
+   * How notifications reach phones. "off" still stores every notification
+   * for the in-app inbox and sends nothing; "fcm" also pushes through Firebase
+   * Cloud Messaging, which needs the deployment's service-account credentials.
+   * The emulators have no messaging service, so local stacks stay on "off".
+   */
+  PUSH_PROVIDER: z.enum(['off', 'fcm']).default('off'),
+
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_SENSITIVE_MAX: z.coerce.number().int().positive().default(20),
