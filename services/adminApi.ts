@@ -150,3 +150,62 @@ export async function fetchPlatformWallet(): Promise<WalletBalance> {
   const response = await apiRequest<WalletBalance>('/api/v1/wallets/platform');
   return response.data;
 }
+
+// ---------------------------------------------------------------------------
+// People and their roles
+// ---------------------------------------------------------------------------
+
+export type UserRole = 'customer' | 'vendor' | 'driver' | 'admin';
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  phone: string | null;
+  role: UserRole;
+  createdAt: string | null;
+};
+
+export type AdminUserPage = {
+  users: AdminUser[];
+  nextCursor: string | null;
+};
+
+/** Everyone with an account, optionally only those holding one role. */
+export async function fetchUsers(options: {
+  cursor?: string | null;
+  role?: UserRole;
+  limit?: number;
+} = {}): Promise<AdminUserPage> {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+  if (options.cursor) params.set('cursor', options.cursor);
+  if (options.role) params.set('role', options.role);
+
+  const response = await apiRequest<AdminUser[]>(
+    `/api/v1/users?${params.toString()}`,
+  );
+
+  return {
+    users: response.data ?? [],
+    nextCursor: response.nextCursor ?? null,
+  };
+}
+
+/**
+ * Give someone a different role.
+ *
+ * Takes effect immediately in both directions: the API revokes their current
+ * session, so a removed role stops working now rather than when their token
+ * expires, and they sign in again to pick up the new one. The API refuses an
+ * admin removing their own admin role.
+ */
+export async function setUserRole(
+  userId: string,
+  role: UserRole,
+): Promise<AdminUser> {
+  const response = await apiRequest<AdminUser>(`/api/v1/users/${userId}/role`, {
+    method: 'PATCH',
+    body: { role },
+  });
+  return response.data;
+}
