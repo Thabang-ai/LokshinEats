@@ -54,26 +54,56 @@ class AppConfig {
   /// all and the in-app inbox is the notification. Phones do not need it.
   static const String fcmVapidKey = String.fromEnvironment('FCM_VAPID_KEY');
 
+  /// A release build made to run on this machine, against the local API and
+  /// emulators - how the web builds are tested locally, since a debug web
+  /// build is too slow to load. Never pass it to a build that ships:
+  ///   flutter build web --dart-define=LOCAL_RELEASE_BUILD=true ...
+  static const bool localReleaseBuild = bool.fromEnvironment(
+    'LOCAL_RELEASE_BUILD',
+  );
+
   /// Whether [apiBaseUrl] points at this machine.
-  static bool get isLocalApi =>
-      apiBaseUrl.contains('localhost') ||
-      apiBaseUrl.contains('127.0.0.1') ||
-      apiBaseUrl.contains('10.0.2.2');
+  static bool get isLocalApi => pointsAtThisMachine(apiBaseUrl);
+
+  static bool pointsAtThisMachine(String url) =>
+      url.contains('localhost') ||
+      url.contains('127.0.0.1') ||
+      url.contains('10.0.2.2');
 
   /// Fail fast on a release build that was never pointed at a real API.
   ///
   /// Shipping a store build that silently talks to localhost would look like a
   /// network outage to every customer, so it is worth crashing at startup
   /// instead — in debug this is a no-op.
+  ///
+  /// Deliberately not an `assert`: release builds strip asserts, so the check
+  /// would vanish from the only builds it exists for.
   static void assertConfigured() {
-    assert(() {
-      if (isRelease && isLocalApi) {
-        throw StateError(
-          'API_BASE_URL is still $apiBaseUrl in a release build. Pass '
-          '--dart-define=API_BASE_URL=https://your-api-host',
-        );
-      }
-      return true;
-    }());
+    final problem = releaseProblem(
+      isRelease: isRelease,
+      apiBaseUrl: apiBaseUrl,
+      useFirebaseEmulators: useFirebaseEmulators,
+      localReleaseBuild: localReleaseBuild,
+    );
+    if (problem != null) throw StateError(problem);
+  }
+
+  /// Why a build with these settings must not start, or null if it may.
+  static String? releaseProblem({
+    required bool isRelease,
+    required String apiBaseUrl,
+    required bool useFirebaseEmulators,
+    bool localReleaseBuild = false,
+  }) {
+    if (!isRelease || localReleaseBuild) return null;
+    if (pointsAtThisMachine(apiBaseUrl)) {
+      return 'API_BASE_URL is still $apiBaseUrl in a release build. Pass '
+          '--dart-define=API_BASE_URL=https://your-api-host';
+    }
+    if (useFirebaseEmulators) {
+      return 'A release build must not use the Firebase emulators. Drop '
+          '--dart-define=USE_FIREBASE_EMULATORS=true';
+    }
+    return null;
   }
 }
