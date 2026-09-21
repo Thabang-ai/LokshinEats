@@ -5,10 +5,10 @@
 //
 // Opens on the platform's own wallet — commission in, goodwill out — and any
 // other wallet by its owner (?owner=<uid>), which the People page links to.
-// Read-only on purpose. The API does have a manual credit, but it credits the
-// target without debiting anyone, so a credit made from here would create
-// money that no platform expense accounts for. A reconciliation screen is the
-// last place that should be able to do that.
+// Read-only. An admin's manual credit is paid from the platform wallet as
+// goodwill, in the same transaction as the credit, so it shows up here as a
+// matching pair — a goodwill debit on the platform and the credit on the
+// recipient — rather than money appearing from nowhere.
 //
 // The one thing this page checks rather than just shows: that a wallet's
 // balance agrees with its own ledger. Every entry records the balance it left

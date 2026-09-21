@@ -92,8 +92,9 @@ const creditSchema = z
 /**
  * Manual credit — a goodwill refund, a promotional balance, a correction.
  *
- * Admin-only and always logged with the acting admin's uid, because this is
- * the one path that creates money without an order behind it.
+ * Admin-only and always logged with the acting admin's uid. Paid from the
+ * platform wallet as goodwill, so the platform's books show the expense
+ * rather than money appearing from nowhere.
  */
 walletRouter.post(
   '/:id/credit',
@@ -101,9 +102,9 @@ walletRouter.post(
   sensitiveRateLimit,
   validate({ params: walletIdParamSchema, body: creditSchema }),
   asyncHandler(async (req, res) => {
-    const wallet = await service.creditCustomer({
+    const wallet = await service.manualCredit({
       actor: requireAuth(req),
-      customerId: req.params.id as string,
+      recipientId: req.params.id as string,
       amount: req.body.amount,
       description: req.body.description,
       orderId: req.body.orderId ?? null,

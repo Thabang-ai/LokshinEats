@@ -11,12 +11,14 @@
  * visibly does not.
  */
 
+import { randomUUID } from 'node:crypto';
 import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import { sumRands } from '../../lib/money';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
 import type { LedgerEntry, Wallet } from './wallet.model';
+import * as userRepository from '../users/user.repository';
 import * as repository from './wallet.repository';
 
 const log = moduleLogger('wallets');
@@ -206,6 +208,16 @@ export async function reverseOrderSettlement(input: {
  *
  * Admin-initiated only. Lands in `available` because there is nothing further
  * to wait for.
+ */
+/**
+ * Credit a wallet on one side only.
+ *
+ * Single-entry by design, and for internal use: every caller balances it
+ * elsewhere. A cancellation refund is matched by the vendor and platform
+ * reversals the cancellation writes; a late payment refunded is the
+ * customer's own money going back. An admin giving money that nobody paid in
+ * must not come through here - that is {@link manualCredit}, which takes it
+ * from the platform.
  */
 export async function creditCustomer(input: {
   actor: AuthContext;
@@ -402,4 +414,71 @@ export async function goodwillRefund(input: {
     { actor: input.actor.uid, orderId: input.orderId, amount: input.amount },
     'Goodwill refund approved.',
   );
+}
+
+/**
+ * An admin paying someone money that no order paid in: an apology credit, a
+ * promotional balance, a correction.
+ *
+ * It is the platform paying, so it is booked as the platform paying: a
+ * goodwill debit on the platform wallet and a credit on the recipient's,
+ * written together in one transaction. Before this, the credit landed on the
+ * recipient alone - money that appeared from nowhere, with no expense against
+ * it, so the platform wallet overstated what it had by every credit ever
+ * made. The cancellation rules already require any admin exception to be a
+ * platform-covered goodwill expense; this makes the manual credit one.
+ */
+export async function manualCredit(input: {
+  actor: AuthContext;
+  recipientId: string;
+  amount: number;
+  description: string;
+  orderId?: string | null;
+  type: 'refund' | 'bonus' | 'adjustment';
+}): Promise<Wallet> {
+  if (input.amount <= 0) {
+    throw ApiError.unprocessable('Credit amount must be positive.');
+  }
+
+  if (input.recipientId === PLATFORM_WALLET_ID) {
+    // Paying the platform from the platform moves nothing and would put a
+    // goodwill expense on the books for money that never left.
+    throw ApiError.unprocessable('The platform cannot credit itself.');
+  }
+
+  // A wallet is created on first credit, so without this an id with a typo
+  // would open a wallet for nobody and pay money into it.
+  if (!(await userRepository.exists(input.recipientId))) {
+    throw ApiError.notFound('No account with that id.');
+  }
+
+  await repository.transfer({
+    from: {
+      walletId: PLATFORM_WALLET_ID,
+      type: 'goodwill',
+      description: `Manual ${input.type} to ${input.recipientId}: ${input.description}`,
+    },
+    to: {
+      walletId: input.recipientId,
+      type: input.type,
+      description: input.description,
+    },
+    amount: input.amount,
+    orderId: input.orderId ?? null,
+    // Admin credits are deliberate one-offs, so two identical ones are two
+    // credits; the pair shares this key so it is never half-written.
+    suffix: `manual_${randomUUID()}`,
+  });
+
+  log.warn(
+    {
+      actor: input.actor.uid,
+      recipientId: input.recipientId,
+      amount: input.amount,
+      type: input.type,
+    },
+    'Manual credit paid from the platform as goodwill.',
+  );
+
+  return repository.findByOwner(input.recipientId);
 }

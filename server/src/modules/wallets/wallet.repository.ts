@@ -282,3 +282,137 @@ export async function listEntries(
   const snapshot = await query.limit(options.limit + 1).get();
   return buildPage(snapshot.docs.map(toLedgerEntry), options.limit);
 }
+
+export type TransferInput = {
+  /** Paid from. */
+  from: { walletId: string; type: LedgerEntryType; description: string };
+  /** Paid to. */
+  to: { walletId: string; type: LedgerEntryType; description: string };
+  /** Positive, in rands. */
+  amount: number;
+  orderId?: string | null;
+  /** Shared by both entries, so the pair can be found and never half-written. */
+  suffix: string;
+};
+
+/**
+ * Move money from one wallet to another as one indivisible change.
+ *
+ * Both balances and both ledger entries are written in a single
+ * transaction, so there is no moment - and no failure - after which one side
+ * exists without the other. That is the difference from calling credit()
+ * twice: a failure between those two calls leaves a debit with no credit.
+ *
+ * Replaying the same suffix is a no-op, as with credit(). Finding exactly one
+ * of the pair means something wrote around this function, which is worth
+ * stopping on rather than papering over.
+ */
+export async function transfer(input: TransferInput): Promise<CreditResult> {
+  if (input.from.walletId === input.to.walletId) {
+    throw new Error('A transfer needs two different wallets.');
+  }
+
+  const deltaCents = Math.round(input.amount * 100);
+  if (deltaCents <= 0) {
+    throw new Error('A transfer amount must be positive.');
+  }
+
+  const fromEntryId = ledgerId({
+    walletId: input.from.walletId,
+    type: input.from.type,
+    orderId: input.orderId,
+    suffix: input.suffix,
+  });
+  const toEntryId = ledgerId({
+    walletId: input.to.walletId,
+    type: input.to.type,
+    orderId: input.orderId,
+    suffix: input.suffix,
+  });
+
+  const fromEntryRef = ledger().doc(fromEntryId);
+  const toEntryRef = ledger().doc(toEntryId);
+  const fromWalletRef = wallets().doc(input.from.walletId);
+  const toWalletRef = wallets().doc(input.to.walletId);
+
+  return db.runTransaction(async (tx: Transaction): Promise<CreditResult> => {
+    // Every read before any write, as Firestore requires.
+    const [fromEntry, toEntry, fromWallet, toWallet] = await Promise.all([
+      tx.get(fromEntryRef),
+      tx.get(toEntryRef),
+      tx.get(fromWalletRef),
+      tx.get(toWalletRef),
+    ]);
+
+    if (fromEntry.exists && toEntry.exists) {
+      return { applied: false, entryId: toEntryId };
+    }
+    if (fromEntry.exists !== toEntry.exists) {
+      log.error(
+        { fromEntryId, toEntryId },
+        'Found one side of a transfer without the other.',
+      );
+      throw new Error('This transfer is half-recorded and needs a look.');
+    }
+
+    const side = (
+      walletRef: typeof fromWalletRef,
+      snapshot: typeof fromWallet,
+      walletId: string,
+      signedCents: number,
+    ): number => {
+      const currentCents = snapshot.exists
+        ? toCents(
+            Number(snapshot.get('availableBalance') ?? 0),
+            `${walletId} availableBalance`,
+          )
+        : 0;
+      const balanceAfter = toRands(currentCents + signedCents);
+
+      if (snapshot.exists) {
+        tx.update(walletRef, {
+          availableBalance: balanceAfter,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        tx.set(walletRef, {
+          ownerId: walletId,
+          availableBalance: balanceAfter,
+          pendingBalance: 0,
+          currency: 'ZAR',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return balanceAfter;
+    };
+
+    const fromAfter = side(fromWalletRef, fromWallet, input.from.walletId, -deltaCents);
+    const toAfter = side(toWalletRef, toWallet, input.to.walletId, deltaCents);
+
+    tx.set(fromEntryRef, {
+      walletId: input.from.walletId,
+      type: input.from.type,
+      amount: toRands(-deltaCents),
+      balance: 'available',
+      balanceAfter: fromAfter,
+      orderId: input.orderId ?? null,
+      paymentId: null,
+      description: input.from.description,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(toEntryRef, {
+      walletId: input.to.walletId,
+      type: input.to.type,
+      amount: toRands(deltaCents),
+      balance: 'available',
+      balanceAfter: toAfter,
+      orderId: input.orderId ?? null,
+      paymentId: null,
+      description: input.to.description,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return { applied: true, entryId: toEntryId };
+  });
+}

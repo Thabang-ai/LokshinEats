@@ -468,7 +468,7 @@ describe('wallets', () => {
     expect(response.status).toBe(403);
   });
 
-  it('lets an admin issue a credit', async () => {
+  it('lets an admin issue a credit, paid for by the platform', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/cust-1/credit')
       .set(...admin.authHeader)
@@ -480,6 +480,72 @@ describe('wallets', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.availableBalance).toBe(50);
+
+    // The platform paid it: its wallet went down by exactly what the customer
+    // received, rather than the money appearing from nowhere.
+    const platform = await request(app)
+      .get('/api/v1/wallets/platform')
+      .set(...admin.authHeader);
+    expect(platform.body.data.availableBalance).toBe(-50);
+  });
+
+  it("books a manual credit as the platform's goodwill, and the pair cancels out", async () => {
+    await request(app)
+      .post('/api/v1/wallets/cust-1/credit')
+      .set(...admin.authHeader)
+      .send({ amount: 35.5, type: 'adjustment', description: 'Missing item' });
+
+    const [platformLedger, customerLedger] = await Promise.all([
+      request(app)
+        .get('/api/v1/wallets/platform/transactions')
+        .set(...admin.authHeader),
+      request(app)
+        .get('/api/v1/wallets/cust-1/transactions')
+        .set(...admin.authHeader),
+    ]);
+
+    const debit = platformLedger.body.data[0];
+    const credit = customerLedger.body.data[0];
+
+    // An expense the platform can report on, not an unexplained adjustment.
+    expect(debit.type).toBe('goodwill');
+    expect(debit.amount).toBe(-35.5);
+    expect(credit.type).toBe('adjustment');
+    expect(credit.amount).toBe(35.5);
+    expect(debit.amount + credit.amount).toBe(0);
+
+    // Each side still agrees with its own wallet.
+    expect(debit.balanceAfter).toBe(-35.5);
+    expect(credit.balanceAfter).toBe(35.5);
+  });
+
+  it('refuses to credit the platform wallet itself', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/platform/credit')
+      .set(...admin.authHeader)
+      .send({ amount: 10, type: 'adjustment', description: 'Moving nothing' });
+
+    expect(response.status).toBe(422);
+
+    const platform = await request(app)
+      .get('/api/v1/wallets/platform')
+      .set(...admin.authHeader);
+    expect(platform.body.data.availableBalance).toBe(0);
+  });
+
+  it('refuses to credit an account that does not exist', async () => {
+    // A mistyped id would otherwise open a wallet for nobody and pay into it.
+    const response = await request(app)
+      .post('/api/v1/wallets/no-such-person/credit')
+      .set(...admin.authHeader)
+      .send({ amount: 10, type: 'bonus', description: 'Typo in the id' });
+
+    expect(response.status).toBe(404);
+
+    const platform = await request(app)
+      .get('/api/v1/wallets/platform')
+      .set(...admin.authHeader);
+    expect(platform.body.data.availableBalance).toBe(0);
   });
 
   it('rejects a negative or sub-cent admin credit', async () => {
