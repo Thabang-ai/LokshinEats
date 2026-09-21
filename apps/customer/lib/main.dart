@@ -13,6 +13,8 @@ import 'package:lokshineats_core/config/app_config.dart';
 import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
 
 import 'app.dart';
+import 'features/notifications/push/push_listener.dart';
+import 'features/notifications/push/push_registration.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -37,8 +39,14 @@ Future<void> main() async {
             signUp: 'Order from kitchens near you.',
           ),
         ),
+        // Before signing out, stop pushing this account's order updates to
+        // this phone - a shared phone should not go on receiving them.
+        signOutCleanupProvider.overrideWith(
+          (ref) =>
+              () => ref.read(pushRegistrarProvider).unregister(),
+        ),
       ],
-      child: const LokshinEatsApp(),
+      child: const PushListener(child: LokshinEatsApp()),
     ),
   );
 }

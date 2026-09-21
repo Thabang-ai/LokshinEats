@@ -41,6 +41,15 @@ class AuthCopy {
   final String signUp;
 }
 
+/// Work to do before signing out, while the session still exists.
+///
+/// Null by default. An app that registers something against the account -
+/// the customer app's push device - overrides this to undo it, because once
+/// signed out there is no longer a session to make the request with.
+final signOutCleanupProvider = Provider<Future<void> Function()?>(
+  (ref) => null,
+);
+
 final authCopyProvider = Provider<AuthCopy>(
   (ref) => const AuthCopy(
     signIn: 'Sign in to continue.',
@@ -170,6 +179,17 @@ class AuthController extends AsyncNotifier<void> {
   }
 
   Future<void> signOut() async {
+    // Anything that has to be undone while this account can still be spoken
+    // for - telling the API to stop pushing to this phone, say - runs first.
+    // Bounded and never fatal: signing out must always work, and a
+    // clean-up that hangs or fails is not a reason to keep someone in.
+    final cleanUp = ref.read(signOutCleanupProvider);
+    if (cleanUp != null) {
+      try {
+        await cleanUp().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+
     await ref.read(authRepositoryProvider).signOut();
     ref.invalidate(profileProvider);
     state = const AsyncData(null);

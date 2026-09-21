@@ -46,6 +46,14 @@ class AppConfig {
   /// Matches the `auth` port in `firebase.json`.
   static const int authEmulatorPort = 9099;
 
+  /// The web push certificate key (VAPID) from the Firebase console, needed
+  /// for push notifications in a browser:
+  ///   `flutter build web --dart-define=FCM_VAPID_KEY=YOUR_KEY`
+  ///
+  /// Empty by default, in which case a web build does not ask for push at
+  /// all and the in-app inbox is the notification. Phones do not need it.
+  static const String fcmVapidKey = String.fromEnvironment('FCM_VAPID_KEY');
+
   /// Whether [apiBaseUrl] points at this machine.
   static bool get isLocalApi =>
       apiBaseUrl.contains('localhost') ||
