@@ -334,6 +334,59 @@ describe('admin routes', () => {
     expect(asDriver.status).toBe(200);
   });
 
+  it("ends a demoted vendor's power at once, not when their token expires", async () => {
+    const admin = await createTestAccount({ uid: 'admin-1', role: 'admin' });
+    await seedUser({ uid: 'admin-1', role: 'admin' });
+
+    const vendor = await createTestAccount({ uid: 'vend-1', role: 'vendor' });
+    await seedUser({ uid: 'vend-1', role: 'vendor' });
+
+    // Revocation is recorded to the second, and a token issued in that same
+    // second is not counted as older than it. Real demotions are never that
+    // close to a sign-in; the test has to wait for the clock to move.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    const demoted = await request(app)
+      .patch('/api/v1/users/vend-1/role')
+      .set(...admin.authHeader)
+      .send({ role: 'customer' });
+    expect(demoted.status).toBe(200);
+
+    // The token they already hold still says vendor. Before this change it
+    // kept working for up to an hour; now it is refused outright.
+    const withOldToken = await request(app)
+      .get('/api/v1/orders/store')
+      .set(...vendor.authHeader);
+    expect(withOldToken.status).toBe(401);
+
+    // Signing in again gets them a token that carries what they now are.
+    const again = await signIn(vendor.email);
+    const withNewToken = await request(app)
+      .get('/api/v1/orders/store')
+      .set(...bearer(again));
+    expect(withNewToken.status).toBe(403);
+  });
+
+  it('leaves the admin who made the change signed in', async () => {
+    const admin = await createTestAccount({ uid: 'admin-1', role: 'admin' });
+    await seedUser({ uid: 'admin-1', role: 'admin' });
+    await createTestAccount({ uid: 'cust-1', role: 'customer' });
+    await seedUser({ uid: 'cust-1', role: 'customer' });
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    await request(app)
+      .patch('/api/v1/users/cust-1/role')
+      .set(...admin.authHeader)
+      .send({ role: 'driver' });
+
+    // Revoking is aimed at the account changed, never the one changing it.
+    const stillAdmin = await request(app)
+      .get('/api/v1/users')
+      .set(...admin.authHeader);
+    expect(stillAdmin.status).toBe(200);
+  });
+
   it('stops an admin removing their own admin role', async () => {
     const admin = await createTestAccount({ uid: 'admin-1', role: 'admin' });
     await seedUser({ uid: 'admin-1', role: 'admin' });

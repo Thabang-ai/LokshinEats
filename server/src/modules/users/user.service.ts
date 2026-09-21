@@ -96,18 +96,50 @@ export async function assignRole(
     );
   }
 
-  if (!(await repository.exists(targetUid))) {
+  const current = await repository.findById(targetUid);
+  if (!current) {
     throw ApiError.notFound('No such user.');
   }
 
+  // No shortcut for "already that role". If revoking failed last time, the
+  // role is already set and a retry must still revoke - skipping it here
+  // would leave the old role live while telling the admin it worked. Setting
+  // the same role again therefore signs the user out, which for an explicit
+  // action on their account is the right side of that trade.
   await syncRoleClaim(targetUid, role);
   const profile = await repository.setRole(targetUid, role);
 
+  // The new claim only reaches a token when one is next minted, and the auth
+  // middleware trusts the claim in the token it is shown. Without this, a
+  // demoted admin or vendor keeps every power they had until their current
+  // ID token expires - up to an hour. Revoking makes that token stop working
+  // at once (the middleware checks revocation), so a removed role is removed
+  // now. They sign in again and get a token carrying the role they have.
+  //
+  // Only here, deliberately: profile creation and kitchen registration also
+  // set the claim, and revoking there would sign a brand-new account out in
+  // the middle of setting itself up.
+  await revokeSessions(targetUid);
+
   log.warn(
-    { actor: actor.uid, target: targetUid, role },
-    'Role changed by admin.',
+    { actor: actor.uid, target: targetUid, from: current.role, to: role },
+    'Role changed by admin; sessions revoked.',
   );
   return profile;
+}
+
+async function revokeSessions(uid: string): Promise<void> {
+  try {
+    await adminAuth.revokeRefreshTokens(uid);
+  } catch (error) {
+    // The role is already changed, so this is the one failure worth shouting
+    // about: the old role is still live in their token. Retrying is safe and
+    // does revoke, because assignRole never skips this step.
+    log.error({ uid, err: error }, 'Role changed but sessions not revoked.');
+    throw ApiError.internal(
+      'The role was changed but their current session is still active. Try again.',
+    );
+  }
 }
 
 export async function listUsers(options: {
