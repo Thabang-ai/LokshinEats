@@ -21,7 +21,7 @@
  * FIREBASE_PROJECT_ID, and read the summary before passing --apply.
  */
 
-import { initializeApp, applicationDefault } from 'firebase-admin/app';
+import { initializeApp, applicationDefault, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 const apply = process.argv.includes('--apply');
@@ -34,10 +34,18 @@ if (!projectId) {
 
 const usingEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 
+// The pasted key wins over a key file, as it does in the API itself.
+const inlineKey = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
 const app = initializeApp(
   usingEmulator
     ? { projectId }
-    : { projectId, credential: applicationDefault() },
+    : {
+        projectId,
+        credential: inlineKey
+          ? cert(JSON.parse(inlineKey))
+          : applicationDefault(),
+      },
 );
 const db = getFirestore(app);
 
