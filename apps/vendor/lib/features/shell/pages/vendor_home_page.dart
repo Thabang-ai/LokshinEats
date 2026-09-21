@@ -16,6 +16,7 @@ import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
 
 import '../../account/pages/vendor_account_page.dart';
+import '../../menu/pages/menu_page.dart';
 import '../../orders/pages/order_queue_page.dart';
 import '../../store/pages/register_store_page.dart';
 import '../../store/providers/store_providers.dart';
@@ -52,13 +53,21 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
           ? const RegisterStorePage()
           : Scaffold(
               appBar: AppBar(
-                title: Text(_tab == 0 ? mine.name : 'Account'),
+                title: Text(switch (_tab) {
+                  0 => mine.name,
+                  1 => 'Menu',
+                  _ => 'Kitchen',
+                }),
                 actions: [if (_tab == 0) const _OpenSwitch()],
               ),
               body: SafeArea(
                 child: IndexedStack(
                   index: _tab,
-                  children: const [OrderQueuePage(), VendorAccountPage()],
+                  children: const [
+                    OrderQueuePage(),
+                    MenuPage(),
+                    VendorAccountPage(),
+                  ],
                 ),
               ),
               bottomNavigationBar: NavigationBar(
@@ -69,6 +78,11 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
                     icon: Icon(Icons.receipt_long_outlined),
                     selectedIcon: Icon(Icons.receipt_long),
                     label: 'Orders',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.restaurant_menu_outlined),
+                    selectedIcon: Icon(Icons.restaurant_menu),
+                    label: 'Menu',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.storefront_outlined),

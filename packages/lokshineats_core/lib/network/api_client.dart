@@ -91,6 +91,17 @@ class ApiClient {
     decode: decode,
   );
 
+  /// Remove something. The API answers a successful delete with 204 and no
+  /// body, which [_send] turns into `decode(null)`.
+  Future<void> delete(String path, {bool authenticated = true}) async {
+    await _send<void>(
+      method: 'DELETE',
+      path: path,
+      authenticated: authenticated,
+      decode: (_) {},
+    );
+  }
+
   Future<ApiResponse<T>> _send<T>({
     required String method,
     required String path,
