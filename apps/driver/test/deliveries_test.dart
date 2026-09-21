@@ -225,10 +225,7 @@ void main() {
         }),
       );
 
-      expect(
-        find.text('Collect ${formatRands(199.98)} cash'),
-        findsOneWidget,
-      );
+      expect(find.text('Collect ${formatRands(199.98)} cash'), findsOneWidget);
     });
 
     testWidgets('an empty board says so rather than looking broken', (

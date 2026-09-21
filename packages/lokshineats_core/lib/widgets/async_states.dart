@@ -116,12 +116,7 @@ class EmptyState extends StatelessWidget {
 /// Preferred over a spinner: the layout does not jump when data lands, which
 /// matters most on the slow connections this app is built for.
 class ShimmerBox extends StatefulWidget {
-  const ShimmerBox({
-    super.key,
-    this.width,
-    this.height = 16,
-    this.radius = 8,
-  });
+  const ShimmerBox({super.key, this.width, this.height = 16, this.radius = 8});
 
   final double? width;
   final double height;

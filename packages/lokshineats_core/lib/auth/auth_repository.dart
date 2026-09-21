@@ -41,10 +41,7 @@ class AuthRepository {
     return user.getIdToken(forceRefresh);
   }
 
-  Future<void> signIn({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> signIn({required String email, required String password}) async {
     try {
       await _auth.signInWithEmailAndPassword(
         email: email.trim(),
@@ -100,8 +97,7 @@ class AuthRepository {
         'There is already an account with that email. Try signing in.',
       'weak-password' => 'Pick a longer password — at least 6 characters.',
       'user-disabled' => 'This account has been disabled. Contact support.',
-      'too-many-requests' =>
-        'Too many attempts. Wait a minute and try again.',
+      'too-many-requests' => 'Too many attempts. Wait a minute and try again.',
       'network-request-failed' =>
         'Could not reach LokshinEats. Check your connection.',
       'operation-not-allowed' =>

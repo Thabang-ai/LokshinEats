@@ -45,7 +45,8 @@ class DriverAccountPage extends ConsumerWidget {
           ],
           const SizedBox(height: 28),
           OutlinedButton.icon(
-            onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+            onPressed: () =>
+                ref.read(authControllerProvider.notifier).signOut(),
             icon: const Icon(Icons.logout_rounded),
             label: const Text('Sign out'),
           ),

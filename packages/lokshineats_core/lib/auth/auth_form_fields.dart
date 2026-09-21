@@ -147,7 +147,11 @@ class NameField extends StatelessWidget {
 }
 
 class PhoneField extends StatelessWidget {
-  const PhoneField({super.key, required this.controller, this.optional = false});
+  const PhoneField({
+    super.key,
+    required this.controller,
+    this.optional = false,
+  });
 
   final TextEditingController controller;
   final bool optional;

@@ -41,10 +41,14 @@ class ApiClient {
     this.tokenProvider,
     this.timeout = const Duration(seconds: 20),
   }) : _http = httpClient ?? http.Client(),
-       _baseUrl = (baseUrl ?? AppConfig.apiBaseUrl).replaceAll(RegExp(r'/+$'), '');
+       _baseUrl = (baseUrl ?? AppConfig.apiBaseUrl).replaceAll(
+         RegExp(r'/+$'),
+         '',
+       );
 
   final http.Client _http;
   final String _baseUrl;
+
   /// Supplies the ID token for authenticated calls; null when signed out.
   final TokenProvider? tokenProvider;
 
@@ -110,9 +114,9 @@ class ApiClient {
     Object? body,
     bool authenticated = false,
   }) async {
-    final uri = Uri.parse('$_baseUrl$path').replace(
-      queryParameters: query == null || query.isEmpty ? null : query,
-    );
+    final uri = Uri.parse(
+      '$_baseUrl$path',
+    ).replace(queryParameters: query == null || query.isEmpty ? null : query);
 
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';

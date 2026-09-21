@@ -87,17 +87,13 @@ class AuthController extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
 
-  Future<bool> signIn({
-    required String email,
-    required String password,
-  }) async {
+  Future<bool> signIn({required String email, required String password}) async {
     state = const AsyncLoading();
 
     final result = await AsyncValue.guard(() async {
-      await ref.read(authRepositoryProvider).signIn(
-        email: email,
-        password: password,
-      );
+      await ref
+          .read(authRepositoryProvider)
+          .signIn(email: email, password: password);
       // The profile belongs to the account that just signed in, not the
       // previous one.
       ref.invalidate(profileProvider);
@@ -121,17 +117,17 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncLoading();
 
     final result = await AsyncValue.guard(() async {
-      await ref.read(authRepositoryProvider).signUp(
-        email: email,
-        password: password,
-        displayName: displayName,
-      );
+      await ref
+          .read(authRepositoryProvider)
+          .signUp(email: email, password: password, displayName: displayName);
 
-      await ref.read(profileRepositoryProvider).createMe(
-        displayName: displayName,
-        phone: phone,
-        role: ref.read(signUpRoleProvider),
-      );
+      await ref
+          .read(profileRepositoryProvider)
+          .createMe(
+            displayName: displayName,
+            phone: phone,
+            role: ref.read(signUpRoleProvider),
+          );
 
       ref.invalidate(profileProvider);
     });
@@ -148,11 +144,13 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncLoading();
 
     final result = await AsyncValue.guard(() async {
-      await ref.read(profileRepositoryProvider).createMe(
-        displayName: displayName,
-        phone: phone,
-        role: ref.read(signUpRoleProvider),
-      );
+      await ref
+          .read(profileRepositoryProvider)
+          .createMe(
+            displayName: displayName,
+            phone: phone,
+            role: ref.read(signUpRoleProvider),
+          );
       ref.invalidate(profileProvider);
     });
 
@@ -199,11 +197,9 @@ class ProfileController extends AsyncNotifier<void> {
     state = const AsyncLoading();
 
     final result = await AsyncValue.guard(() async {
-      await ref.read(profileRepositoryProvider).updateMe(
-        displayName: displayName,
-        phone: phone,
-        address: address,
-      );
+      await ref
+          .read(profileRepositoryProvider)
+          .updateMe(displayName: displayName, phone: phone, address: address);
       // The account page and checkout's prefill both read from here.
       ref.invalidate(profileProvider);
     });

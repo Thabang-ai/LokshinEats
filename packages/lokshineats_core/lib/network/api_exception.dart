@@ -44,10 +44,7 @@ class ApiException implements Exception {
   });
 
   /// Build from the API's error envelope.
-  factory ApiException.fromResponse(
-    int status,
-    Map<String, dynamic>? body,
-  ) {
+  factory ApiException.fromResponse(int status, Map<String, dynamic>? body) {
     final error = body?['error'] as Map<String, dynamic>?;
 
     return ApiException(
@@ -67,7 +64,8 @@ class ApiException implements Exception {
   factory ApiException.network(Object cause) => ApiException(
     code: ApiErrorCode.network,
     status: 0,
-    message: 'Could not reach LokshinEats. Check your connection and try again.',
+    message:
+        'Could not reach LokshinEats. Check your connection and try again.',
     details: {'cause': cause.toString()},
   );
 

@@ -186,10 +186,10 @@ class MyDeliveriesNotifier extends _PollingDeliveries {
 }
 
 final myDeliveriesProvider =
-    AsyncNotifierProvider.autoDispose<
-      MyDeliveriesNotifier,
-      DeliveryListState
-    >(MyDeliveriesNotifier.new, retry: _noRetry);
+    AsyncNotifierProvider.autoDispose<MyDeliveriesNotifier, DeliveryListState>(
+      MyDeliveriesNotifier.new,
+      retry: _noRetry,
+    );
 
 /// The deliveries still to finish, in the order they were claimed.
 List<Delivery> activeOf(DeliveryListState state) => state.deliveries

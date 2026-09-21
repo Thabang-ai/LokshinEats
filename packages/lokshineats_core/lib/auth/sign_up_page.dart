@@ -38,12 +38,14 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final ok = await ref.read(authControllerProvider.notifier).signUp(
-      email: _email.text,
-      password: _password.text,
-      displayName: _name.text,
-      phone: _phone.text,
-    );
+    final ok = await ref
+        .read(authControllerProvider.notifier)
+        .signUp(
+          email: _email.text,
+          password: _password.text,
+          displayName: _name.text,
+          phone: _phone.text,
+        );
 
     if (ok && mounted) Navigator.of(context).pop();
   }

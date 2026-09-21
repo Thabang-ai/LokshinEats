@@ -101,11 +101,8 @@ class DeliveryAddress {
   /// it is usually the difference between one trip and three phone calls.
   final String? instructions;
 
-  String get oneLine => [
-    street,
-    city,
-    postalCode,
-  ].where((part) => part.isNotEmpty).join(', ');
+  String get oneLine =>
+      [street, city, postalCode].where((part) => part.isNotEmpty).join(', ');
 }
 
 class Delivery {
@@ -242,9 +239,8 @@ class Delivery {
   double get kitchenCashDue => subtotal;
 
   /// A short "2x Kota, 1x Chips" for a card.
-  String get itemSummary => items
-      .map((item) => '${item.quantity}x ${item.name}')
-      .join(', ');
+  String get itemSummary =>
+      items.map((item) => '${item.quantity}x ${item.name}').join(', ');
 
   int get itemCount =>
       items.fold(0, (running, item) => running + item.quantity);
