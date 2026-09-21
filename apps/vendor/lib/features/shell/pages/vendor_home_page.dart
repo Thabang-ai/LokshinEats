@@ -16,6 +16,7 @@ import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
 
 import '../../account/pages/vendor_account_page.dart';
+import '../../earnings/pages/earnings_page.dart';
 import '../../menu/pages/menu_page.dart';
 import '../../orders/pages/order_queue_page.dart';
 import '../../store/pages/register_store_page.dart';
@@ -56,6 +57,7 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
                 title: Text(switch (_tab) {
                   0 => mine.name,
                   1 => 'Menu',
+                  2 => 'Earnings',
                   _ => 'Kitchen',
                 }),
                 actions: [if (_tab == 0) const _OpenSwitch()],
@@ -66,6 +68,7 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
                   children: const [
                     OrderQueuePage(),
                     MenuPage(),
+                    EarningsPage(),
                     VendorAccountPage(),
                   ],
                 ),
@@ -83,6 +86,11 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
                     icon: Icon(Icons.restaurant_menu_outlined),
                     selectedIcon: Icon(Icons.restaurant_menu),
                     label: 'Menu',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.payments_outlined),
+                    selectedIcon: Icon(Icons.payments),
+                    label: 'Earnings',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.storefront_outlined),

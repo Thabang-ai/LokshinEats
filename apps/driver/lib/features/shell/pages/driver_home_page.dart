@@ -17,6 +17,7 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/auth/sign_in_page.dart';
 
 import '../../account/pages/driver_account_page.dart';
+import '../../earnings/pages/earnings_page.dart';
 import '../../orders/pages/available_deliveries_page.dart';
 import '../../orders/pages/my_deliveries_page.dart';
 
@@ -30,7 +31,7 @@ class DriverHomePage extends ConsumerStatefulWidget {
 class _DriverHomePageState extends ConsumerState<DriverHomePage> {
   int _tab = 0;
 
-  static const _titles = ['Available', 'My deliveries', 'Account'];
+  static const _titles = ['Available', 'My deliveries', 'Earnings', 'Account'];
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +48,7 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
           children: const [
             AvailableDeliveriesPage(),
             MyDeliveriesPage(),
+            EarningsPage(),
             DriverAccountPage(),
           ],
         ),
@@ -64,6 +66,11 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
             icon: Icon(Icons.local_shipping_outlined),
             selectedIcon: Icon(Icons.local_shipping),
             label: 'Mine',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.payments_outlined),
+            selectedIcon: Icon(Icons.payments),
+            label: 'Earnings',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

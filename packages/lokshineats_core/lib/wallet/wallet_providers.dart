@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/providers.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
-import '../models/wallet.dart';
-import '../repositories/wallet_repository.dart';
+import 'package:lokshineats_core/wallet/wallet.dart';
+import 'package:lokshineats_core/wallet/wallet_repository.dart';
 
 final walletRepositoryProvider = Provider<WalletRepository>((ref) {
   return WalletRepository(ref.watch(apiClientProvider));
@@ -73,6 +73,34 @@ class WalletNotifier extends AsyncNotifier<WalletState> {
       entries: page.entries,
       nextCursor: page.nextCursor,
     );
+  }
+
+  /// Load older pages until the history reaches back [window], or runs out.
+  ///
+  /// For "this week" figures: a busy driver's week is more than one page, and
+  /// a total over a partial week would read as a bad week rather than an
+  /// incomplete one. Stops on a failed page instead of retrying in a loop.
+  Future<void> loadBack(Duration window) async {
+    final cutoff = DateTime.now().subtract(window);
+
+    while (true) {
+      final current = state.value;
+      if (current == null || !current.hasMore || current.loadMoreFailed) {
+        return;
+      }
+
+      final oldest = current.entries.isEmpty
+          ? null
+          : current.entries.last.createdAt;
+      if (oldest != null && oldest.isBefore(cutoff)) return;
+
+      final before = current.entries.length;
+      await loadMore();
+
+      // Nothing new arrived: a page already in flight, or an empty one.
+      // Either way another turn round the loop would not get further.
+      if ((state.value?.entries.length ?? before) == before) return;
+    }
   }
 
   Future<void> loadMore() async {

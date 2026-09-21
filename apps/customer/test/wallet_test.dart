@@ -20,9 +20,9 @@ import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_customer/features/orders/models/order.dart';
 import 'package:lokshineats_customer/features/orders/widgets/order_sections.dart';
-import 'package:lokshineats_customer/features/wallet/models/wallet.dart';
+import 'package:lokshineats_core/wallet/wallet.dart';
 import 'package:lokshineats_customer/features/wallet/pages/wallet_page.dart';
-import 'package:lokshineats_customer/features/wallet/repositories/wallet_repository.dart';
+import 'package:lokshineats_core/wallet/wallet_repository.dart';
 
 Map<String, dynamic> walletJson({double available = 65.5}) => {
   'id': 'cust-1',

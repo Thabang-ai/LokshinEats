@@ -1,11 +1,11 @@
-/// The signed-in customer's wallet, via the API.
+/// The signed-in account's wallet, via the API.
 ///
 /// Both calls are scoped server-side to the caller's own uid — there is no
 /// wallet id to send, so there is no way to ask for someone else's.
 library;
 
 import 'package:lokshineats_core/network/api_client.dart';
-import '../models/wallet.dart';
+import 'package:lokshineats_core/wallet/wallet.dart';
 
 class WalletRepository {
   const WalletRepository(this._client);

@@ -1,10 +1,11 @@
-/// A customer's wallet, as the API returns it.
+/// A wallet, as the API returns it, for whoever is signed in.
 ///
-/// For a customer the wallet holds money coming back from LokshinEats: a
-/// refund for an order, or a credit. Nothing in this app can move a balance —
-/// every entry is written server-side by settlement or by an admin, and the
-/// API has no endpoint that lets a user change their own. So these are
-/// read-only views of the server's ledger.
+/// For a customer it holds money coming back from LokshinEats: a refund, or a
+/// credit. For a driver or a kitchen it holds what they have earned - and, on
+/// cash orders, what they owe, which can take the balance below zero. No app
+/// can move a balance: every entry is written server-side by settlement or by
+/// an admin, and the API has no endpoint that lets anyone change their own.
+/// So these are read-only views of the server's ledger.
 library;
 
 /// Why money moved. Mirrors `LEDGER_ENTRY_TYPES` in
@@ -21,7 +22,15 @@ enum LedgerEntryType {
   /// Money the platform paid out beyond what a customer paid. Customers do
   /// not receive entries of this type — a goodwill refund reaches them as a
   /// refund — but it is listed so the app reads every type the API sends.
-  goodwill;
+  goodwill,
+
+  /// A driver collecting a cash order's total at the door: money they are
+  /// holding that belongs to the kitchen and the platform.
+  cashCollected,
+
+  /// The kitchen's share of a cash order changing hands: a payout to the
+  /// kitchen made in cash, and the driver's debt to the kitchen cleared.
+  cashHandover;
 
   static LedgerEntryType fromWire(Object? value) => switch (value) {
     'order_earning' => LedgerEntryType.orderEarning,
@@ -30,6 +39,8 @@ enum LedgerEntryType {
     'bonus' => LedgerEntryType.bonus,
     'withdrawal' => LedgerEntryType.withdrawal,
     'goodwill' => LedgerEntryType.goodwill,
+    'cash_collected' => LedgerEntryType.cashCollected,
+    'cash_handover' => LedgerEntryType.cashHandover,
     _ => LedgerEntryType.adjustment,
   };
 
@@ -42,6 +53,8 @@ enum LedgerEntryType {
     LedgerEntryType.orderEarning => 'Order earnings',
     LedgerEntryType.commission => 'Commission',
     LedgerEntryType.goodwill => 'Goodwill',
+    LedgerEntryType.cashCollected => 'Cash collected',
+    LedgerEntryType.cashHandover => 'Cash handover',
   };
 }
 

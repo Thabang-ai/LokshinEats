@@ -11,7 +11,7 @@ import 'package:intl/intl.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
-import '../../wallet/providers/wallet_providers.dart';
+import 'package:lokshineats_core/wallet/wallet_providers.dart';
 import '../models/order.dart';
 import '../providers/order_tracking_providers.dart';
 import '../widgets/cancel_order_button.dart';

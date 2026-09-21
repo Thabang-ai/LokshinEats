@@ -15,8 +15,8 @@ import 'package:lokshineats_core/widgets/async_states.dart';
 import 'package:lokshineats_core/auth/sign_in_page.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../../orders/pages/order_tracking_page.dart';
-import '../models/wallet.dart';
-import '../providers/wallet_providers.dart';
+import 'package:lokshineats_core/wallet/wallet.dart';
+import 'package:lokshineats_core/wallet/wallet_providers.dart';
 
 class WalletPage extends ConsumerWidget {
   const WalletPage({super.key});
