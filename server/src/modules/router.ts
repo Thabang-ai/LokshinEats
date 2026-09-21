@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { notificationRouter } from './notifications/notification.routes';
 import { orderRouter } from './orders/order.routes';
 import { registerPaymentProviders } from './payments/payment.bootstrap';
+import { cardPaymentsEnabled } from './payments/payment.provider';
 import { paymentRouter } from './payments/payment.routes';
 import { productRouter } from './products/product.routes';
 import { storeRouter } from './stores/store.routes';
@@ -29,6 +30,21 @@ apiRouter.get('/health', (_req, res) => {
     status: 'ok',
     version: 'v1',
     time: new Date().toISOString(),
+  });
+});
+
+/**
+ * What this API can do right now, for the apps to shape themselves around.
+ * Public: a signed-out customer browsing a menu needs to know what checkout
+ * will accept before they fill a basket.
+ */
+apiRouter.get('/config', (_req, res) => {
+  res.json({
+    data: {
+      paymentMethods: cardPaymentsEnabled()
+        ? ['cash', 'yoco', 'ozow']
+        : ['cash'],
+    },
   });
 });
 

@@ -336,7 +336,9 @@ class _Form extends ConsumerWidget {
                 icon: Icons.payments_outlined,
                 label: 'How you will pay',
               ),
-              for (final option in PaymentMethod.values)
+              for (final option
+                  in ref.watch(paymentMethodsProvider).value ??
+                      const [PaymentMethod.cash])
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _PaymentOption(

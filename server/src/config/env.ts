@@ -54,6 +54,8 @@ const schema = z.object({
   /**
    * Which payment provider handles charges. "sandbox" moves no real money
    * and refuses to run in production unless ALLOW_SANDBOX_PAYMENTS is set.
+   * "none" runs cash only: no card or EFT provider is registered, orders for
+   * anything but cash are refused, and /api/v1/config tells the apps so.
    */
   PAYMENT_PROVIDER: z.string().trim().min(1).default('sandbox'),
   ALLOW_SANDBOX_PAYMENTS: z
@@ -76,6 +78,49 @@ const schema = z.object({
   RATE_LIMIT_SENSITIVE_MAX: z.coerce.number().int().positive().default(20),
 });
 
+/**
+ * Settings that would not stop a production API booting, but would make it
+ * fail on every real request instead - quietly, from the server's side.
+ *
+ *  - An empty CORS_ORIGINS rejects every browser origin in production, so the
+ *    web app's requests all fail as CORS errors that never reach the logs.
+ *  - Without credentials, Firebase Admin only fails on its first call, so a
+ *    deploy looks healthy until the first customer tries to order.
+ *
+ * Exported for tests, which cannot re-import this module per case.
+ */
+export function productionProblems(config: {
+  NODE_ENV: string;
+  CORS_ORIGINS: string[];
+  FIREBASE_SERVICE_ACCOUNT_JSON?: string;
+  GOOGLE_APPLICATION_CREDENTIALS?: string;
+  usingEmulator: boolean;
+}): string[] {
+  if (config.NODE_ENV !== 'production') return [];
+
+  const problems: string[] = [];
+
+  if (config.CORS_ORIGINS.length === 0) {
+    problems.push(
+      'CORS_ORIGINS is empty. List the web app\'s origin (for example ' +
+        'https://lokshineats.vercel.app), or every browser request is refused.',
+    );
+  }
+
+  if (
+    !config.usingEmulator &&
+    !config.FIREBASE_SERVICE_ACCOUNT_JSON &&
+    !config.GOOGLE_APPLICATION_CREDENTIALS
+  ) {
+    problems.push(
+      'No Firebase credentials. On Vercel, set FIREBASE_SERVICE_ACCOUNT_JSON ' +
+        'to the whole service-account key.',
+    );
+  }
+
+  return problems;
+}
+
 const parsed = schema.safeParse(process.env);
 
 if (!parsed.success) {
@@ -86,6 +131,17 @@ if (!parsed.success) {
     .join('\n');
   console.error(`Invalid API configuration:\n${issues}`);
   throw new Error('Invalid API configuration — refusing to start.');
+}
+
+const problems = productionProblems({
+  ...parsed.data,
+  usingEmulator: Boolean(process.env.FIRESTORE_EMULATOR_HOST),
+});
+if (problems.length > 0) {
+  console.error(
+    `Invalid production configuration:\n${problems.map((p) => `  - ${p}`).join('\n')}`,
+  );
+  throw new Error('Invalid production configuration — refusing to start.');
 }
 
 export const env = Object.freeze(parsed.data);

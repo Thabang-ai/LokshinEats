@@ -15,6 +15,13 @@ import { SandboxPaymentProvider } from './providers/sandbox.provider';
 const log = moduleLogger('payments:bootstrap');
 
 export function registerPaymentProviders(): void {
+  // Cash only: no provider, by design. Card and EFT orders are refused where
+  // orders are placed, and /api/v1/config tells the apps not to offer them.
+  if (env.PAYMENT_PROVIDER === 'none') {
+    log.info('Card payments are off: this API takes cash orders only.');
+    return;
+  }
+
   // The sandbox provider's own constructor refuses to build in production
   // unless explicitly allowed, so this both registers it and enforces that.
   if (env.PAYMENT_PROVIDER === 'sandbox' || !isProduction) {

@@ -17,6 +17,7 @@ import { createDeliveryCode } from '../../lib/otp';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
 import * as paymentService from '../payments/payment.service';
+import { cardPaymentsEnabled } from '../payments/payment.provider';
 import * as productRepository from '../products/product.repository';
 import * as storeRepository from '../stores/store.repository';
 import * as userRepository from '../users/user.repository';
@@ -150,6 +151,15 @@ export async function placeOrder(
   caller: AuthContext,
   input: CreateOrderInput,
 ): Promise<Order> {
+  // Hiding card and EFT in the apps is a courtesy; this is the rule. An order
+  // the API has no way to charge for must not exist, or it sits "awaiting
+  // payment" forever with food possibly already cooking.
+  if (input.paymentMethod !== 'cash' && !cardPaymentsEnabled()) {
+    throw ApiError.unprocessable(
+      'Card and EFT payments are not available yet. Choose cash on delivery.',
+    );
+  }
+
   const priced = await priceOrder(input);
 
   // A cash-note declaration only makes sense on a cash order, and it cannot

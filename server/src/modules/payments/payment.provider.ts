@@ -91,6 +91,14 @@ export function listProviders(): PaymentProvider[] {
 }
 
 /** Test seam: clears the registry between suites. */
+/**
+ * Whether anything can take a card or EFT payment right now. False when the
+ * API runs cash only (PAYMENT_PROVIDER=none).
+ */
+export function cardPaymentsEnabled(): boolean {
+  return listProviders().length > 0;
+}
+
 export function resetProviders(): void {
   registry.clear();
 }

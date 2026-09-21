@@ -19,7 +19,7 @@ import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useAuthUser } from '../../hooks/useAuthUser';
-import { ApiError } from '../../services/apiClient';
+import { ApiError, apiRequest } from '../../services/apiClient';
 import { findNearestTownship, getCurrentLocation } from '../../services/mapService';
 import {
   completeSandboxPayment,
@@ -38,6 +38,28 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { user, authReady } = useAuthUser();
   const [selectedPayment, setSelectedPayment] = useState<'cash' | 'yoco' | 'ozow'>('cash');
+
+  // What the API can take right now. At launch that is cash only - card and
+  // EFT are refused server-side until a live provider is connected - so they
+  // are only offered once the API says so. Cash alone is also the answer if
+  // the API cannot be asked: it is the one method that never leaves an order
+  // nobody can pay for.
+  const [paymentMethods, setPaymentMethods] = useState<string[]>(['cash']);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ paymentMethods: string[] }>('/api/v1/config', {
+      authenticated: false,
+    })
+      .then((response) => {
+        if (!cancelled && response.data?.paymentMethods?.length) {
+          setPaymentMethods(response.data.paymentMethods);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [isProcessing, setIsProcessing] = useState(false);
   // For cash payments — customer can declare which note they'll pay with so
   // the driver knows whether to bring change. Defaults to exact total.
@@ -479,6 +501,7 @@ export default function CheckoutPage() {
                   </div>
                 </button>
 
+                {paymentMethods.includes('yoco') && (
                 <button
                   type="button"
                   onClick={() => setSelectedPayment('yoco')}
@@ -494,7 +517,9 @@ export default function CheckoutPage() {
                     <p className="text-sm text-gray-600">Card payment via Yoco</p>
                   </div>
                 </button>
+                )}
 
+                {paymentMethods.includes('ozow') && (
                 <button
                   type="button"
                   onClick={() => setSelectedPayment('ozow')}
@@ -510,6 +535,7 @@ export default function CheckoutPage() {
                     <p className="text-sm text-gray-600">Instant EFT payment</p>
                   </div>
                 </button>
+                )}
               </div>
             </motion.div>
 

@@ -166,5 +166,35 @@ class CheckoutController extends Notifier<CheckoutState> {
   void reset() => state = const CheckoutIdle();
 }
 
+/// The payment methods the API can take right now.
+///
+/// At launch that is cash only: the one card provider built so far is a
+/// sandbox that moves no real money, so it is switched off in production and
+/// the API refuses card and EFT orders. Offering them here would only fail at
+/// the last step of checkout. If the API cannot be asked, cash alone is the
+/// safe answer - it is the one method that can never produce an order nobody
+/// is able to pay for.
+final paymentMethodsProvider = FutureProvider<List<PaymentMethod>>((ref) async {
+  try {
+    final response = await ref
+        .read(apiClientProvider)
+        .get<List<Object?>>(
+          '/api/v1/config',
+          decode: (json) =>
+              ((json as Map<String, dynamic>?)?['paymentMethods'] as List?) ??
+              const [],
+        );
+
+    final methods = [
+      for (final wire in response.data)
+        for (final method in PaymentMethod.values)
+          if (method.wire == wire) method,
+    ];
+    return methods.isEmpty ? const [PaymentMethod.cash] : methods;
+  } catch (_) {
+    return const [PaymentMethod.cash];
+  }
+});
+
 final checkoutControllerProvider =
     NotifierProvider<CheckoutController, CheckoutState>(CheckoutController.new);
