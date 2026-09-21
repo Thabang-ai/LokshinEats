@@ -355,6 +355,12 @@ export default function AdminConsole() {
               >
                 <Users className="w-4 h-4" /> People
               </Link>
+              <Link
+                href="/admin/wallets"
+                className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
+              >
+                <Wallet className="w-4 h-4" /> Wallets
+              </Link>
               <div className="flex items-center gap-2 text-sm bg-white/10 px-3 py-1.5 rounded-full">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />

@@ -209,3 +209,82 @@ export async function setUserRole(
   });
   return response.data;
 }
+
+// ---------------------------------------------------------------------------
+// Wallets and their ledgers
+// ---------------------------------------------------------------------------
+
+/** The platform's own wallet id. Every other wallet shares its owner's id. */
+export const PLATFORM_WALLET = 'platform';
+
+export type AdminWallet = {
+  id: string;
+  ownerId: string;
+  availableBalance: number;
+  pendingBalance: number;
+  totalBalance: number;
+  updatedAt: string | null;
+};
+
+export type LedgerEntryType =
+  | 'order_earning'
+  | 'commission'
+  | 'refund'
+  | 'bonus'
+  | 'withdrawal'
+  | 'adjustment'
+  | 'goodwill';
+
+export type LedgerEntry = {
+  id: string;
+  walletId: string;
+  type: LedgerEntryType;
+  /** Signed: positive credits the wallet, negative debits it. */
+  amount: number;
+  balance: 'available' | 'pending';
+  /** The balance in that bucket immediately after this entry. */
+  balanceAfter: number;
+  orderId: string | null;
+  paymentId: string | null;
+  description: string;
+  createdAt: string | null;
+};
+
+export type LedgerPage = {
+  entries: LedgerEntry[];
+  nextCursor: string | null;
+};
+
+/** Any wallet, by the id of whoever owns it — or {@link PLATFORM_WALLET}. */
+export async function fetchWallet(ownerId: string): Promise<AdminWallet> {
+  const response = await apiRequest<AdminWallet>(
+    `/api/v1/wallets/${encodeURIComponent(ownerId)}`,
+  );
+  return response.data;
+}
+
+/** A wallet's ledger, newest first. */
+export async function fetchLedger(
+  ownerId: string,
+  cursor?: string | null,
+): Promise<LedgerPage> {
+  const params = new URLSearchParams({ limit: '50' });
+  if (cursor) params.set('cursor', cursor);
+
+  const response = await apiRequest<LedgerEntry[]>(
+    `/api/v1/wallets/${encodeURIComponent(ownerId)}/transactions?${params.toString()}`,
+  );
+
+  return {
+    entries: response.data ?? [],
+    nextCursor: response.nextCursor ?? null,
+  };
+}
+
+/** One account, for putting a name to a wallet. */
+export async function fetchUser(userId: string): Promise<AdminUser> {
+  const response = await apiRequest<AdminUser>(
+    `/api/v1/users/${encodeURIComponent(userId)}`,
+  );
+  return response.data;
+}

@@ -296,6 +296,13 @@ export default function AdminUsersPage() {
                         </p>
                       </div>
 
+                      <Link
+                        href={`/admin/wallets?owner=${encodeURIComponent(u.id)}`}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Wallet
+                      </Link>
+
                       <span
                         className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${style.color}`}
                       >
