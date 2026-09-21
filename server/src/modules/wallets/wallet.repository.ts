@@ -17,7 +17,7 @@
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { Collections, db } from '../../config/firebase';
 import { moduleLogger } from '../../config/logger';
-import { toCents, toRands } from '../../lib/money';
+import { balanceToCents, toRands } from '../../lib/money';
 import { buildPage, type Page } from '../../lib/pagination';
 import {
   emptyWallet,
@@ -109,7 +109,7 @@ export async function credit(input: CreditInput): Promise<CreditResult> {
       input.balance === 'pending' ? 'pendingBalance' : 'availableBalance';
 
     const currentCents = walletSnapshot.exists
-      ? toCents(
+      ? balanceToCents(
           Number(walletSnapshot.get(field) ?? 0),
           `${input.walletId} ${field}`,
         )
@@ -191,13 +191,13 @@ export async function clearPending(input: {
     const amountCents = Math.round(Math.abs(input.amount) * 100);
 
     const pendingCents = walletSnapshot.exists
-      ? toCents(
+      ? balanceToCents(
           Number(walletSnapshot.get('pendingBalance') ?? 0),
           `${input.walletId} pendingBalance`,
         )
       : 0;
     const availableCents = walletSnapshot.exists
-      ? toCents(
+      ? balanceToCents(
           Number(walletSnapshot.get('availableBalance') ?? 0),
           `${input.walletId} availableBalance`,
         )
@@ -362,7 +362,7 @@ export async function transfer(input: TransferInput): Promise<CreditResult> {
       signedCents: number,
     ): number => {
       const currentCents = snapshot.exists
-        ? toCents(
+        ? balanceToCents(
             Number(snapshot.get('availableBalance') ?? 0),
             `${walletId} availableBalance`,
           )

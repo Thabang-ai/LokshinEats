@@ -233,7 +233,11 @@ export type LedgerEntryType =
   | 'bonus'
   | 'withdrawal'
   | 'adjustment'
-  | 'goodwill';
+  | 'goodwill'
+  /** A driver collecting a cash order's total at the door. */
+  | 'cash_collected'
+  /** The kitchen confirming it received its share of that cash. */
+  | 'cash_handover';
 
 export type LedgerEntry = {
   id: string;

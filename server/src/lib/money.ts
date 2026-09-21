@@ -61,6 +61,29 @@ export function toCents(amount: number, field: string): number {
   return cents;
 }
 
+/**
+ * A wallet balance in rands -> integer cents. Unlike {@link toCents}, which
+ * guards prices and amounts, this allows a negative value, because a balance
+ * can legitimately be below zero: a driver or kitchen holding cash from cash
+ * orders owes the platform its share until card earnings cover it, and the
+ * platform wallet goes negative when goodwill paid out exceeds what it has
+ * earned. Refusing to read those balances would make the next entry on the
+ * wallet fail - including the settlement of an ordinary card order.
+ */
+export function balanceToCents(amount: number, field: string): number {
+  if (!Number.isFinite(amount)) {
+    throw ApiError.unprocessable(`${field} must be a finite number.`);
+  }
+  if (Math.abs(amount) > MAX_ORDER_AMOUNT * 1000) {
+    throw ApiError.unprocessable(`${field} is beyond any plausible balance.`);
+  }
+  const cents = Math.round(amount * 100);
+  if (Math.abs(amount * 100 - cents) > 1e-6) {
+    throw ApiError.unprocessable(`${field} may not be finer than one cent.`);
+  }
+  return cents;
+}
+
 /** Integer cents -> rands with exactly two decimals of precision. */
 export function toRands(cents: number): number {
   return Math.round(cents) / 100;

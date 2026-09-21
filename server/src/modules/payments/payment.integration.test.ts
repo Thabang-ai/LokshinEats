@@ -23,6 +23,7 @@ import {
 import { registerPaymentProviders } from './payment.bootstrap';
 import { getProvider, resetProviders } from './payment.provider';
 import { PLATFORM_WALLET_ID } from '../wallets/wallet.service';
+import * as walletService from '../wallets/wallet.service';
 import { SandboxPaymentProvider } from './providers/sandbox.provider';
 import * as paymentService from './payment.service';
 import * as paymentRepository from './payment.repository';
@@ -331,8 +332,46 @@ describe('settleDelivery', () => {
     await paymentService.settleDelivery(orderId);
 
     expect((await readOrder(orderId))?.paymentStatus).toBe('paid');
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    // The kitchen's earnings are a card order's. The driver earned R17 but is
+    // holding the R120 the customer paid, so is R103 down until they hand the
+    // kitchen its share (see cash-settlement.integration.test.ts).
     expect((await readWallet(VENDOR)).available).toBe(92);
+    expect((await readWallet(DRIVER)).available).toBe(-103);
+  });
+
+  it('still settles a card order for a kitchen already owing from cash orders', async () => {
+    // A negative balance is now an ordinary state - a kitchen that took cash
+    // owes the platform its commission. Reading that balance used to be
+    // refused as invalid money, which would have failed the next settlement
+    // on the wallet: this card order's.
+    const storeId = await seedStore({ ownerId: VENDOR });
+    await db.collection(Collections.wallets).doc(VENDOR).set({
+      ownerId: VENDOR,
+      availableBalance: -8,
+      pendingBalance: 0,
+      currency: 'ZAR',
+    });
+
+    const orderId = await seedOrder({
+      customerId: CUSTOMER,
+      storeId,
+      driverId: DRIVER,
+      paymentMethod: 'yoco',
+      subtotal: 100,
+      deliveryFee: 20,
+    });
+    await walletService.settleOrderPayment({
+      orderId,
+      paymentId: null,
+      vendorId: VENDOR,
+      vendorPayout: 92,
+      platformEarnings: 11,
+    });
+
+    await paymentService.settleDelivery(orderId);
+
+    // R92 earned on the card order, less the R8 owed from before.
+    expect((await readWallet(VENDOR)).available).toBe(84);
   });
 
   it('does nothing when no driver was assigned', async () => {

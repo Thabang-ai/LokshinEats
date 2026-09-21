@@ -48,6 +48,8 @@ const typeLabel: Record<LedgerEntryType, string> = {
   withdrawal: 'Withdrawal',
   adjustment: 'Adjustment',
   goodwill: 'Goodwill',
+  cash_collected: 'Cash collected',
+  cash_handover: 'Cash handover',
 };
 
 function rands(amount: number): string {

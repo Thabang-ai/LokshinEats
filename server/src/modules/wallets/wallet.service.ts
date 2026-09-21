@@ -204,12 +204,6 @@ export async function reverseOrderSettlement(input: {
 }
 
 /**
- * Credit a customer, for a refund or a promotional balance.
- *
- * Admin-initiated only. Lands in `available` because there is nothing further
- * to wait for.
- */
-/**
  * Credit a wallet on one side only.
  *
  * Single-entry by design, and for internal use: every caller balances it
@@ -481,4 +475,71 @@ export async function manualCredit(input: {
   );
 
   return repository.findByOwner(input.recipientId);
+}
+
+/**
+ * A driver has collected a cash order's total at the door.
+ *
+ * The order's earnings are booked exactly as for a card order - the kitchen,
+ * driver and platform are credited their shares - because reporting should
+ * not have to care how a customer paid. What differs is where the money is:
+ * on a card order the platform holds it; on a cash order the driver does. So
+ * the driver is debited the whole total here. Together with their own
+ * earnings that leaves them owing what is not theirs: the kitchen's food
+ * money until they hand it over, and the platform's share of the delivery
+ * fee.
+ *
+ * Keyed to the order, so settling a delivery twice writes this once.
+ */
+export async function recordCashCollected(input: {
+  orderId: string;
+  driverId: string;
+  total: number;
+}): Promise<void> {
+  if (input.total <= 0) return;
+
+  await repository.credit({
+    walletId: input.driverId,
+    type: 'cash_collected',
+    amount: -Math.abs(input.total),
+    balance: 'available',
+    description: `Order ${input.orderId} — cash collected from the customer`,
+    orderId: input.orderId,
+  });
+}
+
+/**
+ * The kitchen confirms it received its share of a cash order from the driver.
+ *
+ * Moves that amount from the kitchen's wallet to the driver's in one
+ * transaction: it clears what the driver owed the kitchen, and it is the
+ * kitchen being paid out - in cash, by hand. What is left afterwards is the
+ * truth of a cash order: the kitchen owes the platform its commission, and
+ * the driver owes the platform its share of the delivery fee.
+ *
+ * Keyed to the order, so confirming twice moves the money once.
+ */
+export async function recordCashHandover(input: {
+  orderId: string;
+  vendorId: string;
+  driverId: string;
+  amount: number;
+}): Promise<void> {
+  if (input.amount <= 0) return;
+
+  await repository.transfer({
+    from: {
+      walletId: input.vendorId,
+      type: 'cash_handover',
+      description: `Order ${input.orderId} — paid to you in cash by the driver`,
+    },
+    to: {
+      walletId: input.driverId,
+      type: 'cash_handover',
+      description: `Order ${input.orderId} — cash handed to the kitchen`,
+    },
+    amount: input.amount,
+    orderId: input.orderId,
+    suffix: 'cash_handover',
+  });
 }

@@ -340,6 +340,18 @@ export async function settleDelivery(orderId: string): Promise<void> {
     driverId,
     driverPayout: Number(order.driverPayout ?? 0),
   });
+
+  // The earnings above are the same for card and cash. On a cash order the
+  // money itself is in the driver's pocket rather than the platform's, and
+  // the ledger has to say so, or the kitchen and driver are paid twice: once
+  // in cash, once again in their wallets.
+  if (order.paymentMethod === 'cash') {
+    await walletService.recordCashCollected({
+      orderId,
+      driverId,
+      total: Number(order.total ?? 0),
+    });
+  }
 }
 
 /**

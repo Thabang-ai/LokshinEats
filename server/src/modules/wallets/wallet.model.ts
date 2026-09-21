@@ -57,6 +57,18 @@ export const LEDGER_ENTRY_TYPES = [
    * can be reported rather than hidden among adjustments.
    */
   'goodwill',
+  /**
+   * A driver collecting a cash order's total at the door. Debited from the
+   * driver: until they hand it on, they are holding money that belongs to the
+   * kitchen and the platform.
+   */
+  'cash_collected',
+  /**
+   * The kitchen confirming it received its share of that cash from the
+   * driver. A transfer between the two: it settles what the driver owed the
+   * kitchen, and it is a payout to the kitchen made in cash.
+   */
+  'cash_handover',
 ] as const;
 
 export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];

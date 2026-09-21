@@ -20,6 +20,7 @@ import * as paymentService from '../payments/payment.service';
 import * as productRepository from '../products/product.repository';
 import * as storeRepository from '../stores/store.repository';
 import * as userRepository from '../users/user.repository';
+import * as walletService from '../wallets/wallet.service';
 import {
   canTransition,
   type Audience,
@@ -428,6 +429,33 @@ export async function settleCashReceipt(
   if (caller.role === 'vendor' && order.storeId) {
     const store = await storeRepository.findByOwner(caller.uid);
     if (store?.id !== order.storeId) throw ApiError.notFound('No such order.');
+  }
+
+  // Confirming is the moment the kitchen's share changes hands, so it is
+  // the moment the ledger records it. The transfer goes first, on purpose:
+  // it is keyed to the order and safe to repeat, whereas the receipt below
+  // refuses a second confirmation. The other order would strand a failure -
+  // a receipt marked confirmed with the money never moved, and no way left
+  // to retry it.
+  //
+  // A dispute moves nothing. The driver's wallet goes on showing that they
+  // still owe the kitchen, which is exactly what a dispute claims.
+  if (
+    outcome === 'confirm' &&
+    order.cashGivenToVendor &&
+    !order.vendorCashConfirmed &&
+    !order.vendorCashDisputed &&
+    order.driverId
+  ) {
+    const store = await storeRepository.findById(order.storeId);
+    if (!store) throw ApiError.notFound('No such order.');
+
+    await walletService.recordCashHandover({
+      orderId,
+      vendorId: store.ownerId,
+      driverId: order.driverId,
+      amount: order.cashGivenAmount ?? order.subtotal,
+    });
   }
 
   const settled = await repository.settleCashReceipt(orderId, outcome);
