@@ -233,7 +233,8 @@ class _StoreSummary extends StatelessWidget {
                 _Stat(
                   icon: Icons.star_rounded,
                   iconColor: AppColors.maize,
-                  label: '${store.rating.toStringAsFixed(1)} (${store.reviewCount})',
+                  label:
+                      '${store.rating.toStringAsFixed(1)} (${store.reviewCount})',
                 ),
               _Stat(icon: Icons.schedule_rounded, label: store.deliveryTime),
               _Stat(
@@ -260,9 +261,10 @@ class _StoreSummary extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    [store.address, store.city]
-                        .where((part) => part.isNotEmpty)
-                        .join(', '),
+                    [
+                      store.address,
+                      store.city,
+                    ].where((part) => part.isNotEmpty).join(', '),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

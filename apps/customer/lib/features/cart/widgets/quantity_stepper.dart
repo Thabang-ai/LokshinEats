@@ -51,9 +51,9 @@ class QuantityStepper extends StatelessWidget {
             child: Text(
               '$quantity',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
           ),
           IconButton(

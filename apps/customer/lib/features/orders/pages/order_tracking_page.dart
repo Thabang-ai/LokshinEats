@@ -172,9 +172,7 @@ class _Freshness extends StatelessWidget {
     }
 
     return Text(
-      active
-          ? 'Updated $at · refreshes automatically'
-          : 'Updated $at',
+      active ? 'Updated $at · refreshes automatically' : 'Updated $at',
       style: theme.textTheme.bodySmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
@@ -227,7 +225,11 @@ class _Timeline extends StatelessWidget {
               Semantics(
                 label:
                     '${_steps[i].$1}: '
-                    '${i < current || finished ? 'done' : i == current ? 'now' : 'to come'}',
+                    '${i < current || finished
+                        ? 'done'
+                        : i == current
+                        ? 'now'
+                        : 'to come'}',
                 child: ExcludeSemantics(
                   child: IntrinsicHeight(
                     child: Row(

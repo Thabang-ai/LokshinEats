@@ -215,19 +215,18 @@ class _EntryRow extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       leading: CircleAvatar(
         backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        child: Icon(
-          switch (entry.type) {
-            LedgerEntryType.refund => Icons.undo_rounded,
-            LedgerEntryType.bonus => Icons.card_giftcard_rounded,
-            LedgerEntryType.withdrawal => Icons.north_east_rounded,
-            _ => Icons.tune_rounded,
-          },
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        child: Icon(switch (entry.type) {
+          LedgerEntryType.refund => Icons.undo_rounded,
+          LedgerEntryType.bonus => Icons.card_giftcard_rounded,
+          LedgerEntryType.withdrawal => Icons.north_east_rounded,
+          _ => Icons.tune_rounded,
+        }, color: theme.colorScheme.onSurfaceVariant),
       ),
       title: Text(
         entry.type.label,
-        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

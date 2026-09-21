@@ -32,7 +32,8 @@ class Store {
       cuisine: _string(json['cuisine']),
       address: _string(json['address']),
       city: _string(json['city']),
-      categories: (json['categories'] as List?)?.whereType<String>().toList() ??
+      categories:
+          (json['categories'] as List?)?.whereType<String>().toList() ??
           const [],
       image: _nullableString(json['image'] ?? json['banner'] ?? json['logo']),
       rating: _double(json['rating']),

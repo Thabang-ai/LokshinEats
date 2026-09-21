@@ -30,10 +30,7 @@ class CartBadgeButton extends ConsumerWidget {
         // not shift by a pixel when the first item is added.
         isLabelVisible: count > 0,
         label: Text('$count'),
-        child: Icon(
-          Icons.shopping_basket_outlined,
-          color: onSurface,
-        ),
+        child: Icon(Icons.shopping_basket_outlined, color: onSurface),
       ),
     );
   }
@@ -46,7 +43,7 @@ class CartBadgeButton extends ConsumerWidget {
 /// it hits the toast instead — which is how it was found.
 void openCart(BuildContext context) {
   ScaffoldMessenger.of(context).clearSnackBars();
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const CartPage()),
-  );
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const CartPage()));
 }

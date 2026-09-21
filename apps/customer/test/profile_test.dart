@@ -87,7 +87,11 @@ void main() {
     test('no address, a blank one, or junk reads as none', () {
       expect(ProfileAddress.fromJson(null), isNull);
       expect(
-        ProfileAddress.fromJson(const {'street': '', 'city': '', 'postalCode': ''}),
+        ProfileAddress.fromJson(const {
+          'street': '',
+          'city': '',
+          'postalCode': '',
+        }),
         isNull,
       );
       expect(ProfileAddress.fromJson('12 Vilakazi Street'), isNull);
@@ -112,7 +116,9 @@ void main() {
           MockClient((request) async {
             method = request.method;
             sent = jsonDecode(request.body) as Map<String, dynamic>;
-            return _json(200, {'data': _profileJson(address: _address.toJson())});
+            return _json(200, {
+              'data': _profileJson(address: _address.toJson()),
+            });
           }),
         ),
       );
@@ -174,7 +180,9 @@ void main() {
             apiClientProvider.overrideWithValue(
               _client(
                 MockClient((request) async {
-                  requests.add(jsonDecode(request.body) as Map<String, dynamic>);
+                  requests.add(
+                    jsonDecode(request.body) as Map<String, dynamic>,
+                  );
                   return _json(200, {'data': _profileJson()});
                 }),
               ),

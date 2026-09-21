@@ -93,9 +93,7 @@ Widget wrap(StoreRepository repository) {
 
 void main() {
   testWidgets('shows kitchens returned by the API', (tester) async {
-    await tester.pumpWidget(
-      wrap(FakeStoreRepository(stores: [buildStore()])),
-    );
+    await tester.pumpWidget(wrap(FakeStoreRepository(stores: [buildStore()])));
     await tester.pumpAndSettle();
 
     expect(find.text('Mama Ntuli Kota Corner'), findsOneWidget);
@@ -130,7 +128,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+    expect(
+      find.text('Something went wrong. Please try again.'),
+      findsOneWidget,
+    );
     expect(find.text('Try again'), findsOneWidget);
   });
 

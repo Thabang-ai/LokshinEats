@@ -72,7 +72,12 @@ void main() {
         storeName: 'Mama Ntuli',
         lines: [
           CartLine(productId: 'p1', name: 'Kota', unitPrice: 55, quantity: 2),
-          CartLine(productId: 'p2', name: 'Atchar', unitPrice: 12.5, quantity: 1),
+          CartLine(
+            productId: 'p2',
+            name: 'Atchar',
+            unitPrice: 12.5,
+            quantity: 1,
+          ),
         ],
       );
 
@@ -313,15 +318,17 @@ void main() {
           .read(cartProvider.notifier)
           .setInstructions('product-1', 'No polony');
 
-      await container.read(checkoutControllerProvider.notifier).submit(
-        address: const DeliveryAddress(
-          street: '12 Vilakazi Street',
-          city: 'Soweto',
-          postalCode: '1804',
-        ),
-        paymentMethod: PaymentMethod.yoco,
-        customerPhone: '082 123 4567',
-      );
+      await container
+          .read(checkoutControllerProvider.notifier)
+          .submit(
+            address: const DeliveryAddress(
+              street: '12 Vilakazi Street',
+              city: 'Soweto',
+              postalCode: '1804',
+            ),
+            paymentMethod: PaymentMethod.yoco,
+            customerPhone: '082 123 4567',
+          );
 
       // The whole sequence ran, in order.
       expect(calls, [
@@ -383,16 +390,18 @@ void main() {
           .read(cartProvider.notifier)
           .add(buildProduct(), storeName: 'Mama Ntuli');
 
-      await container.read(checkoutControllerProvider.notifier).submit(
-        address: const DeliveryAddress(
-          street: '12 Vilakazi Street',
-          city: 'Soweto',
-          postalCode: '1804',
-        ),
-        paymentMethod: PaymentMethod.cash,
-        customerPhone: '0821234567',
-        cashAmount: 200,
-      );
+      await container
+          .read(checkoutControllerProvider.notifier)
+          .submit(
+            address: const DeliveryAddress(
+              street: '12 Vilakazi Street',
+              city: 'Soweto',
+              postalCode: '1804',
+            ),
+            paymentMethod: PaymentMethod.cash,
+            customerPhone: '0821234567',
+            cashAmount: 200,
+          );
 
       // No payment provider is involved: cash is settled by the server when
       // the driver confirms delivery.
@@ -422,16 +431,18 @@ void main() {
           .read(cartProvider.notifier)
           .add(buildProduct(), storeName: 'Mama Ntuli');
 
-      await container.read(checkoutControllerProvider.notifier).submit(
-        address: const DeliveryAddress(
-          street: '12 Vilakazi Street',
-          city: 'Soweto',
-          postalCode: '1804',
-        ),
-        paymentMethod: PaymentMethod.yoco,
-        customerPhone: '0821234567',
-        cashAmount: 200,
-      );
+      await container
+          .read(checkoutControllerProvider.notifier)
+          .submit(
+            address: const DeliveryAddress(
+              street: '12 Vilakazi Street',
+              city: 'Soweto',
+              postalCode: '1804',
+            ),
+            paymentMethod: PaymentMethod.yoco,
+            customerPhone: '0821234567',
+            cashAmount: 200,
+          );
 
       // The API rejects `cashAmount` on a card order, and it would be
       // meaningless anyway.
@@ -455,15 +466,17 @@ void main() {
           .read(cartProvider.notifier)
           .add(buildProduct(), storeName: 'Mama Ntuli');
 
-      await container.read(checkoutControllerProvider.notifier).submit(
-        address: const DeliveryAddress(
-          street: '12 Vilakazi Street',
-          city: 'Soweto',
-          postalCode: '1804',
-        ),
-        paymentMethod: PaymentMethod.cash,
-        customerPhone: '0821234567',
-      );
+      await container
+          .read(checkoutControllerProvider.notifier)
+          .submit(
+            address: const DeliveryAddress(
+              street: '12 Vilakazi Street',
+              city: 'Soweto',
+              postalCode: '1804',
+            ),
+            paymentMethod: PaymentMethod.cash,
+            customerPhone: '0821234567',
+          );
 
       final state = container.read(checkoutControllerProvider);
       expect(state, isA<CheckoutFailed>());
@@ -588,15 +601,17 @@ void main() {
           .read(cartProvider.notifier)
           .add(buildProduct(), storeName: 'Mama Ntuli');
 
-      await container.read(checkoutControllerProvider.notifier).submit(
-        address: const DeliveryAddress(
-          street: '12 Vilakazi Street',
-          city: 'Soweto',
-          postalCode: '1804',
-        ),
-        paymentMethod: PaymentMethod.ozow,
-        customerPhone: '0821234567',
-      );
+      await container
+          .read(checkoutControllerProvider.notifier)
+          .submit(
+            address: const DeliveryAddress(
+              street: '12 Vilakazi Street',
+              city: 'Soweto',
+              postalCode: '1804',
+            ),
+            paymentMethod: PaymentMethod.ozow,
+            customerPhone: '0821234567',
+          );
 
       // Showing a paid confirmation here would tell the customer they had paid
       // when nobody has taken their money.

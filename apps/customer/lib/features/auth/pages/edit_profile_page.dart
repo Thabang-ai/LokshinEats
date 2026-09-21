@@ -72,17 +72,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
-    final saved = await ref.read(profileControllerProvider.notifier).save(
-      displayName: _name.text,
-      phone: _phone.text,
-      address: _addressBlank
-          ? null
-          : ProfileAddress(
-              street: _street.text.trim(),
-              city: _city.text.trim(),
-              postalCode: _postalCode.text.trim(),
-            ),
-    );
+    final saved = await ref
+        .read(profileControllerProvider.notifier)
+        .save(
+          displayName: _name.text,
+          phone: _phone.text,
+          address: _addressBlank
+              ? null
+              : ProfileAddress(
+                  street: _street.text.trim(),
+                  city: _city.text.trim(),
+                  postalCode: _postalCode.text.trim(),
+                ),
+        );
 
     if (!saved || !mounted) return;
 

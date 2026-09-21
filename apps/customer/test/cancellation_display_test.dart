@@ -74,15 +74,25 @@ void main() {
       expect(order.cancellation?.settled, isTrue);
     });
 
-    test('an order cancelled before cancellations were recorded has no record', () {
-      final order = cancelledOrder(cancellation: null, paymentStatus: 'pending', refundedAmount: 0);
+    test(
+      'an order cancelled before cancellations were recorded has no record',
+      () {
+        final order = cancelledOrder(
+          cancellation: null,
+          paymentStatus: 'pending',
+          refundedAmount: 0,
+        );
 
-      expect(order.cancellation, isNull);
-      expect(order.refundedAmount, 0);
-    });
+        expect(order.cancellation, isNull);
+        expect(order.refundedAmount, 0);
+      },
+    );
 
     test('a cash order was never prepaid, whatever its status says', () {
-      final order = cancelledOrder(paymentMethod: 'cash', paymentStatus: 'pending');
+      final order = cancelledOrder(
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+      );
 
       expect(order.wasPrepaid, isFalse);
     });
@@ -103,20 +113,30 @@ void main() {
       expect(detail, endsWith('is back in your LokshinEats wallet.'));
     });
 
-    test('in the kitchen: what came back, and what paid for the food and the trip', () {
-      final (headline, detail) = describeCancellation(cancelledOrder());
+    test(
+      'in the kitchen: what came back, and what paid for the food and the trip',
+      () {
+        final (headline, detail) = describeCancellation(cancelledOrder());
 
-      expect(headline, 'You cancelled this order while it was being prepared.');
-      expect(detail, contains('is back in your LokshinEats wallet.'));
-      expect(detail, contains('paid the kitchen for food already made'));
-      expect(detail, contains('paid your driver for the trip'));
-    });
+        expect(
+          headline,
+          'You cancelled this order while it was being prepared.',
+        );
+        expect(detail, contains('is back in your LokshinEats wallet.'));
+        expect(detail, contains('paid the kitchen for food already made'));
+        expect(detail, contains('paid your driver for the trip'));
+      },
+    );
 
     test('in the kitchen with no driver yet: no mention of one', () {
       final (_, detail) = describeCancellation(
         cancelledOrder(
           refundedAmount: 28,
-          cancellation: record(stage: 'in_kitchen', customerRefund: 28, vendorPay: 92),
+          cancellation: record(
+            stage: 'in_kitchen',
+            customerRefund: 28,
+            vendorPay: 92,
+          ),
         ),
       );
 
@@ -129,26 +149,40 @@ void main() {
         cancelledOrder(
           paymentStatus: 'paid',
           refundedAmount: 0,
-          cancellation: record(stage: 'on_the_way', vendorPay: 92, driverPay: 17),
+          cancellation: record(
+            stage: 'on_the_way',
+            vendorPay: 92,
+            driverPay: 17,
+          ),
         ),
       );
 
-      expect(headline, 'You cancelled this order after your driver collected it.');
+      expect(
+        headline,
+        'You cancelled this order after your driver collected it.',
+      );
       expect(detail, startsWith('There was no refund'));
     });
 
-    test('the kitchen cancelling: the customer is not blamed and gets everything back', () {
-      final (headline, detail) = describeCancellation(
-        cancelledOrder(
-          paymentStatus: 'refunded',
-          refundedAmount: 120,
-          cancellation: record(stage: 'in_kitchen', initiator: 'vendor', customerRefund: 120),
-        ),
-      );
+    test(
+      'the kitchen cancelling: the customer is not blamed and gets everything back',
+      () {
+        final (headline, detail) = describeCancellation(
+          cancelledOrder(
+            paymentStatus: 'refunded',
+            refundedAmount: 120,
+            cancellation: record(
+              stage: 'in_kitchen',
+              initiator: 'vendor',
+              customerRefund: 120,
+            ),
+          ),
+        );
 
-      expect(headline, 'The kitchen cancelled this order.');
-      expect(detail, startsWith('Your full payment'));
-    });
+        expect(headline, 'The kitchen cancelled this order.');
+        expect(detail, startsWith('Your full payment'));
+      },
+    );
 
     test('a goodwill top-up after a partial refund reads as a full refund', () {
       // The cancellation itself returned R19.50; an admin topped it up to R120.
@@ -164,7 +198,11 @@ void main() {
         cancelledOrder(
           refundedAmount: 0,
           paymentStatus: 'paid',
-          cancellation: record(stage: 'in_kitchen', customerRefund: 19.5, settled: false),
+          cancellation: record(
+            stage: 'in_kitchen',
+            customerRefund: 19.5,
+            settled: false,
+          ),
         ),
       );
 
@@ -198,24 +236,36 @@ void main() {
     testWidgets('a partial refund shows how much came back', (tester) async {
       await pumpRow(tester, cancelledOrder());
 
-      expect(find.textContaining('refunded to your LokshinEats wallet'), findsOneWidget);
+      expect(
+        find.textContaining('refunded to your LokshinEats wallet'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Not charged'), findsNothing);
     });
 
-    testWidgets('a paid order cancelled after pickup says there was no refund', (tester) async {
-      await pumpRow(
-        tester,
-        cancelledOrder(
-          paymentStatus: 'paid',
-          refundedAmount: 0,
-          cancellation: record(stage: 'on_the_way', vendorPay: 92, driverPay: 17),
-        ),
-      );
+    testWidgets(
+      'a paid order cancelled after pickup says there was no refund',
+      (tester) async {
+        await pumpRow(
+          tester,
+          cancelledOrder(
+            paymentStatus: 'paid',
+            refundedAmount: 0,
+            cancellation: record(
+              stage: 'on_the_way',
+              vendorPay: 92,
+              driverPay: 17,
+            ),
+          ),
+        );
 
-      expect(find.textContaining('no refund'), findsOneWidget);
-    });
+        expect(find.textContaining('no refund'), findsOneWidget);
+      },
+    );
 
-    testWidgets('the tracking notice renders the tier explanation', (tester) async {
+    testWidgets('the tracking notice renders the tier explanation', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light,
@@ -223,8 +273,14 @@ void main() {
         ),
       );
 
-      expect(find.text('You cancelled this order while it was being prepared.'), findsOneWidget);
-      expect(find.textContaining('paid your driver for the trip'), findsOneWidget);
+      expect(
+        find.text('You cancelled this order while it was being prepared.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('paid your driver for the trip'),
+        findsOneWidget,
+      );
     });
   });
 }

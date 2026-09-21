@@ -61,10 +61,7 @@ class OrderRepository {
     final response = await _client.get<List<CustomerOrder>>(
       '/api/v1/orders/mine',
       authenticated: true,
-      query: {
-        'limit': '$limit',
-        'cursor': ?cursor,
-      },
+      query: {'limit': '$limit', 'cursor': ?cursor},
       decode: (json) => decodeList(json, CustomerOrder.fromJson),
     );
 

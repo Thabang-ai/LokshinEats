@@ -78,16 +78,16 @@ class _SignedOut extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           FilledButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SignInPage()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const SignInPage())),
             child: const Text('Sign in'),
           ),
           const SizedBox(height: 10),
           TextButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SignUpPage()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const SignUpPage())),
             child: const Text('Create an account'),
           ),
         ],
@@ -122,10 +122,9 @@ class _CompleteProfileState extends ConsumerState<_CompleteProfile> {
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    await ref.read(authControllerProvider.notifier).completeProfile(
-      displayName: _name.text,
-      phone: _phone.text,
-    );
+    await ref
+        .read(authControllerProvider.notifier)
+        .completeProfile(displayName: _name.text, phone: _phone.text);
   }
 
   @override
@@ -240,10 +239,7 @@ class _SignedIn extends ConsumerWidget {
 
         _Detail(label: 'Name', value: profile.displayName),
         _Detail(label: 'Mobile', value: profile.phone ?? 'Not set'),
-        _Detail(
-          label: 'Address',
-          value: profile.address?.oneLine ?? 'Not set',
-        ),
+        _Detail(label: 'Address', value: profile.address?.oneLine ?? 'Not set'),
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
@@ -276,9 +272,9 @@ class _SignedIn extends ConsumerWidget {
             title: const Text('Wallet'),
             subtitle: const Text('Refunds and credits'),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const WalletPage()),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const WalletPage())),
           ),
         ),
 

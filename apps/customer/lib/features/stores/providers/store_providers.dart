@@ -62,11 +62,13 @@ final visibleStoresProvider = Provider<AsyncValue<List<Store>>>((ref) {
   if (query.isEmpty) return stores;
 
   return stores.whenData((all) {
-    return all.where((store) {
-      return store.name.toLowerCase().contains(query) ||
-          store.cuisine.toLowerCase().contains(query) ||
-          store.categories.any((c) => c.toLowerCase().contains(query));
-    }).toList(growable: false);
+    return all
+        .where((store) {
+          return store.name.toLowerCase().contains(query) ||
+              store.cuisine.toLowerCase().contains(query) ||
+              store.categories.any((c) => c.toLowerCase().contains(query));
+        })
+        .toList(growable: false);
   });
 });
 

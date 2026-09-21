@@ -82,7 +82,10 @@ class StoreCard extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _Fact(icon: Icons.schedule_rounded, label: store.deliveryTime),
+                      _Fact(
+                        icon: Icons.schedule_rounded,
+                        label: store.deliveryTime,
+                      ),
                       _Fact(
                         icon: Icons.delivery_dining_rounded,
                         label: '${formatPrice(store.deliveryFee)} delivery',

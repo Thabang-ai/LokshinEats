@@ -122,38 +122,43 @@ void main() {
   });
 
   group('order history', () {
-    test('asks for the caller\'s own orders, authenticated, with a cursor',
-        () async {
-      final requests = <http.BaseRequest>[];
+    test(
+      'asks for the caller\'s own orders, authenticated, with a cursor',
+      () async {
+        final requests = <http.BaseRequest>[];
 
-      final container = ProviderContainer(
-        overrides: [
-          apiClientProvider.overrideWithValue(
-            _client(
-              MockClient((request) async {
-                requests.add(request);
-                return _json(200, {
-                  'data': [orderJson()],
-                  'nextCursor': 'cursor-2',
-                });
-              }),
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(
+              _client(
+                MockClient((request) async {
+                  requests.add(request);
+                  return _json(200, {
+                    'data': [orderJson()],
+                    'nextCursor': 'cursor-2',
+                  });
+                }),
+              ),
             ),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
+          ],
+        );
+        addTearDown(container.dispose);
 
-      final page = await container
-          .read(orderRepositoryProvider)
-          .fetchMyOrders(cursor: 'cursor-1', limit: 10);
+        final page = await container
+            .read(orderRepositoryProvider)
+            .fetchMyOrders(cursor: 'cursor-1', limit: 10);
 
-      final request = requests.single;
-      expect(request.url.path, '/api/v1/orders/mine');
-      expect(request.url.queryParameters, {'limit': '10', 'cursor': 'cursor-1'});
-      expect(request.headers['Authorization'], 'Bearer test-id-token');
-      expect(page.orders.single.id, 'order-1');
-      expect(page.nextCursor, 'cursor-2');
-    });
+        final request = requests.single;
+        expect(request.url.path, '/api/v1/orders/mine');
+        expect(request.url.queryParameters, {
+          'limit': '10',
+          'cursor': 'cursor-1',
+        });
+        expect(request.headers['Authorization'], 'Bearer test-id-token');
+        expect(page.orders.single.id, 'order-1');
+        expect(page.nextCursor, 'cursor-2');
+      },
+    );
 
     testWidgets('lists orders in progress apart from past ones', (
       tester,
@@ -215,62 +220,64 @@ void main() {
   });
 
   group('live tracking', () {
-    testWidgets('keeps polling an active order and stops once it is delivered',
-        (tester) async {
-      final statuses = ['preparing', 'picked_up', 'delivered'];
-      var calls = 0;
+    testWidgets(
+      'keeps polling an active order and stops once it is delivered',
+      (tester) async {
+        final statuses = ['preparing', 'picked_up', 'delivered'];
+        var calls = 0;
 
-      final container = ProviderContainer(
-        overrides: [
-          apiClientProvider.overrideWithValue(
-            _client(
-              MockClient((request) async {
-                final status = statuses[calls.clamp(0, statuses.length - 1)];
-                calls++;
-                return _json(200, {'data': orderJson(status: status)});
-              }),
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(
+              _client(
+                MockClient((request) async {
+                  final status = statuses[calls.clamp(0, statuses.length - 1)];
+                  calls++;
+                  return _json(200, {'data': orderJson(status: status)});
+                }),
+              ),
             ),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
+          ],
+        );
+        addTearDown(container.dispose);
 
-      // Something has to be watching, or an autoDispose provider is torn down
-      // straight away — exactly as it is when a customer leaves the screen.
-      final subscription = container.listen(
-        orderTrackingProvider('order-1'),
-        (_, _) {},
-      );
-      addTearDown(subscription.close);
+        // Something has to be watching, or an autoDispose provider is torn down
+        // straight away — exactly as it is when a customer leaves the screen.
+        final subscription = container.listen(
+          orderTrackingProvider('order-1'),
+          (_, _) {},
+        );
+        addTearDown(subscription.close);
 
-      await tester.pump();
-      await tester.pump();
-      expect(calls, 1);
-      expect(
-        container.read(orderTrackingProvider('order-1')).value?.order.status,
-        OrderStatus.preparing,
-      );
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 1);
+        expect(
+          container.read(orderTrackingProvider('order-1')).value?.order.status,
+          OrderStatus.preparing,
+        );
 
-      await tester.pump(OrderTrackingNotifier.pollInterval);
-      await tester.pump();
-      expect(calls, 2);
-      expect(
-        container.read(orderTrackingProvider('order-1')).value?.order.status,
-        OrderStatus.pickedUp,
-      );
+        await tester.pump(OrderTrackingNotifier.pollInterval);
+        await tester.pump();
+        expect(calls, 2);
+        expect(
+          container.read(orderTrackingProvider('order-1')).value?.order.status,
+          OrderStatus.pickedUp,
+        );
 
-      await tester.pump(OrderTrackingNotifier.pollInterval);
-      await tester.pump();
-      expect(calls, 3);
-      expect(
-        container.read(orderTrackingProvider('order-1')).value?.order.status,
-        OrderStatus.delivered,
-      );
+        await tester.pump(OrderTrackingNotifier.pollInterval);
+        await tester.pump();
+        expect(calls, 3);
+        expect(
+          container.read(orderTrackingProvider('order-1')).value?.order.status,
+          OrderStatus.delivered,
+        );
 
-      // A minute later: nothing. A delivered order will not change again.
-      await tester.pump(const Duration(minutes: 1));
-      expect(calls, 3);
-    });
+        // A minute later: nothing. A delivered order will not change again.
+        await tester.pump(const Duration(minutes: 1));
+        expect(calls, 3);
+      },
+    );
 
     testWidgets('a failed refresh keeps the last order on screen', (
       tester,

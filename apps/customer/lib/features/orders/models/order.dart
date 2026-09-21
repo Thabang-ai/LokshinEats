@@ -176,7 +176,8 @@ class CustomerOrder {
   });
 
   factory CustomerOrder.fromJson(Map<String, dynamic> json) {
-    final address = json['deliveryAddress'] as Map<String, dynamic>? ?? const {};
+    final address =
+        json['deliveryAddress'] as Map<String, dynamic>? ?? const {};
 
     return CustomerOrder(
       id: json['id'] as String? ?? '',

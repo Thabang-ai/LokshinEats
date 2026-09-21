@@ -94,11 +94,7 @@ class CartNotifier extends Notifier<Cart> {
       lines.add(CartLine.fromProduct(product, quantity: quantity));
     }
 
-    state = Cart(
-      storeId: product.storeId,
-      storeName: storeName,
-      lines: lines,
-    );
+    state = Cart(storeId: product.storeId, storeName: storeName, lines: lines);
     _persist();
 
     return differentStore

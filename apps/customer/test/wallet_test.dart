@@ -79,7 +79,9 @@ void main() {
     });
 
     test('a negative amount is a debit', () {
-      final entry = LedgerEntry.fromJson(entryJson(type: 'refund', amount: -20));
+      final entry = LedgerEntry.fromJson(
+        entryJson(type: 'refund', amount: -20),
+      );
 
       expect(entry.isCredit, isFalse);
     });

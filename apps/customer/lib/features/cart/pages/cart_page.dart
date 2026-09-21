@@ -336,7 +336,10 @@ class _SummaryRow extends StatelessWidget {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [Text(label, style: style), Text(value, style: style)],
+      children: [
+        Text(label, style: style),
+        Text(value, style: style),
+      ],
     );
   }
 }
