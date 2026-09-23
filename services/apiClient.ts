@@ -14,10 +14,32 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
 
-/** Base URL of the API. Inlined at build time, so it is set per environment. */
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ??
-  'http://localhost:4000';
+/** Where the deployed API lives. Part of this system, not a per-deploy choice. */
+const PRODUCTION_API = 'https://lokshineats-api.vercel.app';
+
+/**
+ * Base URL of the API.
+ *
+ * NEXT_PUBLIC_API_BASE_URL wins when it is set, which is how a local build
+ * points at a local API and how a future deployment could point somewhere
+ * else. It is inlined at build time, though, so a build made without it - a
+ * preview, a rebuild from a branch, a project set up again - silently ships a
+ * site that calls localhost from the customer's browser. Every request then
+ * fails with a connection error that names the customer's own machine.
+ *
+ * So anything served from a real domain falls back to the deployed API rather
+ * than to localhost. Only a page opened on localhost defaults to a local API,
+ * where that is what a developer means.
+ */
+function resolveApiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, '');
+  if (configured) return configured;
+
+  const host = typeof window === 'undefined' ? '' : window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+
+  return isLocal ? 'http://localhost:4000' : PRODUCTION_API;
+}
 
 /** Stable error codes the API returns. Branch on these, not on messages. */
 export type ApiErrorCode =
@@ -143,7 +165,7 @@ export async function apiRequest<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${resolveApiBaseUrl()}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -182,7 +204,7 @@ export async function apiRequest<T>(
   return payload as ApiSuccess<T>;
 }
 
-/** True when the API base URL points somewhere other than this machine. */
+/** Where requests are going right now. */
 export function apiBaseUrl(): string {
-  return API_BASE_URL;
+  return resolveApiBaseUrl();
 }
