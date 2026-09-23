@@ -73,6 +73,10 @@ describe('composite indexes the API needs in production', () => {
     ['stores', 'cuisine', 'isOpen', 'name'],
     ['stores', 'city', 'cuisine', 'name'],
     ['stores', 'city', 'cuisine', 'isOpen', 'name'],
+    // the web app's restaurant page, which still reads reviews from Firestore
+    // directly - no API route serves them yet, and dropping this index would
+    // empty the reviews on every restaurant page.
+    ['reviews', 'storeId', 'createdAt desc'],
     // menus
     ['products', 'storeId', 'name'],
     ['products', 'storeId', 'available', 'name'],
