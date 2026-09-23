@@ -62,6 +62,19 @@ Create a **new** project from the same GitHub repository:
 - **Production Branch** (Settings → Git): `feat/rest-api` until it is
   merged, then `master`. `server/` does not exist on `master` yet.
 
+**The very first build will fail, and that is expected.** Importing deploys
+the repository's default branch, `master`, which has no `server/` directory,
+so the build stops with *Root Directory "server" does not exist*. Set the
+Production Branch, then push a commit to `feat/rest-api` to trigger the
+first real build.
+
+**Check Settings → Deployment Protection.** If it is on (a team default can
+turn it on), Vercel puts a login page in front of the deployment and every
+app calling the API gets HTML instead of JSON. The API holds nothing worth
+protecting behind a login — it checks every caller's Firebase token itself —
+so set it to **None**, or confirm with the `curl` checks below that the
+production URL answers without one.
+
 Environment variables (Production):
 
 | Name | Value |
