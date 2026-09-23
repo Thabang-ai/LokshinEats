@@ -50,6 +50,27 @@ describe('error contract', () => {
   });
 });
 
+describe('cross-origin callers', () => {
+  // The site's own origin is in the code, so it works whatever a hosting
+  // dashboard's CORS_ORIGINS happens to say. Getting this wrong takes the
+  // whole site down while the API looks perfectly healthy.
+  it('serves the web app, which is never left to configuration', async () => {
+    const response = await request(app)
+      .get('/health')
+      .set('Origin', 'https://lokshin-eats.vercel.app');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe(
+      'https://lokshin-eats.vercel.app',
+    );
+  });
+
+  it('serves callers that send no Origin at all: curl, and the phones', async () => {
+    const response = await request(app).get('/health');
+    expect(response.status).toBe(200);
+  });
+});
+
 describe('authentication', () => {
   it('refuses an unauthenticated request to a protected route', async () => {
     const response = await request(app).get('/api/v1/users/me');

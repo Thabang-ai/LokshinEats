@@ -23,13 +23,23 @@ import { ApiError } from './lib/ApiError';
 import { apiRouter } from './modules/router';
 
 /**
+ * The web app's own address. It is part of this system, not a deployment
+ * choice, so it lives here rather than in CORS_ORIGINS: a typo in a hosting
+ * dashboard should not be able to cut the site off from its own API, which is
+ * a failure that looks like the site being broken and says nothing useful in
+ * any log. CORS_ORIGINS still adds origins - preview builds, a custom domain -
+ * and is the right place for them.
+ */
+const OWN_WEB_ORIGINS = ['https://lokshin-eats.vercel.app'];
+
+/**
  * CORS applies to browsers only — the admin dashboard and the existing web
  * app. The Flutter clients are not subject to it. An empty allow-list in
  * development means "reflect the caller"; in production an unlisted origin is
  * rejected outright.
  */
 function corsOptions(): CorsOptions {
-  const allowed = env.CORS_ORIGINS;
+  const allowed = [...new Set([...env.CORS_ORIGINS, ...OWN_WEB_ORIGINS])];
 
   return {
     origin(origin, callback) {

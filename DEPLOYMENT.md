@@ -82,7 +82,7 @@ Environment variables (Production):
 | `FIREBASE_PROJECT_ID` | `kasieats-34391` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | The *whole contents* of the key file. Mark it **Sensitive**. |
 | `PAYMENT_PROVIDER` | `none`. Cash only; card and EFT orders are refused. |
-| `CORS_ORIGINS` | The web app's origin(s), comma-separated, no trailing slash. For example `https://lokshineats.vercel.app,https://www.lokshineats.co.za` |
+| `CORS_ORIGINS` | *Extra* browser origins, comma-separated, no trailing slash — a preview build, or a custom domain such as `https://www.lokshineats.co.za`. The live site's own origin, `https://lokshin-eats.vercel.app`, is in `server/src/app.ts` and needs no variable. |
 | `PUSH_PROVIDER` | `off` for launch. The in-app inbox still works. |
 
 **Do not set `NODE_ENV`.** Vercel runs functions in production mode by
