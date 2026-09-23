@@ -33,6 +33,19 @@ import { apiRouter } from './modules/router';
 const OWN_WEB_ORIGINS = ['https://lokshin-eats.vercel.app'];
 
 /**
+ * The web app's preview builds, which Vercel gives a fresh host per branch and
+ * per deployment: `lokshin-eats-git-<branch>-<team>.vercel.app` and
+ * `lokshin-eats-<hash>-<team>.vercel.app`. Testing a branch against this API
+ * before it reaches customers is the point of them.
+ *
+ * The team segment is what makes this safe to match by pattern: only this
+ * Vercel team can create a host ending in `-thabang-s-projects1.vercel.app`,
+ * so no one else can mint an origin this accepts.
+ */
+const OWN_PREVIEW_ORIGIN =
+  /^https:\/\/lokshin-eats-[a-z0-9-]+-thabang-s-projects1\.vercel\.app$/;
+
+/**
  * CORS applies to browsers only — the admin dashboard and the existing web
  * app. The Flutter clients are not subject to it. An empty allow-list in
  * development means "reflect the caller"; in production an unlisted origin is
@@ -46,6 +59,7 @@ function corsOptions(): CorsOptions {
       // Same-origin, curl, and mobile clients send no Origin header.
       if (!origin) return callback(null, true);
       if (allowed.includes(origin)) return callback(null, true);
+      if (OWN_PREVIEW_ORIGIN.test(origin)) return callback(null, true);
       if (!isProduction && allowed.length === 0) return callback(null, true);
       return callback(ApiError.forbidden(`Origin ${origin} is not allowed.`));
     },

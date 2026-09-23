@@ -65,6 +65,29 @@ describe('cross-origin callers', () => {
     );
   });
 
+  it('serves the web app\'s own preview builds, per branch and per deploy', async () => {
+    for (const origin of [
+      'https://lokshin-eats-git-feat-rest-api-thabang-s-projects1.vercel.app',
+      'https://lokshin-eats-lm22v7ilq-thabang-s-projects1.vercel.app',
+    ]) {
+      const response = await request(app).get('/health').set('Origin', origin);
+      expect(response.status, origin).toBe(200);
+    }
+  });
+
+  it('refuses hosts that only look like a preview of ours', async () => {
+    for (const origin of [
+      // Anyone can register these; none of them are our team's previews.
+      'https://lokshin-eats-git-main-someone-else.vercel.app',
+      'https://lokshin-eats.attacker.example',
+      'https://lokshin-eats-git-x-thabang-s-projects1.vercel.app.evil.example',
+      'http://lokshin-eats-git-x-thabang-s-projects1.vercel.app',
+    ]) {
+      const response = await request(app).get('/health').set('Origin', origin);
+      expect(response.status, origin).toBe(403);
+    }
+  });
+
   it('serves callers that send no Origin at all: curl, and the phones', async () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
