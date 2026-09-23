@@ -34,6 +34,7 @@ import { db } from '../../../firebase/config';
 // order document, which drivers can read.
 import { getOrder } from '../../../services/ordersApi';
 import { useAuthUser } from '../../../hooks/useAuthUser';
+import CancelOrderButton from '../../../components/CancelOrderButton';
 import { readOrderItems } from '../../../services/orderItems';
 
 // ---------------------------------------------------------------------------
@@ -552,6 +553,19 @@ export default function OrderTrackingPage({
                     </div>
                   </div>
                 </motion.div>
+              )}
+
+            {/* Cancelling, for the customer whose order it is. The API decides
+                what it costs and whether it is allowed at all; this only asks.
+                Hidden once delivered or already cancelled, where there is
+                nothing left to cancel. */}
+            {user?.uid === order.customerId &&
+              !['delivered', 'cancelled'].includes(order.status) && (
+                <CancelOrderButton
+                  orderId={order.id}
+                  paymentMethod={order.paymentMethod}
+                  paymentStatus={order.paymentStatus}
+                />
               )}
 
             {/* Driver assigned — placeholder for Phase 5 live map */}

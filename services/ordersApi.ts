@@ -161,6 +161,50 @@ export async function updateOrderStatus(
   return response.data;
 }
 
+/** How far an order had got when a cancellation was priced. */
+export type CancellationStage = 'before_prep' | 'in_kitchen' | 'on_the_way';
+
+/** What cancelling would cost the caller right now. The server's figures. */
+export type CancellationPreview = {
+  allowed: boolean;
+  code: 'terminal' | 'not_permitted' | 'needs_admin' | null;
+  /** Why it is not allowed, written for the person asking. */
+  reason: string | null;
+  /** Send back as `expectedStage` when cancelling. */
+  stage: CancellationStage | null;
+  customerRefund: number;
+  vendorPay: number;
+  driverPay: number;
+};
+
+/** Ask what cancelling would cost. Changes nothing. */
+export async function previewCancellation(
+  orderId: string,
+): Promise<CancellationPreview> {
+  const response = await apiRequest<CancellationPreview>(
+    `/api/v1/orders/${orderId}/cancellation-preview`,
+  );
+  return response.data;
+}
+
+/**
+ * Cancel an order at the stage the customer was shown.
+ *
+ * `expectedStage` is what stops a preview becoming a stale price: the API
+ * re-plans inside its transaction and refuses with a conflict if the order has
+ * moved on since, rather than charging terms nobody agreed to.
+ */
+export async function cancelOrder(
+  orderId: string,
+  expectedStage: CancellationStage,
+): Promise<ApiOrder> {
+  const response = await apiRequest<ApiOrder>(
+    `/api/v1/orders/${orderId}/status`,
+    { method: 'PATCH', body: { status: 'cancelled', expectedStage } },
+  );
+  return response.data;
+}
+
 /**
  * Claim a delivery.
  *
