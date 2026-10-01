@@ -2,12 +2,14 @@
 
 // useFavorites
 // Reads/writes the current user's favorite store IDs as a plain string array
-// on users/{uid}.favorites. Optimistic toggles for snappy UI; rolls back on
-// error.
+// on users/{uid}.favorites. Optimistic toggles for snappy UI; rolls back and
+// says so on error — a heart that fills and then quietly empties again looks
+// like the app losing data, and a refused write would otherwise be invisible.
 
 import { useCallback, useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { arrayRemove, arrayUnion, doc, getDoc, setDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { auth, db } from '../firebase/config';
 
 export function useFavorites() {
@@ -47,7 +49,13 @@ export function useFavorites() {
 
   const toggleFavorite = useCallback(
     async (storeId: string) => {
-      if (!userId) return;
+      // Signed out, so there is nowhere to save it. Saying so beats a heart
+      // that does nothing at all.
+      if (!userId) {
+        toast('Sign in to save your favourites');
+        return;
+      }
+
       const currentlyFavorited = favorites.includes(storeId);
       // Optimistic update
       setFavorites((prev) =>
@@ -63,6 +71,11 @@ export function useFavorites() {
         // Rollback on error
         setFavorites((prev) =>
           currentlyFavorited ? [...prev, storeId] : prev.filter((f) => f !== storeId),
+        );
+        toast.error(
+          currentlyFavorited
+            ? 'Could not remove that favourite. Please try again.'
+            : 'Could not save that favourite. Please try again.',
         );
       }
     },
