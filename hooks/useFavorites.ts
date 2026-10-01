@@ -49,12 +49,9 @@ export function useFavorites() {
 
   const toggleFavorite = useCallback(
     async (storeId: string) => {
-      // Signed out, so there is nowhere to save it. Saying so beats a heart
-      // that does nothing at all.
-      if (!userId) {
-        toast('Sign in to save your favourites');
-        return;
-      }
+      // Every page hides the heart from signed-out visitors, so this is only
+      // reached if one forgets to; there is nowhere to save it either way.
+      if (!userId) return;
 
       const currentlyFavorited = favorites.includes(storeId);
       // Optimistic update
