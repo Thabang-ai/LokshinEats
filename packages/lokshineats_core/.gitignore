@@ -1,0 +1,8 @@
+# Dart/Flutter build and tool output.
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+doc/api/
+
+# A shared library follows whatever the apps resolve; the apps pin the lock.
+pubspec.lock

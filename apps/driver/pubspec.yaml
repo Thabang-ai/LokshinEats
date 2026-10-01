@@ -1,0 +1,32 @@
+name: lokshineats_driver
+description: "LokshinEats driver app - claim deliveries, collect orders and confirm handover."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.4.3
+  http: ^1.6.0
+  intl: ^0.20.3
+  firebase_core: ^4.14.0
+  firebase_auth: ^6.6.1
+
+  # The API client, authentication and theme every LokshinEats app shares.
+  lokshineats_core:
+    path: ../../packages/lokshineats_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

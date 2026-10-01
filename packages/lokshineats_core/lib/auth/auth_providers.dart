@@ -1,0 +1,236 @@
+/// Authentication state and the actions that change it.
+///
+/// There are two independent facts here — is there a Firebase session, and
+/// does the API have a profile for it — and the app has to handle the gap
+/// between them. Someone can be signed in with no profile if sign-up was
+/// interrupted after Firebase created the account but before the API call
+/// finished, and that is recoverable rather than broken.
+library;
+
+import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:lokshineats_core/providers.dart';
+import 'package:lokshineats_core/auth/user_profile.dart';
+import 'package:lokshineats_core/auth/profile_repository.dart';
+
+final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
+  return ProfileRepository(ref.watch(apiClientProvider));
+});
+
+/// The role this app signs people up as.
+///
+/// The customer app leaves it alone; the driver app overrides it in its
+/// `ProviderScope`. The API only ever accepts `customer` or `driver` from the
+/// account itself, so overriding this cannot grant anything privileged — a
+/// vendor or an admin is made by an admin, not by installing an app.
+final signUpRoleProvider = Provider<String>((ref) => 'customer');
+
+/// The lines of copy that differ between the apps on the shared auth screens.
+///
+/// Everything else about signing in is identical everywhere — the same
+/// Firebase account, the same API profile, the same mistakes to explain — so
+/// the screens are shared and only the sentence naming the job is not.
+class AuthCopy {
+  const AuthCopy({required this.signIn, required this.signUp});
+
+  /// Under "Welcome back" on the sign-in screen.
+  final String signIn;
+
+  /// Under "Join LokshinEats" on the sign-up screen.
+  final String signUp;
+}
+
+/// Work to do before signing out, while the session still exists.
+///
+/// Null by default. An app that registers something against the account -
+/// the customer app's push device - overrides this to undo it, because once
+/// signed out there is no longer a session to make the request with.
+final signOutCleanupProvider = Provider<Future<void> Function()?>(
+  (ref) => null,
+);
+
+final authCopyProvider = Provider<AuthCopy>(
+  (ref) => const AuthCopy(
+    signIn: 'Sign in to continue.',
+    signUp: 'Create your LokshinEats account.',
+  ),
+);
+
+/// The Firebase session, or null. Emits on sign-in and sign-out.
+final firebaseUserProvider = StreamProvider<User?>((ref) {
+  return ref.watch(authRepositoryProvider).authStateChanges();
+});
+
+/// True when someone is signed in, whether or not they have a profile.
+final isSignedInProvider = Provider<bool>((ref) {
+  return ref.watch(firebaseUserProvider).value != null;
+});
+
+/// The signed-in customer's API profile.
+///
+/// Null means one of two things, and the caller cannot tell them apart from
+/// this alone: nobody is signed in, or they are but have no profile yet.
+/// [needsProfileProvider] distinguishes them.
+final profileProvider = FutureProvider<UserProfile?>((ref) async {
+  final user = ref.watch(firebaseUserProvider).value;
+  if (user == null) return null;
+
+  return ref.watch(profileRepositoryProvider).fetchMe();
+});
+
+/// Signed in to Firebase, but the API has no profile yet.
+final needsProfileProvider = Provider<bool>((ref) {
+  final signedIn = ref.watch(isSignedInProvider);
+  final profile = ref.watch(profileProvider);
+
+  return signedIn && profile.hasValue && profile.value == null;
+});
+
+/// Sign-in, sign-up and sign-out.
+///
+/// An [AsyncNotifier] rather than a plain method call so every screen gets the
+/// in-flight and failed states for free, instead of each one inventing its own
+/// `isLoading` boolean.
+class AuthController extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  Future<bool> signIn({required String email, required String password}) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(() async {
+      await ref
+          .read(authRepositoryProvider)
+          .signIn(email: email, password: password);
+      // The profile belongs to the account that just signed in, not the
+      // previous one.
+      ref.invalidate(profileProvider);
+    });
+
+    state = result;
+    return !result.hasError;
+  }
+
+  /// Create the Firebase account and the API profile together.
+  ///
+  /// If the profile call fails the Firebase account still exists, so the app
+  /// lands in [needsProfileProvider] and can finish the job rather than
+  /// stranding the customer with an account they cannot use.
+  Future<bool> signUp({
+    required String email,
+    required String password,
+    required String displayName,
+    String? phone,
+  }) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(() async {
+      await ref
+          .read(authRepositoryProvider)
+          .signUp(email: email, password: password, displayName: displayName);
+
+      await ref
+          .read(profileRepositoryProvider)
+          .createMe(
+            displayName: displayName,
+            phone: phone,
+            role: ref.read(signUpRoleProvider),
+          );
+
+      ref.invalidate(profileProvider);
+    });
+
+    state = result;
+    return !result.hasError;
+  }
+
+  /// Finish a sign-up whose profile call did not complete.
+  Future<bool> completeProfile({
+    required String displayName,
+    String? phone,
+  }) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(() async {
+      await ref
+          .read(profileRepositoryProvider)
+          .createMe(
+            displayName: displayName,
+            phone: phone,
+            role: ref.read(signUpRoleProvider),
+          );
+      ref.invalidate(profileProvider);
+    });
+
+    state = result;
+    return !result.hasError;
+  }
+
+  Future<bool> sendPasswordReset(String email) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(
+      () => ref.read(authRepositoryProvider).sendPasswordReset(email),
+    );
+
+    state = result;
+    return !result.hasError;
+  }
+
+  Future<void> signOut() async {
+    // Anything that has to be undone while this account can still be spoken
+    // for - telling the API to stop pushing to this phone, say - runs first.
+    // Bounded and never fatal: signing out must always work, and a
+    // clean-up that hangs or fails is not a reason to keep someone in.
+    final cleanUp = ref.read(signOutCleanupProvider);
+    if (cleanUp != null) {
+      try {
+        await cleanUp().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+
+    await ref.read(authRepositoryProvider).signOut();
+    ref.invalidate(profileProvider);
+    state = const AsyncData(null);
+  }
+}
+
+final authControllerProvider = AsyncNotifierProvider<AuthController, void>(
+  AuthController.new,
+);
+
+/// Saving changes to the profile.
+///
+/// Separate from [AuthController] so a failed save cannot leave an error
+/// showing on the sign-in screen, and auto-disposed so a stale error does not
+/// greet the customer the next time they open the edit screen.
+class ProfileController extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  Future<bool> save({
+    required String displayName,
+    required String phone,
+    required ProfileAddress? address,
+  }) async {
+    state = const AsyncLoading();
+
+    final result = await AsyncValue.guard(() async {
+      await ref
+          .read(profileRepositoryProvider)
+          .updateMe(displayName: displayName, phone: phone, address: address);
+      // The account page and checkout's prefill both read from here.
+      ref.invalidate(profileProvider);
+    });
+
+    if (!ref.mounted) return !result.hasError;
+    state = result;
+    return !result.hasError;
+  }
+}
+
+final profileControllerProvider =
+    AsyncNotifierProvider.autoDispose<ProfileController, void>(
+      ProfileController.new,
+    );
