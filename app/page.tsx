@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import RoleGuard from '../components/RoleGuard';
 import { isImageUrl } from '../utils/isImageUrl';
 
 type FeaturedRestaurant = {
@@ -63,8 +62,7 @@ export default function Home() {
   }, []);
 
   return (
-    <RoleGuard allowedRoles={['customer']}>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gray-900 text-white py-20 md:py-32 px-4">
         {/* Background image with overlay */}
@@ -307,6 +305,5 @@ export default function Home() {
         </div>
       </section>
     </div>
-    </RoleGuard>
   );
 }
