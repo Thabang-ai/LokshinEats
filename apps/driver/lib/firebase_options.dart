@@ -64,6 +64,9 @@ class DefaultFirebaseOptions {
     }
   }
 
+  // The project has one web app, registered before the apps were split, so
+  // the driver and vendor web builds share it. Only used for local testing;
+  // these two ship to phones.
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyBF-9ZByQqRSykNdEjFKOEwErsV_MWBEy0',
     appId: '1:741301128340:web:4837774d16c47668c5b881',
@@ -76,7 +79,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAoMsFgRrg1wY1dg_svarxx0uA7SE_fvmY',
-    appId: '1:741301128340:android:ebc83bc142eecd66c5b881',
+    appId: '1:741301128340:android:ed38d5782e983cf6c5b881',
     messagingSenderId: '741301128340',
     projectId: 'kasieats-34391',
     storageBucket: 'kasieats-34391.firebasestorage.app',
@@ -84,10 +87,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyC05mO_3TDLkqltmMBCmyNgLCiIvU9rPRw',
-    appId: '1:741301128340:ios:b5988f842a91bb83c5b881',
+    appId: '1:741301128340:ios:5d967d82e9981c1ec5b881',
     messagingSenderId: '741301128340',
     projectId: 'kasieats-34391',
     storageBucket: 'kasieats-34391.firebasestorage.app',
-    iosBundleId: 'com.lokshineats.lokshineatsCustomer',
+    iosBundleId: 'com.lokshineats.lokshineatsDriver',
   );
 }
