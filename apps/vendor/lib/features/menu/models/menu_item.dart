@@ -5,6 +5,8 @@
 /// never rewrites anybody's receipt.
 library;
 
+import 'package:lokshineats_core/utils/image_url.dart';
+
 class MenuItem {
   const MenuItem({
     required this.id,
@@ -53,6 +55,12 @@ class MenuItem {
   /// Minutes, as the kitchen estimates them.
   final int preparationTime;
   final String? image;
+
+  /// The dish's photo, ready to load, or null when there is none.
+  ///
+  /// Photos are often stored as paths the website serves, which a phone
+  /// cannot load without resolving them first.
+  String? get photoUrl => resolveImageUrl(image);
 
   MenuItem copyWith({bool? available}) => MenuItem(
     id: id,

@@ -183,6 +183,10 @@ class _MenuRowState extends ConsumerState<_MenuRow> {
           padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
           child: Row(
             children: [
+              // The kitchen's own view of what a customer sees - including
+              // which dishes are still going out without a photo.
+              _DishPhoto(item: item),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,6 +224,62 @@ class _MenuRowState extends ConsumerState<_MenuRow> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A dish's photo on the menu list, or a plate where one is missing.
+///
+/// Fixed size either way, so rows keep their height whether or not the
+/// kitchen has got round to photographing everything.
+class _DishPhoto extends StatelessWidget {
+  const _DishPhoto({required this.item});
+
+  final MenuItem item;
+
+  static const double _size = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final url = item.photoUrl;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: _size,
+        height: _size,
+        child: url == null
+            ? _NoPhoto(theme: theme)
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (context, _, _) => _NoPhoto(theme: theme),
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : ColoredBox(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                      ),
+              ),
+      ),
+    );
+  }
+}
+
+class _NoPhoto extends StatelessWidget {
+  const _NoPhoto({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Icon(
+        Icons.restaurant_rounded,
+        size: 22,
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }
