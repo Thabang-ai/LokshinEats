@@ -124,7 +124,7 @@ class _Banner extends StatelessWidget {
         children: [
           if (store.hasPhoto)
             Image.network(
-              store.image!,
+              store.photoUrl!,
               fit: BoxFit.cover,
               // A broken image URL must not take the card down with it.
               errorBuilder: (context, _, _) => _EmojiBanner(store: store),

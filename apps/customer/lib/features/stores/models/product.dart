@@ -7,6 +7,8 @@
 /// underpayment.
 library;
 
+import 'package:lokshineats_core/utils/image_url.dart';
+
 class Product {
   const Product({
     required this.id,
@@ -33,8 +35,10 @@ class Product {
         _ => 0,
       },
       category: json['category'] as String? ?? '',
+      // Kept as stored. A path the website serves is still a photo; it is
+      // resolved in [photoUrl] rather than thrown away here.
       image: switch (json['image']) {
-        final String s when s.startsWith('http') => s,
+        final String s when s.trim().isNotEmpty => s.trim(),
         _ => null,
       },
       // Absent means orderable: items written before the flag existed should
@@ -60,4 +64,7 @@ class Product {
   final bool isVegetarian;
   final bool isSpicy;
   final int preparationTime;
+
+  /// The dish's photo, ready to load, or null when there is none.
+  String? get photoUrl => resolveImageUrl(image);
 }

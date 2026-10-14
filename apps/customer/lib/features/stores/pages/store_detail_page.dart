@@ -123,7 +123,7 @@ class _StoreAppBar extends StatelessWidget {
           children: [
             if (store.hasPhoto)
               Image.network(
-                store.image!,
+                store.photoUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (context, _, _) => _Gradient(store: store),
               )
@@ -345,6 +345,11 @@ class _MenuItem extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // People order food they can see. A dish with no photo keeps its
+            // space rather than shifting the row, so a menu where only some
+            // items have pictures still reads as a list.
+            _DishPhoto(product: product),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,6 +472,61 @@ class _MenuItem extends ConsumerWidget {
           duration: const Duration(milliseconds: 1400),
         ),
       );
+  }
+}
+
+/// A dish's photo, or a plate where one is missing.
+///
+/// Fixed size either way: a menu whose rows change height as photos arrive is
+/// harder to read than one with a few plain squares in it.
+class _DishPhoto extends StatelessWidget {
+  const _DishPhoto({required this.product});
+
+  final Product product;
+
+  static const double _size = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final url = product.photoUrl;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: _size,
+        height: _size,
+        child: url == null
+            ? _NoPhoto(theme: theme)
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                // A dish whose photo will not load still has to be orderable.
+                errorBuilder: (context, _, _) => _NoPhoto(theme: theme),
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : ColoredBox(color: theme.colorScheme.surfaceContainerHighest),
+              ),
+      ),
+    );
+  }
+}
+
+class _NoPhoto extends StatelessWidget {
+  const _NoPhoto({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Icon(
+        Icons.restaurant_rounded,
+        size: 24,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }
 

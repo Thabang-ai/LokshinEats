@@ -6,6 +6,8 @@
 /// document should not blank out the whole restaurant list.
 library;
 
+import 'package:lokshineats_core/utils/image_url.dart';
+
 class Store {
   const Store({
     required this.id,
@@ -64,18 +66,24 @@ class Store {
   final double minOrderAmount;
   final bool isOpen;
 
+  /// The kitchen's photo, ready to load, or null when there is none.
+  ///
+  /// Vendors' photos are often stored as paths the website serves, so this
+  /// resolves them rather than treating them as "no photo".
+  String? get photoUrl => resolveImageUrl(image);
+
   /// Whether [image] is a real photo rather than the emoji placeholder the
   /// web app writes when a vendor uploaded nothing.
-  bool get hasPhoto {
-    final value = image;
-    return value != null &&
-        (value.startsWith('http://') || value.startsWith('https://'));
-  }
+  bool get hasPhoto => photoUrl != null;
 
   /// The emoji to show when there is no photo.
+  ///
+  /// Only an actual stand-in is shown. A value that was meant to be a photo
+  /// and could not be resolved falls back to the default, because printing a
+  /// file name across a card is worse than a plain plate.
   String get placeholderEmoji {
     final value = image;
-    if (value != null && value.isNotEmpty && !hasPhoto) return value;
+    if (isImagePlaceholder(value)) return value!.trim();
     return '🍽️';
   }
 

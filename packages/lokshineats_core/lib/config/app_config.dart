@@ -14,6 +14,16 @@ library;
 class AppConfig {
   const AppConfig._();
 
+  /// Where the website lives.
+  ///
+  /// Not for talking to - that is [apiBaseUrl] - but for resolving the photos
+  /// vendors upload, which are stored as paths the website serves, such as
+  /// `/img/kasi-kota-banner.jpeg`.
+  static const String webBaseUrl = String.fromEnvironment(
+    'WEB_BASE_URL',
+    defaultValue: 'https://lokshin-eats.vercel.app',
+  );
+
   /// Base URL of the LokshinEats REST API (see `server/`).
   ///
   /// Defaults to a local API so a fresh checkout runs without arguments. A
