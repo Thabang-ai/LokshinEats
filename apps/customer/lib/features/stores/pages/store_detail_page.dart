@@ -505,7 +505,9 @@ class _DishPhoto extends StatelessWidget {
                 errorBuilder: (context, _, _) => _NoPhoto(theme: theme),
                 loadingBuilder: (context, child, progress) => progress == null
                     ? child
-                    : ColoredBox(color: theme.colorScheme.surfaceContainerHighest),
+                    : ColoredBox(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                      ),
               ),
       ),
     );

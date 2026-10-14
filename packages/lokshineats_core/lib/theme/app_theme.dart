@@ -14,27 +14,44 @@ library;
 
 import 'package:flutter/material.dart';
 
+/// The website's palette, value for value.
+///
+/// These are the tokens in `app/globals.css`, not an interpretation of them:
+/// someone who orders on the site and then installs the app should not feel
+/// they have changed product. Where a Material role has no web equivalent it
+/// is derived from these rather than invented.
 class AppColors {
   const AppColors._();
 
-  /// LokshinEats orange — the existing brand colour.
-  static const Color brand = Color(0xFFFF6600);
+  /// --primary: the red-orange the whole site is built on.
+  static const Color brand = Color(0xFFFF4500);
 
-  /// Clay, for secondary emphasis.
-  static const Color clay = Color(0xFFB5432A);
+  /// --primary-light and --primary-dark, used for gradients and pressed states.
+  static const Color brandLight = Color(0xFFFF6B35);
+  static const Color brandDark = Color(0xFFCC3700);
 
-  /// Maize, used sparingly for accents like ratings.
-  static const Color maize = Color(0xFFF2B233);
+  /// --warm-orange, for secondary emphasis.
+  static const Color clay = Color(0xFFFF8C00);
 
-  /// Warm near-black, for text and dark surfaces.
-  static const Color charcoal = Color(0xFF1C1512);
+  /// --appetite-yellow, used for ratings and highlights, as the site does.
+  static const Color maize = Color(0xFFFFB347);
 
-  /// Warm off-white page background.
-  static const Color sand = Color(0xFFFDF8F4);
+  /// --accent: gold.
+  static const Color gold = Color(0xFFFFD700);
 
-  /// Success and failure, warmed slightly to sit with the palette.
-  static const Color leaf = Color(0xFF2E7D4F);
-  static const Color chilli = Color(0xFFC0392B);
+  /// --foreground: the site's near-black text.
+  static const Color charcoal = Color(0xFF1A1A1A);
+
+  /// --background: warm cream. The site has no dark mode; this is *the*
+  /// background people recognise.
+  static const Color sand = Color(0xFFFFF8F0);
+
+  /// --gray, for secondary copy.
+  static const Color stone = Color(0xFF6B7280);
+
+  /// --success and --error.
+  static const Color leaf = Color(0xFF10B981);
+  static const Color chilli = Color(0xFFDC143C);
 }
 
 /// Status colours that stay readable in both themes.
@@ -125,15 +142,23 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        elevation: 0,
+        // The site lifts its cards off the cream with a warm shadow
+        // (--shadow-md is tinted with the brand orange, not grey), so the
+        // same card here is raised rather than outlined.
+        elevation: isLight ? 3 : 0,
+        shadowColor: isLight
+            ? AppColors.brand.withValues(alpha: 0.18)
+            : Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         margin: EdgeInsets.zero,
         color: scheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
-          // A hairline border instead of a shadow: on a warm background a
-          // drop shadow muddies, while a border keeps cards crisp in both
-          // light and dark.
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+          // Dark mode has no web counterpart to copy, and a shadow does
+          // nothing there, so it keeps the hairline that reads well.
+          side: isLight
+              ? BorderSide.none
+              : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
         ),
         clipBehavior: Clip.antiAlias,
       ),

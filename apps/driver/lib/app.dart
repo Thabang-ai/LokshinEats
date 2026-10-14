@@ -20,9 +20,10 @@ class LokshinEatsDriverApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      // Follows the device. A driver working at night gets the dark scheme
-      // without having to find a setting.
-      themeMode: ThemeMode.system,
+      // Light, like the website, so all three apps and the site look like one
+      // product. The dark scheme is still built for whenever the site grows
+      // one.
+      themeMode: ThemeMode.light,
       home: const DriverHomePage(),
     );
   }

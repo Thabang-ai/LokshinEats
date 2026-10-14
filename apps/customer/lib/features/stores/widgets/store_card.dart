@@ -36,7 +36,8 @@ class StoreCard extends StatelessWidget {
                           store.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontSize: 20,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -117,7 +118,7 @@ class _Banner extends StatelessWidget {
     final theme = Theme.of(context);
 
     return SizedBox(
-      height: 140,
+      height: 192,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -175,16 +176,13 @@ class _EmojiBanner extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            scheme.primary.withValues(alpha: 0.85),
-            AppColors.clay.withValues(alpha: 0.85),
-          ],
+          colors: [scheme.primary, AppColors.brandLight],
         ),
       ),
       child: Center(
         child: Text(
           store.placeholderEmoji,
-          style: const TextStyle(fontSize: 48),
+          style: const TextStyle(fontSize: 64),
         ),
       ),
     );

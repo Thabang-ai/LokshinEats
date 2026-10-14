@@ -24,9 +24,11 @@ class LokshinEatsApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      // Follows the device. Both schemes are built and tested, so there is no
-      // reason to force one on someone who has already chosen.
-      themeMode: ThemeMode.system,
+      // Light, like the website. Following the device put customers in a
+      // dark app that looked like a different product from the site they
+      // ordered on an hour earlier. The dark scheme is still built, for
+      // whenever the website grows one.
+      themeMode: ThemeMode.light,
       home: const StoresPage(),
     );
   }
