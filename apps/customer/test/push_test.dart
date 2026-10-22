@@ -15,9 +15,10 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/network/api_client.dart';
 import 'package:lokshineats_core/providers.dart';
 
-import 'package:lokshineats_customer/features/notifications/push/push_listener.dart';
-import 'package:lokshineats_customer/features/notifications/push/push_messaging.dart';
-import 'package:lokshineats_customer/features/notifications/push/push_registration.dart';
+import 'package:lokshineats_core/push/push_listener.dart';
+import 'package:lokshineats_core/push/push_messaging.dart';
+import 'package:lokshineats_core/push/push_registration.dart';
+import 'package:lokshineats_customer/features/notifications/push/push_routing.dart';
 
 class _User extends Fake implements User {
   @override
@@ -122,6 +123,7 @@ void main() {
           pushMessagingProvider.overrideWithValue(push),
           apiClientProvider.overrideWithValue(client),
           firebaseUserProvider.overrideWith((ref) => Stream.value(_User())),
+          pushAppProvider.overrideWithValue(PushApp.customer),
         ],
       );
       addTearDown(c.dispose);
@@ -141,7 +143,13 @@ void main() {
       expect(_deviceCalls(api.requests), [
         {
           'path': '/api/v1/notifications/devices',
-          'body': {'token': 'token-1', 'platform': 'android'},
+          // Which app registered matters: it is what keeps a delivery offer
+          // out of the app someone orders dinner with.
+          'body': {
+            'token': 'token-1',
+            'platform': 'android',
+            'app': 'customer',
+          },
         },
       ]);
     });
@@ -219,6 +227,9 @@ void main() {
             apiClientProvider.overrideWithValue(api.client),
             isSignedInProvider.overrideWithValue(true),
             firebaseUserProvider.overrideWith((ref) => Stream.value(_User())),
+            pushAppProvider.overrideWithValue(customerPushApp),
+            pushArrivedProvider.overrideWith(customerPushArrived),
+            pushOpenedProvider.overrideWith(customerPushOpened),
           ],
           child: PushListener(
             child: MaterialApp(

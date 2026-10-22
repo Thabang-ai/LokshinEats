@@ -1,13 +1,14 @@
-/// What the app does when a push arrives or is tapped.
+/// What an app does when a push arrives or is tapped.
 ///
-/// Arriving while the app is open: say it at the bottom of the screen with a
-/// way to open the order, and bring the bell up to date. Tapped from outside
-/// the app: open the order it is about, which for "on the way" is the screen
-/// with the delivery code - the reason they tapped it.
+/// The mechanics are the same in all three apps - subscribe, say it while the
+/// app is open, open it when tapped, and handle the push that launched the
+/// app from closed - while what "open it" means differs: a customer wants the
+/// order they are waiting for, a kitchen its queue, a driver the board. So
+/// the mechanics live here and each app supplies the two handlers.
 ///
-/// Mounted from `main.dart`, around the app, rather than inside it: push is a
-/// startup side effect, and `app.dart` is kept free of those so widget tests
-/// can mount the app without a push service.
+/// Mounted around the app rather than inside it: push is a startup side
+/// effect, and keeping it out of `app.dart` lets widget tests mount an app
+/// without a push service.
 library;
 
 import 'dart:async';
@@ -16,9 +17,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../orders/pages/order_tracking_page.dart';
-import '../../orders/providers/order_tracking_providers.dart';
-import '../providers/notification_providers.dart';
 import 'push_messaging.dart';
 import 'push_registration.dart';
 
@@ -26,6 +24,24 @@ import 'push_registration.dart';
 /// that owns them - which is where a push arrives from.
 final appNavigatorKey = GlobalKey<NavigatorState>();
 final appMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+typedef PushHandler = void Function(PushMessage message);
+
+/// Called when a push arrives while the app is open, before it is shown.
+///
+/// For refreshing whatever is on screen, so someone watching a list sees the
+/// change now rather than at the next poll.
+final pushArrivedProvider = Provider<PushHandler>((ref) => (_) {});
+
+/// Called when a push is tapped, or when one launched the app.
+///
+/// This is the app's "take me to it": the screen the notification was about.
+final pushOpenedProvider = Provider<PushHandler>((ref) => (_) {});
+
+/// Whether a push arriving while the app is open should also be shown as a
+/// message at the bottom of the screen. A kitchen watching its queue update
+/// itself does not need a banner over it as well.
+final pushShowsInAppProvider = Provider<bool>((ref) => true);
 
 class PushListener extends ConsumerStatefulWidget {
   const PushListener({super.key, required this.child});
@@ -52,6 +68,8 @@ class _PushListenerState extends ConsumerState<PushListener> {
       ..add(messaging.onForegroundMessage.listen(_arrived))
       ..add(messaging.onOpened.listen(_open));
 
+    // The push that launched the app from closed, if any. A failure here is
+    // not worth a crash on startup: the inbox still has it.
     unawaited(
       messaging
           .initialMessage()
@@ -61,11 +79,10 @@ class _PushListenerState extends ConsumerState<PushListener> {
           .catchError((Object _) {}),
     );
 
-    // On the web a clicked push opens the app at /?order=<id> (see
-    // web/firebase-messaging-sw.js), because the browser has no "initial
-    // message" to hand over. The id only opens the tracking screen, which
-    // asks the API for the order - so a made-up id shows "not found", never
-    // someone else's order.
+    // On the web a clicked push opens the app at /?order=<id>, because the
+    // browser has no "initial message" to hand over. The id only opens a
+    // screen that asks the API for the order, so a made-up id shows "not
+    // found" rather than somebody else's order.
     if (kIsWeb) {
       final orderId = Uri.base.queryParameters['order'];
       if (orderId != null && orderId.isNotEmpty) {
@@ -85,13 +102,9 @@ class _PushListenerState extends ConsumerState<PushListener> {
   }
 
   void _arrived(PushMessage message) {
-    unawaited(ref.read(inboxProvider.notifier).refresh());
+    ref.read(pushArrivedProvider)(message);
 
-    final orderId = message.orderId;
-    if (orderId != null && ref.exists(orderTrackingProvider(orderId))) {
-      // Someone watching this order sees the change now, not at the next poll.
-      unawaited(ref.read(orderTrackingProvider(orderId).notifier).refresh());
-    }
+    if (!ref.read(pushShowsInAppProvider)) return;
 
     appMessengerKey.currentState
       ?..hideCurrentSnackBar()
@@ -102,25 +115,14 @@ class _PushListenerState extends ConsumerState<PushListener> {
                 ? message.title
                 : '${message.title}. ${message.body}',
           ),
-          action: orderId == null
+          action: message.orderId == null
               ? null
               : SnackBarAction(label: 'View', onPressed: () => _open(message)),
         ),
       );
   }
 
-  void _open(PushMessage message) {
-    unawaited(ref.read(inboxProvider.notifier).refresh());
-
-    final orderId = message.orderId;
-    if (orderId == null) return;
-
-    appNavigatorKey.currentState?.push(
-      MaterialPageRoute<void>(
-        builder: (_) => OrderTrackingPage(orderId: orderId),
-      ),
-    );
-  }
+  void _open(PushMessage message) => ref.read(pushOpenedProvider)(message);
 
   @override
   Widget build(BuildContext context) => widget.child;

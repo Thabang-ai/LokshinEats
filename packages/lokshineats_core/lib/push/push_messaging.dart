@@ -1,14 +1,14 @@
 /// The phone's push service, behind a small interface.
 ///
-/// The app only needs a handful of things from Firebase Cloud Messaging:
-/// permission, a token, and word of messages arriving or being tapped. Keeping
-/// it to those, behind an interface, lets the rest of the app be tested with a
-/// stand-in instead of a real push service.
+/// All three apps need the same handful of things from Firebase Cloud
+/// Messaging: permission, a token, and word of messages arriving or being
+/// tapped. Keeping it to those, behind an interface, lets each app be tested
+/// with a stand-in instead of a real push service.
 ///
 /// Where push is supported:
 ///  * Android and iOS: yes. (iOS also needs APNs configured for the Firebase
 ///    project; until it is, asking for a token fails and is logged, and the
-///    inbox still works.)
+///    in-app inbox still works.)
 ///  * Web: only when built with a VAPID key - see `AppConfig.fcmVapidKey`.
 ///    Without one the app does not ask for permission at all.
 ///  * Anything else: no.
@@ -20,7 +20,20 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lokshineats_core/config/app_config.dart';
+import '../config/app_config.dart';
+
+/// Which app this install is, as the API records it against the device.
+///
+/// One person may order dinner as a customer and drive deliveries on the same
+/// phone. Each install has its own token, and this is what keeps a delivery
+/// offer out of the app they order with.
+enum PushApp {
+  customer,
+  driver,
+  vendor;
+
+  String get wire => name;
+}
 
 /// A push that arrived, or was tapped - enough to say it and to open it.
 class PushMessage {
@@ -118,3 +131,10 @@ class FirebasePushMessaging implements PushMessaging {
 final pushMessagingProvider = Provider<PushMessaging>(
   (ref) => const FirebasePushMessaging(),
 );
+
+/// Which app this build is. Each app overrides it in its ProviderScope.
+final pushAppProvider = Provider<PushApp>((ref) {
+  throw UnimplementedError(
+    'Override pushAppProvider with the app this build is.',
+  );
+});

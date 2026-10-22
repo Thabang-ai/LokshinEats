@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'package:lokshineats_core/push/push_listener.dart';
 import 'package:lokshineats_core/theme/app_theme.dart';
 
 import 'features/shell/pages/driver_home_page.dart';
@@ -16,6 +17,10 @@ class LokshinEatsDriverApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Reachable from outside this tree, which is where a push arrives
+      // from. Inert when nothing uses them.
+      navigatorKey: appNavigatorKey,
+      scaffoldMessengerKey: appMessengerKey,
       title: 'LokshinEats Driver',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,

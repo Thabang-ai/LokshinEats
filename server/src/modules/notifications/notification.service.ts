@@ -26,6 +26,18 @@ import { pushSender } from './push';
 const log = moduleLogger('notifications');
 
 /**
+ * Which app each audience's notifications belong in.
+ *
+ * One person can be a customer and a driver on the same phone; a delivery
+ * offer belongs in the driver app, not in the one they order dinner with.
+ */
+const APP_FOR_AUDIENCE: Record<string, string> = {
+  customer: 'customer',
+  kitchen: 'vendor',
+  driver: 'driver',
+};
+
+/**
  * Notify an order's customer that something happened to it.
  *
  * `push: false` records it in the inbox without buzzing the phone - for
@@ -112,7 +124,9 @@ async function notifyUser(input: {
     // Already told them about this moment; do not buzz them twice.
     if (!created || input.push === false) return;
 
-    const tokens = await repository.tokensFor(input.userId);
+    const tokens = await repository.tokensFor(input.userId, {
+      app: APP_FOR_AUDIENCE[input.audience],
+    });
     if (tokens.length === 0) return;
 
     const sender = pushSender();
@@ -163,9 +177,16 @@ export async function markAllRead(caller: AuthContext): Promise<number> {
   return repository.markAllRead(caller.uid);
 }
 
+/**
+ * Bind a device to the caller's own account.
+ *
+ * The account is taken from the verified token, never from the request body:
+ * a client cannot register a device for anybody else, and nothing here reads
+ * back another account's tokens.
+ */
 export async function registerDevice(
   caller: AuthContext,
-  input: { token: string; platform: string },
+  input: { token: string; platform: string; app?: string },
 ): Promise<void> {
   await repository.upsertDevice({ userId: caller.uid, ...input });
 }

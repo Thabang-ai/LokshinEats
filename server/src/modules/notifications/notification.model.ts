@@ -217,11 +217,24 @@ export const notificationIdParamSchema = z.object({
 
 export const DEVICE_PLATFORMS = ['android', 'ios', 'web'] as const;
 
+/**
+ * Which of the three apps a device is running.
+ *
+ * One person may be a customer on their own phone and a driver on the same
+ * one. Each install gets its own token, and recording which app it belongs
+ * to is what stops a delivery offer appearing in the app they order dinner
+ * with. Optional: installs that registered before this existed keep working,
+ * and are sent everything their account is entitled to.
+ */
+export const DEVICE_APPS = ['customer', 'driver', 'vendor'] as const;
+export type DeviceApp = (typeof DEVICE_APPS)[number];
+
 export const registerDeviceSchema = z
   .object({
     /** The FCM registration token the device was issued. */
     token: z.string().trim().min(20).max(4096),
     platform: z.enum(DEVICE_PLATFORMS),
+    app: z.enum(DEVICE_APPS).optional(),
   })
   .strict();
 

@@ -10,9 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
+import 'package:lokshineats_core/push/push_listener.dart';
+import 'package:lokshineats_core/push/push_messaging.dart';
+import 'package:lokshineats_core/push/push_registration.dart';
 import 'package:lokshineats_core/config/app_config.dart';
 import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
 
+import 'features/orders/push_routing.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 
@@ -42,8 +46,18 @@ Future<void> main() async {
             signUp: 'Deliver for kitchens near you.',
           ),
         ),
+        // Before signing out, stop pushing deliveries to this phone - a
+        // shared phone should not go on receiving another driver's work.
+        signOutCleanupProvider.overrideWith(
+          (ref) =>
+              () => ref.read(pushRegistrarProvider).unregister(),
+        ),
+        pushAppProvider.overrideWithValue(driverPushApp),
+        pushArrivedProvider.overrideWith(driverPushArrived),
+        pushOpenedProvider.overrideWith(driverPushOpened),
+        pushShowsInAppProvider.overrideWithValue(true),
       ],
-      child: const LokshinEatsDriverApp(),
+      child: const PushListener(child: LokshinEatsDriverApp()),
     ),
   );
 }

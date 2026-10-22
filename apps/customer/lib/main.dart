@@ -13,8 +13,10 @@ import 'package:lokshineats_core/config/app_config.dart';
 import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
 
 import 'app.dart';
-import 'features/notifications/push/push_listener.dart';
-import 'features/notifications/push/push_registration.dart';
+import 'package:lokshineats_core/push/push_listener.dart';
+import 'package:lokshineats_core/push/push_messaging.dart';
+import 'package:lokshineats_core/push/push_registration.dart';
+import 'features/notifications/push/push_routing.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -45,6 +47,10 @@ Future<void> main() async {
           (ref) =>
               () => ref.read(pushRegistrarProvider).unregister(),
         ),
+        // Which app this is, where a push takes them, and what it refreshes.
+        pushAppProvider.overrideWithValue(customerPushApp),
+        pushArrivedProvider.overrideWith(customerPushArrived),
+        pushOpenedProvider.overrideWith(customerPushOpened),
       ],
       child: const PushListener(child: LokshinEatsApp()),
     ),

@@ -9,9 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
+import 'package:lokshineats_core/push/push_listener.dart';
+import 'package:lokshineats_core/push/push_messaging.dart';
+import 'package:lokshineats_core/push/push_registration.dart';
 import 'package:lokshineats_core/config/app_config.dart';
 import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
 
+import 'features/orders/push_routing.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 
@@ -38,8 +42,18 @@ Future<void> main() async {
             signUp: 'Start taking orders from your kitchen.',
           ),
         ),
+        // Before signing out, stop pushing this kitchen's orders to this
+        // phone - a shared phone should not go on buzzing for them.
+        signOutCleanupProvider.overrideWith(
+          (ref) =>
+              () => ref.read(pushRegistrarProvider).unregister(),
+        ),
+        pushAppProvider.overrideWithValue(vendorPushApp),
+        pushArrivedProvider.overrideWith(vendorPushArrived),
+        pushOpenedProvider.overrideWith(vendorPushOpened),
+        pushShowsInAppProvider.overrideWithValue(false),
       ],
-      child: const LokshinEatsVendorApp(),
+      child: const PushListener(child: LokshinEatsVendorApp()),
     ),
   );
 }

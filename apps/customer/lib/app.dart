@@ -7,7 +7,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
-import 'features/notifications/push/push_listener.dart';
+import 'package:lokshineats_core/push/push_listener.dart';
 import 'features/shell/pages/home_shell.dart';
 
 class LokshinEatsApp extends StatelessWidget {

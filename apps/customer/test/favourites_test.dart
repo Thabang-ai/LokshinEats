@@ -67,13 +67,16 @@ ProviderContainer containerFor(ApiClient client, {bool signedIn = true}) {
 
 void main() {
   group('the list', () {
-    test('a signed-out browser has none, and nothing is asked of the API', () async {
-      final a = api();
-      final container = containerFor(a.client, signedIn: false);
+    test(
+      'a signed-out browser has none, and nothing is asked of the API',
+      () async {
+        final a = api();
+        final container = containerFor(a.client, signedIn: false);
 
-      expect(await container.read(favouritesProvider.future), isEmpty);
-      expect(a.requests, isEmpty);
-    });
+        expect(await container.read(favouritesProvider.future), isEmpty);
+        expect(a.requests, isEmpty);
+      },
+    );
 
     test('a signed-in customer gets what they saved', () async {
       final a = api(initial: ['kasi-kota']);
@@ -139,7 +142,10 @@ void main() {
           ],
           child: const MaterialApp(
             home: Scaffold(
-              body: FavouriteButton(storeId: 'kasi-kota', storeName: 'Kasi Kota'),
+              body: FavouriteButton(
+                storeId: 'kasi-kota',
+                storeName: 'Kasi Kota',
+              ),
             ),
           ),
         ),

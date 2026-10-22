@@ -2,13 +2,17 @@
 ///
 /// On sign-in: ask permission, get the token, register it. When the push
 /// service rotates the token: register the new one. Before sign-out: remove
-/// it, while there is still a session to make that request with - otherwise
-/// a shared phone would go on receiving the previous person's order updates.
+/// it, while there is still a session to make that request with - otherwise a
+/// shared phone would go on receiving the previous person's notifications.
 ///
-/// Every step is best-effort. A customer who refuses permission, a platform
-/// that will not issue a token, an API that is briefly unreachable: none of
-/// these stop anyone using the app, and the inbox tells them everything a
+/// Every step is best-effort. Someone who refuses permission, a platform that
+/// will not issue a token, an API that is briefly unreachable: none of these
+/// stop anyone using the app, and the in-app inbox still says everything a
 /// push would have.
+///
+/// Shared by all three apps. Which app this is travels with the registration,
+/// so the API can keep a delivery offer out of the app someone orders dinner
+/// with.
 library;
 
 import 'dart:async';
@@ -17,9 +21,8 @@ import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lokshineats_core/auth/auth_providers.dart';
-
-import '../providers/notification_providers.dart';
+import '../auth/auth_providers.dart';
+import 'push_devices.dart';
 import 'push_messaging.dart';
 
 class PushRegistrar {
@@ -65,8 +68,12 @@ class PushRegistrar {
   Future<void> _send(String token) async {
     try {
       await _ref
-          .read(notificationRepositoryProvider)
-          .registerDevice(token: token, platform: _messaging.platform);
+          .read(pushDeviceRepositoryProvider)
+          .register(
+            token: token,
+            platform: _messaging.platform,
+            app: _ref.read(pushAppProvider),
+          );
       _registeredToken = token;
     } catch (error) {
       debugPrint('Could not register this device for push: $error');
@@ -81,7 +88,7 @@ class PushRegistrar {
     if (token == null) return;
 
     try {
-      await _ref.read(notificationRepositoryProvider).removeDevice(token);
+      await _ref.read(pushDeviceRepositoryProvider).remove(token);
     } catch (error) {
       debugPrint('Could not remove this device from push: $error');
     }

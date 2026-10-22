@@ -149,13 +149,17 @@ export async function upsertDevice(input: {
   userId: string;
   token: string;
   platform: string;
+  app?: string;
 }): Promise<void> {
-  await devices().doc(deviceId(input.token)).set({
-    userId: input.userId,
-    token: input.token,
-    platform: input.platform,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  await devices()
+    .doc(deviceId(input.token))
+    .set({
+      userId: input.userId,
+      token: input.token,
+      platform: input.platform,
+      app: input.app ?? null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 }
 
 /** Forget a device, but only if it is the caller's. */
@@ -167,9 +171,27 @@ export async function removeDevice(userId: string, token: string): Promise<void>
   }
 }
 
-export async function tokensFor(userId: string): Promise<string[]> {
+/**
+ * The tokens to push to for one person.
+ *
+ * With [app] given, only that person's installs of that app - plus any that
+ * registered before devices recorded which app they were, which would
+ * otherwise go silent. Filtered here rather than in the query because a
+ * person has a handful of devices, and an `in` with a null is not a query
+ * Firestore will run.
+ */
+export async function tokensFor(
+  userId: string,
+  options: { app?: string } = {},
+): Promise<string[]> {
   const snapshot = await devices().where('userId', '==', userId).get();
+
   return snapshot.docs
+    .filter((doc) => {
+      if (!options.app) return true;
+      const app = doc.get('app');
+      return app == null || app === options.app;
+    })
     .map((doc) => doc.get('token'))
     .filter((token): token is string => typeof token === 'string');
 }
