@@ -226,6 +226,23 @@ export async function placeOrder(
     'Order placed.',
   );
 
+  // The kitchen's own notification. Until this existed a vendor found out an
+  // order had arrived by happening to be looking at a screen, which is how a
+  // real order gets missed. Never fatal: the order exists either way.
+  const store = await storeRepository.findById(order.storeId);
+  if (store) {
+    await notificationService.notifyVendor({
+      vendorId: store.ownerId,
+      orderId: order.id,
+      kind: 'order_placed',
+      facts: {
+        storeName: order.storeName,
+        orderTotal: order.total,
+        itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      },
+    });
+  }
+
   return order;
 }
 
@@ -386,6 +403,13 @@ export async function changeStatus(
       kind: 'order_accepted',
       facts: { storeName: updated.storeName },
     });
+
+    // A delivery becomes claimable the moment the kitchen accepts it, so
+    // this is when drivers want to hear about it - early enough to set off
+    // towards the kitchen while the food is still being made.
+    if (next === 'confirmed' && !updated.driverId) {
+      await notifyDriversOfDelivery(updated);
+    }
   } else if (next === 'picked_up') {
     await notificationService.notifyCustomer({
       customerId: updated.customerId,
@@ -574,4 +598,25 @@ export async function previewCancellation(
   if (!raw) throw ApiError.notFound('No such order.');
 
   return cancellationService.previewForOrder(raw, caller.role);
+}
+
+/**
+ * Tell every driver that a delivery is there to claim.
+ *
+ * Every driver, because any of them may take it: the board is first come,
+ * first served, and a notification sent only to some would quietly decide
+ * who gets the work.
+ */
+async function notifyDriversOfDelivery(order: Order): Promise<void> {
+  const drivers = await userRepository.list({ limit: 200, role: 'driver' });
+
+  await notificationService.notifyDrivers({
+    driverIds: drivers.items.map((driver) => driver.id),
+    orderId: order.id,
+    kind: 'delivery_available',
+    facts: {
+      storeName: order.storeName,
+      driverEarnings: order.driverPayout,
+    },
+  });
 }

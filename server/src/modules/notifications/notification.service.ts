@@ -40,12 +40,71 @@ export async function notifyCustomer(input: {
   facts: OrderFacts;
   push?: boolean;
 }): Promise<void> {
-  if (!input.customerId) return;
+  await notifyUser({ ...input, userId: input.customerId, audience: 'customer' });
+}
+
+/**
+ * Notify a kitchen about an order of theirs.
+ *
+ * The one notification a vendor cannot do without: until this existed, a
+ * kitchen learned an order had arrived by happening to be looking at a
+ * screen.
+ */
+export async function notifyVendor(input: {
+  vendorId: string;
+  orderId: string;
+  kind: NotificationKind;
+  facts: OrderFacts;
+}): Promise<void> {
+  await notifyUser({ ...input, userId: input.vendorId, audience: 'kitchen' });
+}
+
+/**
+ * Tell drivers a delivery is there to claim.
+ *
+ * Sent to every driver, because any of them may take it - the first to claim
+ * it gets it, and the rest find it gone, which is how the board already
+ * works. Each driver's inbox records it once.
+ */
+export async function notifyDrivers(input: {
+  driverIds: string[];
+  orderId: string;
+  kind: NotificationKind;
+  facts: OrderFacts;
+}): Promise<void> {
+  await Promise.all(
+    input.driverIds.map((driverId) =>
+      notifyUser({
+        userId: driverId,
+        orderId: input.orderId,
+        kind: input.kind,
+        facts: input.facts,
+        audience: 'driver',
+      }),
+    ),
+  );
+}
+
+/**
+ * Store a notification and, unless told otherwise, push it.
+ *
+ * `audience` is only for the log line: whose phone failed to buzz is the
+ * first thing worth knowing when one of these goes wrong.
+ */
+async function notifyUser(input: {
+  userId: string;
+  orderId: string;
+  kind: NotificationKind;
+  facts: OrderFacts;
+  push?: boolean;
+  audience: string;
+}): Promise<void> {
+  if (!input.userId) return;
 
   try {
     const message = messageFor(input.kind, input.facts);
     const { created } = await repository.createOnce({
-      userId: input.customerId,
+      userId: input.userId,
       orderId: input.orderId,
       message,
     });
@@ -53,7 +112,7 @@ export async function notifyCustomer(input: {
     // Already told them about this moment; do not buzz them twice.
     if (!created || input.push === false) return;
 
-    const tokens = await repository.tokensFor(input.customerId);
+    const tokens = await repository.tokensFor(input.userId);
     if (tokens.length === 0) return;
 
     const sender = pushSender();
@@ -65,14 +124,19 @@ export async function notifyCustomer(input: {
     if (deadTokens.length > 0) {
       await repository.forgetTokens(deadTokens);
       log.info(
-        { customerId: input.customerId, forgotten: deadTokens.length },
+        { userId: input.userId, forgotten: deadTokens.length },
         'Forgot devices that no longer accept push.',
       );
     }
   } catch (error) {
     log.error(
-      { orderId: input.orderId, kind: input.kind, err: error },
-      'Could not notify the customer; the order itself is unaffected.',
+      {
+        orderId: input.orderId,
+        kind: input.kind,
+        audience: input.audience,
+        err: error,
+      },
+      'Could not send a notification; the order itself is unaffected.',
     );
   }
 }

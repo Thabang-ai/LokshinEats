@@ -1,10 +1,15 @@
 /**
- * Customer notifications: what we tell someone about their order, and when.
+ * Notifications: what we tell someone about an order, and when.
  *
  * Four moments a customer actually waits for - the kitchen taking the order,
  * the food leaving with a driver, it arriving, and it being cancelled - and
  * nothing in between. A notification for every status change trains people
  * to ignore them.
+ *
+ * Two more for the people working the order, each the moment their own job
+ * starts: a kitchen learning an order exists, and drivers learning a
+ * delivery is there to claim. Without these a kitchen only finds out by
+ * watching a screen, which is how a real order gets missed.
  *
  * The words are decided here, from the order's own facts, so the push, the
  * in-app inbox and anything else that shows a notification say the same
@@ -19,10 +24,14 @@ import { paginationSchema } from '../../lib/pagination';
 import { toIso, toStringOr } from '../../lib/serialize';
 
 export const NOTIFICATION_KINDS = [
+  // To the customer.
   'order_accepted',
   'order_on_the_way',
   'order_delivered',
   'order_cancelled',
+  // To the kitchen, and to drivers.
+  'order_placed',
+  'delivery_available',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -52,6 +61,12 @@ export type OrderFacts = {
   refundedAmount?: number;
   /** The customer paid up front, so a cancellation may have cost them. */
   prepaid?: boolean;
+  /** What the order comes to, for the kitchen's notification. */
+  orderTotal?: number;
+  /** How many dishes, so a kitchen knows the size of the job at a glance. */
+  itemCount?: number;
+  /** What the delivery pays, which is what decides a driver to claim it. */
+  driverEarnings?: number;
 };
 
 function rands(amount: number): string {
@@ -88,6 +103,31 @@ export function messageFor(
         title: 'Delivered',
         body: `Enjoy your meal from ${kitchen}.`,
       };
+
+    case 'order_placed': {
+      const items = facts.itemCount ?? 0;
+      const total = facts.orderTotal ?? 0;
+      return {
+        kind,
+        title: 'New order',
+        body:
+          items > 0
+            ? `${items} ${items === 1 ? 'item' : 'items'}, ${rands(total)}. Accept it to start cooking.`
+            : `${rands(total)}. Accept it to start cooking.`,
+      };
+    }
+
+    case 'delivery_available': {
+      const pay = facts.driverEarnings ?? 0;
+      return {
+        kind,
+        title: 'Delivery available',
+        body:
+          pay > 0
+            ? `Collect from ${kitchen} - ${rands(pay)}.`
+            : `Collect from ${kitchen}.`,
+      };
+    }
 
     case 'order_cancelled': {
       const refund = facts.refundedAmount ?? 0;

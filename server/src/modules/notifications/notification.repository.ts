@@ -19,11 +19,16 @@ const notifications = () => db.collection(Collections.notifications);
 const devices = () => db.collection(Collections.deviceTokens);
 
 /**
- * Store a notification, once.
+ * Store a notification, once per person.
  *
- * Keyed to the order and the moment, so the same event reported twice - a
- * retried request, a hook that runs again - writes one notification and
- * pushes it once. Returns false when it already existed.
+ * Keyed to the person, the order and the moment, so the same event reported
+ * twice - a retried request, a hook that runs again - writes one notification
+ * and pushes it once. Returns false when it already existed.
+ *
+ * The person is part of the key because one moment can concern several: a
+ * delivery becoming available is announced to every driver, and keying on the
+ * order and kind alone would give the notification to whichever driver was
+ * written first and silently drop the rest.
  */
 export async function createOnce(input: {
   userId: string;
@@ -31,7 +36,7 @@ export async function createOnce(input: {
   message: NotificationMessage;
 }): Promise<{ created: boolean; notification: Notification }> {
   const id = input.orderId
-    ? `${input.orderId}__${input.message.kind}`
+    ? `${input.userId}__${input.orderId}__${input.message.kind}`
     : `${input.userId}__${input.message.kind}__${Date.now()}`;
   const ref = notifications().doc(id);
 
