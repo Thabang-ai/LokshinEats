@@ -90,9 +90,22 @@ const ledger = await db
   .get();
 
 console.log(`  --- wallet entries: ${ledger.size}`);
-for (const entry of ledger.docs) {
-  const t = entry.data();
+// Sorted as written, and showing which balance each entry moved: a wallet
+// has a pending and an available side, so the pair that releases a kitchen's
+// money on delivery reads as "+55.17 available, -55.17 pending" rather than
+// as a baffling pair that cancels out.
+const entries = ledger.docs
+  .map((d) => d.data())
+  .sort(
+    (a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0),
+  );
+
+for (const t of entries) {
+  const wallet = t.walletId === 'platform' ? 'platform' : t.walletId.slice(0, 8);
   console.log(
-    `     ${String(t.type ?? t.kind ?? '?').padEnd(18)} ${rands(t.amount).padStart(10)}  wallet=${t.walletId}`,
+    `     ${String(t.type ?? '?').padEnd(16)}` +
+      ` ${rands(t.amount).padStart(10)}` +
+      ` ${String(t.balance ?? '?').padEnd(10)}` +
+      ` -> ${rands(t.balanceAfter).padStart(10)}  ${wallet}`,
   );
 }
