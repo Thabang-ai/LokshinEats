@@ -104,3 +104,50 @@ export async function list(options: {
   const snapshot = await query.limit(options.limit + 1).get();
   return buildPage(snapshot.docs.map(toUserProfile), options.limit);
 }
+
+/**
+ * Favourite kitchens.
+ *
+ * Stored as an array of store ids on the profile, under `favorites` — the
+ * spelling the web app has written since before the API existed. Renaming it
+ * would orphan every favourite anyone has saved, so the field keeps the
+ * spelling and the code around it reads however that file reads.
+ *
+ * arrayUnion and arrayRemove make these idempotent: favouriting twice leaves
+ * one entry, and un-favouriting something that was never there is not an
+ * error. That matters for a heart that can be tapped faster than the network
+ * answers.
+ */
+export async function listFavourites(uid: string): Promise<string[]> {
+  const snapshot = await collection().doc(uid).get();
+  const value = snapshot.get('favorites');
+  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+}
+
+export async function addFavourite(
+  uid: string,
+  storeId: string,
+): Promise<string[]> {
+  await collection().doc(uid).set(
+    {
+      favorites: FieldValue.arrayUnion(storeId),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return listFavourites(uid);
+}
+
+export async function removeFavourite(
+  uid: string,
+  storeId: string,
+): Promise<string[]> {
+  await collection().doc(uid).set(
+    {
+      favorites: FieldValue.arrayRemove(storeId),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return listFavourites(uid);
+}

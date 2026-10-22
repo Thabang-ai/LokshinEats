@@ -18,6 +18,7 @@ import type {
   UserProfile,
 } from './user.model';
 import * as repository from './user.repository';
+import * as storeRepository from '../stores/store.repository';
 
 const log = moduleLogger('users');
 
@@ -185,4 +186,46 @@ async function syncRoleClaim(uid: string, role: Role): Promise<void> {
     log.error({ uid, role, err: error }, 'Failed to set role claim.');
     throw ApiError.internal('Could not apply the role change. Try again.');
   }
+}
+
+/**
+ * The kitchens this customer has favourited.
+ *
+ * Ids only: a favourite is a bookmark, and the store it points at is fetched
+ * through the stores endpoints like any other. That also means a kitchen that
+ * closes or is removed simply stops appearing, rather than leaving a broken
+ * copy of itself on someone's list.
+ */
+export async function listFavourites(uid: string): Promise<string[]> {
+  return repository.listFavourites(uid);
+}
+
+/**
+ * Favourite a kitchen.
+ *
+ * The store has to exist. Without that check a typo, or a stale id from an
+ * app that has been open for a week, becomes a permanent entry on someone's
+ * list pointing at nothing.
+ */
+export async function addFavourite(
+  uid: string,
+  storeId: string,
+): Promise<string[]> {
+  const store = await storeRepository.findById(storeId);
+  if (!store) throw ApiError.notFound('No such kitchen.');
+
+  return repository.addFavourite(uid, storeId);
+}
+
+/**
+ * Un-favourite a kitchen.
+ *
+ * No existence check: a store that has since been removed is exactly the kind
+ * of thing someone needs to be able to take off their list.
+ */
+export async function removeFavourite(
+  uid: string,
+  storeId: string,
+): Promise<string[]> {
+  return repository.removeFavourite(uid, storeId);
 }

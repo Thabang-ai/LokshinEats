@@ -6,6 +6,9 @@
  * | POST   | /users/me             | any authenticated account   |
  * | GET    | /users/me             | any authenticated account   |
  * | PATCH  | /users/me             | any authenticated account   |
+ * | GET    | /users/me/favorites   | any authenticated account   |
+ * | PUT    | /users/me/favorites/:storeId | any authenticated account |
+ * | DELETE | /users/me/favorites/:storeId | any authenticated account |
  * | GET    | /users                | admin                       |
  * | GET    | /users/:id            | admin                       |
  * | PATCH  | /users/:id/role       | admin                       |
@@ -60,6 +63,52 @@ userRouter.patch(
   asyncHandler(async (req, res) => {
     const profile = await service.updateOwnProfile(requireAuth(req), req.body);
     res.json({ data: profile });
+  }),
+);
+
+/**
+ * Favourite kitchens.
+ *
+ * `favorites` keeps the spelling the web app has written since before the API
+ * existed - the path matches the field so the two never drift apart.
+ *
+ * PUT and DELETE rather than POST, because favouriting is idempotent: the
+ * heart in an app can be tapped twice before the first answer lands, and
+ * neither tap should be an error or leave a duplicate.
+ */
+const storeIdParamSchema = z.object({
+  storeId: z.string().trim().min(1, 'Which kitchen?'),
+});
+
+userRouter.get(
+  '/me/favorites',
+  asyncHandler(async (req, res) => {
+    const favourites = await service.listFavourites(requireAuth(req).uid);
+    res.json({ data: favourites });
+  }),
+);
+
+userRouter.put(
+  '/me/favorites/:storeId',
+  validate({ params: storeIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const favourites = await service.addFavourite(
+      requireAuth(req).uid,
+      req.params.storeId as string,
+    );
+    res.json({ data: favourites });
+  }),
+);
+
+userRouter.delete(
+  '/me/favorites/:storeId',
+  validate({ params: storeIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const favourites = await service.removeFavourite(
+      requireAuth(req).uid,
+      req.params.storeId as string,
+    );
+    res.json({ data: favourites });
   }),
 );
 
