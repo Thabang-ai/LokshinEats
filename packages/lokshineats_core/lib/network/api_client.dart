@@ -95,6 +95,24 @@ class ApiClient {
     decode: decode,
   );
 
+  /// Set something to a given state, however many times it is asked.
+  ///
+  /// For endpoints where repeating the call is not a mistake - favouriting a
+  /// kitchen that is already a favourite - so a button tapped twice before
+  /// the first answer lands is harmless.
+  Future<ApiResponse<T>> put<T>(
+    String path, {
+    Object? body,
+    bool authenticated = true,
+    required T Function(Object? json) decode,
+  }) => _send(
+    method: 'PUT',
+    path: path,
+    body: body,
+    authenticated: authenticated,
+    decode: decode,
+  );
+
   /// Remove something. The API answers a successful delete with 204 and no
   /// body, which [_send] turns into `decode(null)`.
   Future<void> delete(String path, {bool authenticated = true}) async {

@@ -11,6 +11,7 @@ import '../../cart/providers/cart_providers.dart';
 import '../../cart/widgets/cart_badge_button.dart';
 import '../../cart/widgets/quantity_stepper.dart';
 import '../../cart/widgets/view_basket_bar.dart';
+import '../../favourites/widgets/favourite_button.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
@@ -112,7 +113,14 @@ class _StoreAppBar extends StatelessWidget {
       // Over a photo the theme's own icon colour can vanish, so both the back
       // arrow and the basket are forced to the scrim's contrast colour.
       foregroundColor: Colors.white,
-      actions: const [CartBadgeButton(onSurface: Colors.white)],
+      actions: [
+        FavouriteButton(
+          storeId: store.id,
+          storeName: store.name,
+          onSurfaceImage: true,
+        ),
+        const CartBadgeButton(onSurface: Colors.white),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           store.name,

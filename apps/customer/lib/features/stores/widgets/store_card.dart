@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
+import '../../favourites/widgets/favourite_button.dart';
 import 'package:lokshineats_core/utils/money.dart';
 import '../models/store.dart';
 
@@ -156,6 +157,17 @@ class _Banner extends StatelessWidget {
                 ),
               ),
             ),
+
+          // Top right, over the photo, where the website puts it.
+          Positioned(
+            top: 8,
+            right: 8,
+            child: FavouriteButton(
+              storeId: store.id,
+              storeName: store.name,
+              onSurfaceImage: true,
+            ),
+          ),
         ],
       ),
     );

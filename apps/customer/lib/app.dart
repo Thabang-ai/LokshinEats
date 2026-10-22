@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
 import 'features/notifications/push/push_listener.dart';
-import 'features/stores/pages/stores_page.dart';
+import 'features/shell/pages/home_shell.dart';
 
 class LokshinEatsApp extends StatelessWidget {
   const LokshinEatsApp({super.key});
@@ -29,7 +29,7 @@ class LokshinEatsApp extends StatelessWidget {
       // ordered on an hour earlier. The dark scheme is still built, for
       // whenever the website grows one.
       themeMode: ThemeMode.light,
-      home: const StoresPage(),
+      home: const HomeShell(),
     );
   }
 }
