@@ -12,7 +12,7 @@ import 'package:lokshineats_core/widgets/async_states.dart';
 import '../../auth/pages/account_page.dart';
 import '../../cart/widgets/cart_badge_button.dart';
 import '../../orders/pages/your_orders_page.dart';
-import '../../notifications/widgets/notification_bell.dart';
+import 'package:lokshineats_core/notifications/notification_bell.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';

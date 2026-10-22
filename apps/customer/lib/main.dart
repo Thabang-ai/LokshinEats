@@ -13,6 +13,7 @@ import 'package:lokshineats_core/config/app_config.dart';
 import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
 
 import 'app.dart';
+import 'package:lokshineats_core/notifications/notifications_page.dart';
 import 'package:lokshineats_core/push/push_listener.dart';
 import 'package:lokshineats_core/push/push_messaging.dart';
 import 'package:lokshineats_core/push/push_registration.dart';
@@ -51,6 +52,7 @@ Future<void> main() async {
         pushAppProvider.overrideWithValue(customerPushApp),
         pushArrivedProvider.overrideWith(customerPushArrived),
         pushOpenedProvider.overrideWith(customerPushOpened),
+        notificationTapProvider.overrideWith(customerNotificationTap),
       ],
       child: const PushListener(child: LokshinEatsApp()),
     ),

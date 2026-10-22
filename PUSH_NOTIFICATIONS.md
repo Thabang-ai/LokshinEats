@@ -84,6 +84,19 @@ No endpoint hands a device token back to any client, including its owner.
 Android needs neither of the last two: the service-account credentials the
 API already has are enough.
 
+## Seeing a notification with push off
+
+Every app has the same inbox - the bell in the top bar, and a list behind it.
+That is what makes the system usable before push is switched on, and it is
+the only way a kitchen or a driver can see any of this today. Until the inbox
+moved into the shared package, those two apps had no way to show a
+notification at all.
+
+Tapping one is the app's own business: the customer app opens the order,
+because that is the screen with the delivery code on it; the kitchen and
+driver apps mark it read and leave you where you are, because their queue and
+board are already the screens the work lives on.
+
 ## Testing it on a phone
 
 With push still off, the inbox proves the whole chain:

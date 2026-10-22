@@ -15,11 +15,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/push/push_listener.dart';
+import 'package:lokshineats_core/notifications/notifications_page.dart';
 import 'package:lokshineats_core/push/push_messaging.dart';
 
 import '../../orders/pages/order_tracking_page.dart';
 import '../../orders/providers/order_tracking_providers.dart';
-import '../providers/notification_providers.dart';
+import 'package:lokshineats_core/notifications/notification_providers.dart';
 
 /// Which app this build is, for the device registration.
 const customerPushApp = PushApp.customer;
@@ -43,6 +44,18 @@ PushHandler customerPushOpened(Ref ref) => (message) {
   if (orderId == null) return;
 
   appNavigatorKey.currentState?.push(
+    MaterialPageRoute<void>(
+      builder: (_) => OrderTrackingPage(orderId: orderId),
+    ),
+  );
+};
+
+/// Tapping a notification opens the order it is about - which is what a
+/// customer who tapped "Your order is on the way" wants: the screen with
+/// their delivery code on it.
+NotificationTap customerNotificationTap(Ref ref) => (context, orderId) {
+  if (orderId == null) return;
+  Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => OrderTrackingPage(orderId: orderId),
     ),

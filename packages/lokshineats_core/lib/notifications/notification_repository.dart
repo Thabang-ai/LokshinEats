@@ -4,9 +4,9 @@
 /// send, so there is no way to ask about anyone else's.
 library;
 
-import 'package:lokshineats_core/network/api_client.dart';
+import '../network/api_client.dart';
 
-import '../models/app_notification.dart';
+import 'app_notification.dart';
 
 class InboxPage {
   const InboxPage({

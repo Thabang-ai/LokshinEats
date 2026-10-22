@@ -11,11 +11,11 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lokshineats_core/auth/auth_providers.dart';
-import 'package:lokshineats_core/providers.dart';
+import '../auth/auth_providers.dart';
+import '../providers.dart';
 
-import '../models/app_notification.dart';
-import '../repositories/notification_repository.dart';
+import 'app_notification.dart';
+import 'notification_repository.dart';
 
 Duration? _noRetry(int retryCount, Object error) => null;
 

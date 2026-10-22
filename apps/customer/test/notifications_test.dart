@@ -13,10 +13,11 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/network/api_client.dart';
 import 'package:lokshineats_core/providers.dart';
 
-import 'package:lokshineats_customer/features/notifications/models/app_notification.dart';
-import 'package:lokshineats_customer/features/notifications/pages/notifications_page.dart';
-import 'package:lokshineats_customer/features/notifications/repositories/notification_repository.dart';
-import 'package:lokshineats_customer/features/notifications/widgets/notification_bell.dart';
+import 'package:lokshineats_core/notifications/app_notification.dart';
+import 'package:lokshineats_core/notifications/notifications_page.dart';
+import 'package:lokshineats_customer/features/notifications/push/push_routing.dart';
+import 'package:lokshineats_core/notifications/notification_repository.dart';
+import 'package:lokshineats_core/notifications/notification_bell.dart';
 
 Map<String, dynamic> note({
   String id = 'n-1',
@@ -116,6 +117,9 @@ void main() {
         ProviderScope(
           overrides: [
             isSignedInProvider.overrideWithValue(true),
+            // Where a tapped notification goes is the app's to decide; the
+            // inbox itself only marks it read and hands over the order.
+            notificationTapProvider.overrideWith(customerNotificationTap),
             apiClientProvider.overrideWithValue(
               _client(
                 MockClient((request) async {

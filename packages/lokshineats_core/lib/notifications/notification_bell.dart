@@ -4,8 +4,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../pages/notifications_page.dart';
-import '../providers/notification_providers.dart';
+import 'notifications_page.dart';
+import 'notification_providers.dart';
 
 class NotificationBell extends ConsumerWidget {
   const NotificationBell({super.key});

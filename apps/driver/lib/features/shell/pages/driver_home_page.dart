@@ -10,6 +10,8 @@
 library;
 
 import 'package:flutter/material.dart';
+
+import 'package:lokshineats_core/notifications/notification_bell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_form_fields.dart';
@@ -41,7 +43,10 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     if (ref.watch(needsProfileProvider)) return const _FinishSignUp();
 
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_tab])),
+      appBar: AppBar(
+        title: Text(_titles[_tab]),
+        actions: const [NotificationBell()],
+      ),
       body: SafeArea(
         child: IndexedStack(
           index: _tab,

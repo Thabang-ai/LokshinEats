@@ -1,18 +1,30 @@
-/// What happened to the customer's orders, newest first.
+/// What happened, newest first. The same inbox in all three apps.
 ///
-/// Tapping one opens the order it is about - which is what a customer who
-/// tapped "Your order is on the way" wants: the screen with their delivery
-/// code on it.
+/// What tapping one does differs: a customer wants the order they are
+/// waiting for, with the delivery code on it; a kitchen or a driver wants
+/// the screen where that work lives. So the destination is supplied by the
+/// app through [notificationTapProvider], and this only marks it read and
+/// hands over the order it was about.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lokshineats_core/widgets/async_states.dart';
+import '../widgets/async_states.dart';
 
-import '../../orders/pages/order_tracking_page.dart';
-import '../models/app_notification.dart';
-import '../providers/notification_providers.dart';
+import 'app_notification.dart';
+import 'notification_providers.dart';
+
+/// What an app does when a notification is tapped.
+///
+/// Given the context it was tapped in and the order it concerns, if any. The
+/// default does nothing beyond marking it read, which is right for an app
+/// with nowhere in particular to go.
+typedef NotificationTap = void Function(BuildContext context, String? orderId);
+
+final notificationTapProvider = Provider<NotificationTap>(
+  (ref) => (context, orderId) {},
+);
 
 class NotificationsPage extends ConsumerWidget {
   const NotificationsPage({super.key});
@@ -124,13 +136,7 @@ class _NotificationTile extends ConsumerWidget {
             : null,
         onTap: () {
           ref.read(inboxProvider.notifier).markRead(notification.id);
-          final orderId = notification.orderId;
-          if (orderId == null) return;
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OrderTrackingPage(orderId: orderId),
-            ),
-          );
+          ref.read(notificationTapProvider)(context, notification.orderId);
         },
       ),
     );

@@ -7,6 +7,8 @@
 library;
 
 import 'package:flutter/material.dart';
+
+import 'package:lokshineats_core/notifications/notification_bell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_form_fields.dart';
@@ -60,7 +62,10 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
                   2 => 'Earnings',
                   _ => 'Kitchen',
                 }),
-                actions: [if (_tab == 0) const _OpenSwitch()],
+                actions: [
+                  const NotificationBell(),
+                  if (_tab == 0) const _OpenSwitch(),
+                ],
               ),
               body: SafeArea(
                 child: IndexedStack(
