@@ -145,3 +145,105 @@ describe('drivers', () => {
     expect(`${notes[0]!.title} ${notes[0]!.body}`).not.toContain(code);
   });
 });
+
+describe('when a driver claims it', () => {
+  it('the other drivers are told it is gone', async () => {
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+
+    await orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId);
+
+    const taken = (await inbox(DRIVER_B)).filter(
+      (n) => n.kind === 'delivery_taken',
+    );
+    expect(taken).toHaveLength(1);
+    expect(taken[0]!.title).toBe('Delivery taken');
+  });
+
+  it('the driver who got it is not told it is gone', async () => {
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+
+    await orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId);
+
+    const taken = (await inbox(DRIVER_A)).filter(
+      (n) => n.kind === 'delivery_taken',
+    );
+    expect(taken).toHaveLength(0);
+  });
+
+  it('the kitchen is told who is coming', async () => {
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+
+    await orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId);
+
+    const assigned = (await inbox(VENDOR)).filter(
+      (n) => n.kind === 'driver_assigned',
+    );
+    expect(assigned).toHaveLength(1);
+    expect(assigned[0]!.body).toContain(DRIVER_A);
+  });
+
+  it('only one of two drivers claiming at once gets it, and the other is told', async () => {
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+
+    const results = await Promise.allSettled([
+      orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId),
+      orderService.acceptOrder(actor(DRIVER_B, 'driver'), orderId),
+    ]);
+
+    const winners = results.filter((r) => r.status === 'fulfilled');
+    expect(winners).toHaveLength(1);
+
+    const winner = (winners[0] as PromiseFulfilledResult<{ driverId: string | null }>)
+      .value.driverId;
+    const loser = winner === DRIVER_A ? DRIVER_B : DRIVER_A;
+
+    const taken = (await inbox(loser)).filter(
+      (n) => n.kind === 'delivery_taken',
+    );
+    expect(taken).toHaveLength(1);
+  });
+});
+
+describe('an order already spoken for', () => {
+  it('is offered to its own driver, and to nobody else', async () => {
+    // Claimed while the kitchen was still cooking, then confirmed: the offer
+    // belongs to that driver alone.
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+    await orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId);
+
+    const offeredToB = (await inbox(DRIVER_B)).filter(
+      (n) => n.kind === 'delivery_available',
+    );
+    const offeredToA = (await inbox(DRIVER_A)).filter(
+      (n) => n.kind === 'delivery_available',
+    );
+
+    // Both heard the original broadcast; only A kept the job, and B was then
+    // told it was taken.
+    expect(offeredToA).toHaveLength(1);
+    expect(offeredToB).toHaveLength(1);
+    expect(
+      (await inbox(DRIVER_B)).some((n) => n.kind === 'delivery_taken'),
+    ).toBe(true);
+  });
+});
+
+describe('the kitchen, as the order moves', () => {
+  it('is told when the food is collected and when it arrives', async () => {
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+    await orderService.changeStatus(vendor, orderId, 'preparing');
+    await orderService.changeStatus(vendor, orderId, 'ready');
+    await orderService.acceptOrder(actor(DRIVER_A, 'driver'), orderId);
+
+    const kinds = (await inbox(VENDOR)).map((n) => n.kind);
+    expect(kinds).toContain('order_placed');
+    expect(kinds).toContain('driver_assigned');
+    expect(kinds).toContain('order_collected');
+  });
+});

@@ -32,6 +32,10 @@ export const NOTIFICATION_KINDS = [
   // To the kitchen, and to drivers.
   'order_placed',
   'delivery_available',
+  'delivery_taken',
+  'driver_assigned',
+  'order_collected',
+  'order_completed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -67,6 +71,10 @@ export type OrderFacts = {
   itemCount?: number;
   /** What the delivery pays, which is what decides a driver to claim it. */
   driverEarnings?: number;
+  /** Who is collecting, for the kitchen expecting them. */
+  driverName?: string;
+  /** What the kitchen is owed for the order, once delivery releases it. */
+  vendorPayout?: number;
 };
 
 function rands(amount: number): string {
@@ -126,6 +134,45 @@ export function messageFor(
           pay > 0
             ? `Collect from ${kitchen} - ${rands(pay)}.`
             : `Collect from ${kitchen}.`,
+      };
+    }
+
+    case 'delivery_taken':
+      return {
+        kind,
+        title: 'Delivery taken',
+        // Said plainly rather than left to a board that refreshes later: a
+        // driver who sets off for a job someone else has wastes a trip.
+        body: `Another driver got the ${kitchen} delivery.`,
+      };
+
+    case 'driver_assigned': {
+      const driver = facts.driverName?.trim();
+      return {
+        kind,
+        title: 'A driver is coming',
+        body: driver
+          ? `${driver} is on the way to collect this order.`
+          : 'A driver is on the way to collect this order.',
+      };
+    }
+
+    case 'order_collected':
+      return {
+        kind,
+        title: 'Order collected',
+        body: 'The driver has the food and is on the way to the customer.',
+      };
+
+    case 'order_completed': {
+      const payout = facts.vendorPayout ?? 0;
+      return {
+        kind,
+        title: 'Delivered',
+        body:
+          payout > 0
+            ? `${rands(payout)} has been released to your wallet.`
+            : 'The customer has their food.',
       };
     }
 

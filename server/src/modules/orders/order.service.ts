@@ -410,7 +410,21 @@ export async function changeStatus(
     if (next === 'confirmed' && !updated.driverId) {
       await notifyDriversOfDelivery(updated);
     }
+    if (next === 'confirmed' && updated.driverId) {
+      // Already spoken for, so the offer is private rather than a broadcast
+      // that would invite drivers to race for work that is not on offer.
+      await notificationService.notifyDrivers({
+        driverIds: [updated.driverId],
+        orderId,
+        kind: 'delivery_available',
+        facts: {
+          storeName: updated.storeName,
+          driverEarnings: updated.driverPayout,
+        },
+      });
+    }
   } else if (next === 'picked_up') {
+    await notifyVendorOfOrder(updated, 'order_collected');
     await notificationService.notifyCustomer({
       customerId: updated.customerId,
       orderId,
@@ -442,6 +456,20 @@ export async function acceptOrder(
       kind: 'order_on_the_way',
       facts: { storeName: assigned.storeName },
     });
+  }
+
+  // Everyone else who was offered this delivery is told it is gone. A driver
+  // who sets off for a job another driver already has wastes a trip, and the
+  // board only tells them when they next refresh it.
+  await notifyOtherDriversItIsTaken(assigned, caller.uid);
+
+  // And the kitchen learns who is coming for it.
+  await notifyVendorOfOrder(assigned, 'driver_assigned', {
+    driverName: await driverNameFor(caller.uid),
+  });
+
+  if (assigned.status === 'picked_up') {
+    await notifyVendorOfOrder(assigned, 'order_collected');
   }
 
   return assigned;
@@ -579,6 +607,10 @@ export async function confirmDelivery(
     facts: { storeName: result.order.storeName },
   });
 
+  // The kitchen's side of the same moment: the food arrived, and the money
+  // they were owed has moved from pending to theirs.
+  await notifyVendorOfOrder(result.order, 'order_completed');
+
   return result;
 }
 
@@ -618,5 +650,59 @@ async function notifyDriversOfDelivery(order: Order): Promise<void> {
       storeName: order.storeName,
       driverEarnings: order.driverPayout,
     },
+  });
+}
+
+/** The name a kitchen would recognise a driver by, or null. */
+async function driverNameFor(driverId: string): Promise<string | undefined> {
+  const profile = await userRepository.findById(driverId);
+  return profile?.displayName || undefined;
+}
+
+/**
+ * Tell the kitchen something about one of its orders.
+ *
+ * The store owner has to be looked up: an order carries the store's id and
+ * name, not the person behind it.
+ */
+async function notifyVendorOfOrder(
+  order: Order,
+  kind: 'driver_assigned' | 'order_collected' | 'order_completed',
+  extraFacts: { driverName?: string } = {},
+): Promise<void> {
+  const store = await storeRepository.findById(order.storeId);
+  if (!store) return;
+
+  await notificationService.notifyVendor({
+    vendorId: store.ownerId,
+    orderId: order.id,
+    kind,
+    facts: {
+      storeName: order.storeName,
+      vendorPayout: order.vendorPayout,
+      ...extraFacts,
+    },
+  });
+}
+
+/**
+ * Tell the drivers who did not get it that it is gone.
+ *
+ * Everyone but the one who claimed it, because they are the only driver for
+ * whom this is not news.
+ */
+async function notifyOtherDriversItIsTaken(
+  order: Order,
+  claimedBy: string,
+): Promise<void> {
+  const drivers = await userRepository.list({ limit: 200, role: 'driver' });
+
+  await notificationService.notifyDrivers({
+    driverIds: drivers.items
+      .map((driver) => driver.id)
+      .filter((id) => id !== claimedBy),
+    orderId: order.id,
+    kind: 'delivery_taken',
+    facts: { storeName: order.storeName },
   });
 }
