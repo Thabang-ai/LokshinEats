@@ -36,6 +36,7 @@ export const NOTIFICATION_KINDS = [
   'driver_assigned',
   'order_collected',
   'order_completed',
+  'cash_handover_claimed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -75,6 +76,8 @@ export type OrderFacts = {
   driverName?: string;
   /** What the kitchen is owed for the order, once delivery releases it. */
   vendorPayout?: number;
+  /** What a driver says they handed the kitchen in cash. */
+  cashHandedOver?: number;
 };
 
 function rands(amount: number): string {
@@ -173,6 +176,19 @@ export function messageFor(
           payout > 0
             ? `${rands(payout)} has been released to your wallet.`
             : 'The customer has their food.',
+      };
+    }
+
+    case 'cash_handover_claimed': {
+      const amount = facts.cashHandedOver ?? 0;
+      return {
+        kind,
+        // The one moment in an order that needs the kitchen to answer: until
+        // they confirm it, the driver's balance still says they owe it.
+        title: 'Confirm the cash',
+        body: amount > 0
+            ? `Your driver says they paid you ${rands(amount)}. Confirm you got it.`
+            : 'Your driver says they paid you for this order. Confirm you got it.',
       };
     }
 

@@ -247,3 +247,32 @@ describe('the kitchen, as the order moves', () => {
     expect(kinds).toContain('order_collected');
   });
 });
+
+describe('the cash a driver says they handed over', () => {
+  it('asks the kitchen to confirm it', async () => {
+    // Until the kitchen answers, the driver's balance still says they owe
+    // the money - so this cannot depend on somebody watching the queue.
+    const orderId = await placeOrder();
+    await orderService.changeStatus(vendor, orderId, 'confirmed');
+    await orderService.changeStatus(vendor, orderId, 'preparing');
+    await orderService.changeStatus(vendor, orderId, 'ready');
+
+    const driver = actor(DRIVER_A, 'driver');
+    await orderService.acceptOrder(driver, orderId);
+
+    const secret = await db.collection('orderSecrets').doc(orderId).get();
+    await orderService.confirmDelivery(
+      driver,
+      orderId,
+      String(secret.get('code')),
+    );
+    await orderService.recordCashHandover(driver, orderId);
+
+    const asked = (await inbox(VENDOR)).filter(
+      (n) => n.kind === 'cash_handover_claimed',
+    );
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.title).toBe('Confirm the cash');
+    expect(asked[0]!.body).toContain('R');
+  });
+});

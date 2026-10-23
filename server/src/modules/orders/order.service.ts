@@ -501,6 +501,14 @@ export async function recordCashHandover(
     { orderId, driverId: caller.uid, amount: order.cashGivenAmount },
     'Driver recorded cash handover.',
   );
+
+  // The kitchen has to answer this one: until they confirm it, the driver's
+  // balance still says they owe the money. Leaving it to whether somebody
+  // happens to look at the queue is how a driver stays wrongly in debt.
+  await notifyVendorOfOrder(order, 'cash_handover_claimed', {
+    cashHandedOver: order.cashGivenAmount ?? undefined,
+  });
+
   return order;
 }
 
@@ -667,8 +675,12 @@ async function driverNameFor(driverId: string): Promise<string | undefined> {
  */
 async function notifyVendorOfOrder(
   order: Order,
-  kind: 'driver_assigned' | 'order_collected' | 'order_completed',
-  extraFacts: { driverName?: string } = {},
+  kind:
+    | 'driver_assigned'
+    | 'order_collected'
+    | 'order_completed'
+    | 'cash_handover_claimed',
+  extraFacts: { driverName?: string; cashHandedOver?: number } = {},
 ): Promise<void> {
   const store = await storeRepository.findById(order.storeId);
   if (!store) return;
