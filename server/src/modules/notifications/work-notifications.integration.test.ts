@@ -15,6 +15,7 @@ import {
   seedProduct,
   seedStore,
   seedUser,
+  seedApprovedDriver,
 } from '../../test/support';
 import { registerPaymentProviders } from '../payments/payment.bootstrap';
 import { resetProviders } from '../payments/payment.provider';
@@ -49,6 +50,8 @@ beforeEach(async () => {
     seedUser({ uid: VENDOR, role: 'vendor' }),
     seedUser({ uid: DRIVER_A, role: 'driver' }),
     seedUser({ uid: DRIVER_B, role: 'driver' }),
+    seedApprovedDriver(DRIVER_A),
+    seedApprovedDriver(DRIVER_B),
   ]);
 });
 

@@ -37,6 +37,9 @@ export const NOTIFICATION_KINDS = [
   'order_collected',
   'order_completed',
   'cash_handover_claimed',
+  // To a driver, about themselves rather than about an order.
+  'driver_approved',
+  'driver_rejected',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -78,6 +81,8 @@ export type OrderFacts = {
   vendorPayout?: number;
   /** What a driver says they handed the kitchen in cash. */
   cashHandedOver?: number;
+  /** Why an application was turned down, in the admin's own words. */
+  decisionReason?: string;
 };
 
 function rands(amount: number): string {
@@ -191,6 +196,24 @@ export function messageFor(
             : 'Your driver says they paid you for this order. Confirm you got it.',
       };
     }
+
+    case 'driver_approved':
+      return {
+        kind,
+        title: 'You are approved',
+        body: 'You can start taking deliveries now.',
+      };
+
+    case 'driver_rejected':
+      return {
+        kind,
+        title: 'Your application was turned down',
+        // The reason, always: an application that fails silently is one the
+        // person submits again unchanged.
+        body:
+          facts.decisionReason?.trim() ||
+          'Check your details and apply again.',
+      };
 
     case 'order_cancelled': {
       const refund = facts.refundedAmount ?? 0;

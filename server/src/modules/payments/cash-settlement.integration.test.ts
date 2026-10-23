@@ -21,6 +21,7 @@ import {
   seedOrder,
   seedStore,
   seedUser,
+  seedApprovedDriver,
 } from '../../test/support';
 import { registerPaymentProviders } from './payment.bootstrap';
 import { resetProviders } from './payment.provider';
@@ -45,6 +46,7 @@ beforeAll(() => {
 beforeEach(async () => {
   await resetFirestore();
   await seedUser({ uid: CUSTOMER, role: 'customer' });
+  await seedApprovedDriver(DRIVER);
 });
 
 /** A cash order the driver has collected from the kitchen. */

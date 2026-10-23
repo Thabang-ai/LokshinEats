@@ -22,6 +22,7 @@ import {
   resetFirestore,
   seedOrder,
   seedStore,
+  seedApprovedDriver,
 } from '../../test/support';
 import { registerPaymentProviders } from '../payments/payment.bootstrap';
 import { getProvider, resetProviders } from '../payments/payment.provider';
@@ -97,6 +98,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await resetFirestore();
+  await seedApprovedDriver(DRIVER);
 });
 
 describe('tier 1: pending or accepted, before prep', () => {

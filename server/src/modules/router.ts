@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { driverRouter } from './drivers/driver.routes';
 import { notificationRouter } from './notifications/notification.routes';
 import { orderRouter } from './orders/order.routes';
 import { registerPaymentProviders } from './payments/payment.bootstrap';
@@ -49,6 +50,7 @@ apiRouter.get('/config', (_req, res) => {
 });
 
 apiRouter.use('/users', userRouter);
+apiRouter.use('/drivers', driverRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/orders', orderRouter);

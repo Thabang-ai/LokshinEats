@@ -18,6 +18,7 @@ import {
   seedProduct,
   seedStore,
   seedUser,
+  seedApprovedDriver,
 } from '../../test/support';
 import {
   assertAuthEmulator,
@@ -80,6 +81,9 @@ beforeEach(async () => {
     seedUser({ uid: 'vend-1', role: 'vendor' }),
     seedUser({ uid: 'drv-1', role: 'driver' }),
     seedUser({ uid: 'admin-1', role: 'admin' }),
+    // Claiming needs an approved driver; verification is the drivers suite.
+    seedApprovedDriver('drv-1'),
+    seedApprovedDriver('drv-2'),
   ]);
 
   storeId = await seedStore({ ownerId: 'vend-1', deliveryFee: 20 });

@@ -16,6 +16,7 @@ import { estimateOrderDistanceKm } from '../../lib/geo';
 import { createDeliveryCode } from '../../lib/otp';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
+import * as driverService from '../drivers/driver.service';
 import * as paymentService from '../payments/payment.service';
 import { cardPaymentsEnabled } from '../payments/payment.provider';
 import * as productRepository from '../products/product.repository';
@@ -443,6 +444,10 @@ export async function acceptOrder(
 ): Promise<Order> {
   const order = await repository.findById(orderId, 'driver');
   if (!order) throw ApiError.notFound('No such order.');
+
+  // Checked here rather than at sign-in: this is the moment it matters, and
+  // an approval can be withdrawn while a driver has the app open.
+  await driverService.assertApproved(caller.uid);
 
   const assigned = await repository.assignDriver(orderId, caller.uid);
 

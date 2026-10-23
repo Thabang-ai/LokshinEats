@@ -20,6 +20,7 @@ import {
   seedProduct,
   seedStore,
   seedUser,
+  seedApprovedDriver,
 } from '../../test/support';
 import { MAX_OTP_ATTEMPTS } from '../../lib/otp';
 import { registerPaymentProviders } from '../payments/payment.bootstrap';
@@ -50,6 +51,9 @@ beforeAll(() => {
 beforeEach(async () => {
   await resetFirestore();
   await seedUser({ uid: CUSTOMER, role: 'customer', displayName: 'Thabo' });
+  // Claiming a delivery needs an approved driver; verification itself is
+  // covered in the drivers suite.
+  await seedApprovedDriver(DRIVER);
 });
 
 describe('placeOrder pricing', () => {

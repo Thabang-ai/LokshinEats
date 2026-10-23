@@ -80,7 +80,8 @@ export async function notifyVendor(input: {
  */
 export async function notifyDrivers(input: {
   driverIds: string[];
-  orderId: string;
+  /** Null for something that is about the driver rather than an order. */
+  orderId: string | null;
   kind: NotificationKind;
   facts: OrderFacts;
 }): Promise<void> {
@@ -105,7 +106,7 @@ export async function notifyDrivers(input: {
  */
 async function notifyUser(input: {
   userId: string;
-  orderId: string;
+  orderId: string | null;
   kind: NotificationKind;
   facts: OrderFacts;
   push?: boolean;

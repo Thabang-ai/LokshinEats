@@ -19,6 +19,7 @@ import {
   seedOrder,
   seedStore,
   seedUser,
+  seedApprovedDriver,
 } from '../../test/support';
 import {
   assertAuthEmulator,
@@ -79,6 +80,7 @@ beforeAll(() => {
 beforeEach(async () => {
   await resetFirestore();
   await seedUser({ uid: CUSTOMER, role: 'customer' });
+  await seedApprovedDriver(DRIVER);
 });
 
 afterEach(() => resetPushSender());

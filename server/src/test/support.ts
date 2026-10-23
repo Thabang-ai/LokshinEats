@@ -55,6 +55,34 @@ export function actor(uid: string, role: Role, email = `${uid}@example.test`): A
   return { uid, email, role, roleFromClaim: true };
 }
 
+/**
+ * A driver who has been checked and may work.
+ *
+ * Needed by anything that claims a delivery: the API refuses an unapproved
+ * driver, which is the point of the verification module. Tests that exercise
+ * *that* refusal write their own record instead.
+ */
+export async function seedApprovedDriver(
+  uid: string,
+  vehicleType: 'bicycle' | 'motorbike' | 'car' = 'motorbike',
+): Promise<void> {
+  await db
+    .collection(Collections.drivers)
+    .doc(uid)
+    .set({
+      vehicleType,
+      licenceNumber: vehicleType === 'bicycle' ? null : 'DL-TEST-1',
+      vehicleRegistration: vehicleType === 'bicycle' ? null : 'CA 000 000',
+      idNumber: '9203145800084',
+      status: 'approved',
+      decisionReason: null,
+      decidedBy: 'admin-test',
+      decidedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+}
+
 export async function seedUser(input: {
   uid: string;
   role: Role;
