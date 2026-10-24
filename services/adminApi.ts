@@ -292,3 +292,56 @@ export async function fetchUser(userId: string): Promise<AdminUser> {
   );
   return response.data;
 }
+
+// ---------------------------------------------------------------------------
+// Driver verification
+// ---------------------------------------------------------------------------
+
+export type DriverVerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export type DriverApplication = {
+  id: string;
+  vehicleType: 'bicycle' | 'motorbike' | 'car';
+  licenceNumber: string | null;
+  vehicleRegistration: string | null;
+  idNumber: string;
+  status: DriverVerificationStatus;
+  decisionReason: string | null;
+  decidedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+/**
+ * Driver applications, newest first.
+ *
+ * Nobody delivers until one of these is approved, so an untended queue is
+ * drivers who cannot work.
+ */
+export async function fetchDriverApplications(
+  status?: DriverVerificationStatus,
+): Promise<DriverApplication[]> {
+  const query = status ? `?status=${status}` : '';
+  const response = await apiRequest<DriverApplication[]>(
+    `/api/v1/drivers${query}`,
+  );
+  return response.data ?? [];
+}
+
+/**
+ * Approve or turn down an application.
+ *
+ * A refusal needs a reason: the driver is shown it, and one that says nothing
+ * is one they will send again unchanged.
+ */
+export async function decideDriverApplication(
+  driverId: string,
+  decision: 'approve' | 'reject',
+  reason?: string,
+): Promise<DriverApplication> {
+  const response = await apiRequest<DriverApplication>(
+    `/api/v1/drivers/${driverId}/verification`,
+    { method: 'PATCH', body: { decision, ...(reason ? { reason } : {}) } },
+  );
+  return response.data;
+}

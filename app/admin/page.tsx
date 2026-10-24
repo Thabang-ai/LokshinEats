@@ -356,6 +356,12 @@ export default function AdminConsole() {
                 <Users className="w-4 h-4" /> People
               </Link>
               <Link
+                href="/admin/drivers"
+                className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
+              >
+                <Bike className="w-4 h-4" /> Drivers
+              </Link>
+              <Link
                 href="/admin/wallets"
                 className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
               >
