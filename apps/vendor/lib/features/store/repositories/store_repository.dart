@@ -73,6 +73,34 @@ class StoreRepository {
     return response.data;
   }
 
+  /// Change what customers see: the name over the kitchen, where it is, what
+  /// it cooks, and what delivery costs.
+  ///
+  /// Only what changed is sent. A field left out keeps its current value,
+  /// which is what stops an edit screen quietly blanking something it did not
+  /// ask about.
+  Future<Store> updateDetails({
+    String? name,
+    String? cuisine,
+    String? description,
+    String? address,
+    String? city,
+    String? phone,
+    String? deliveryTime,
+    double? deliveryFee,
+    double? minOrderAmount,
+  }) => _update({
+    if (name != null) 'name': name.trim(),
+    if (cuisine != null) 'cuisine': cuisine.trim(),
+    if (description != null) 'description': description.trim(),
+    if (address != null) 'address': address.trim(),
+    if (city != null) 'city': city.trim(),
+    if (phone != null) 'phone': phone.replaceAll(' ', ''),
+    if (deliveryTime != null) 'deliveryTime': deliveryTime.trim(),
+    'deliveryFee': ?deliveryFee,
+    'minOrderAmount': ?minOrderAmount,
+  });
+
   /// Open or close the kitchen to new orders.
   Future<Store> setOpen({required bool isOpen}) => _update({'isOpen': isOpen});
 

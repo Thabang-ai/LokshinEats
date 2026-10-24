@@ -57,6 +57,35 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
   }
 
   /// Open or close the kitchen to new orders.
+  /// Save changes to the storefront and keep the new version on screen.
+  Future<void> updateDetails({
+    String? name,
+    String? cuisine,
+    String? description,
+    String? address,
+    String? city,
+    String? phone,
+    String? deliveryTime,
+    double? deliveryFee,
+    double? minOrderAmount,
+  }) async {
+    final updated = await ref
+        .read(storeRepositoryProvider)
+        .updateDetails(
+          name: name,
+          cuisine: cuisine,
+          description: description,
+          address: address,
+          city: city,
+          phone: phone,
+          deliveryTime: deliveryTime,
+          deliveryFee: deliveryFee,
+          minOrderAmount: minOrderAmount,
+        );
+
+    if (ref.mounted) state = AsyncData(updated);
+  }
+
   Future<void> setOpen(bool isOpen) async {
     final current = state.value;
     if (current == null) return;

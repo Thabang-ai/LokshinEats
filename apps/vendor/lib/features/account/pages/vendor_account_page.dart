@@ -12,6 +12,8 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/utils/money.dart';
 
+import '../../store/pages/edit_store_page.dart';
+
 import '../../store/providers/store_providers.dart';
 
 class VendorAccountPage extends ConsumerWidget {
@@ -60,6 +62,17 @@ class VendorAccountPage extends ConsumerWidget {
         _Row(label: 'Delivery time', value: store.deliveryTime),
 
         const SizedBox(height: 28),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => EditStorePage(store: store),
+            ),
+          ),
+          icon: const Icon(Icons.storefront_rounded),
+          label: const Text('Edit your kitchen'),
+        ),
+
+        const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
           icon: const Icon(Icons.logout_rounded),
