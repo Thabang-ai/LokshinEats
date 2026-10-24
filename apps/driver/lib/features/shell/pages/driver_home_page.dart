@@ -19,6 +19,8 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/auth/sign_in_page.dart';
 
 import '../../account/pages/driver_account_page.dart';
+import '../../verification/providers/verification_providers.dart';
+import '../../verification/pages/verification_page.dart';
 import '../../earnings/pages/earnings_page.dart';
 import '../../orders/pages/available_deliveries_page.dart';
 import '../../orders/pages/my_deliveries_page.dart';
@@ -41,6 +43,16 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     if (!signedIn) return const SignInPage();
 
     if (ref.watch(needsProfileProvider)) return const _FinishSignUp();
+
+    // Nobody delivers until a human has approved them, so the app does not
+    // pretend otherwise: a driver who has not been approved gets the form or
+    // the waiting screen instead of a board of work they would be refused.
+    // While the answer is still loading the board stays put, because
+    // flashing a sign-up screen at an approved driver on every cold start
+    // would be worse than a moment's wait.
+    final verification = ref.watch(verificationProvider);
+    final mayDeliver = verification.value?.mayDeliver ?? false;
+    if (verification.hasValue && !mayDeliver) return const VerificationPage();
 
     return Scaffold(
       appBar: AppBar(
