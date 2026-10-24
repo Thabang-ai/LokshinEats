@@ -4,12 +4,14 @@
 // Allows drivers to register as delivery partners
 
 import { useState } from 'react';
-import { Upload, MapPin, Phone, Mail, User, ArrowLeft, Car, Bike } from 'lucide-react';
+import { MapPin, Phone, Mail, User, ArrowLeft, Car, Bike } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../../firebase/config';
 import { doc, setDoc } from 'firebase/firestore';
+import { ApiError } from '../../../services/apiClient';
+import { submitDriverDetails } from '../../../services/driverApi';
 
 export default function DriverRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -27,10 +29,6 @@ export default function DriverRegistrationPage() {
     accountType: 'savings' as 'savings' | 'checking',
   });
 
-  const [idDocument, setIdDocument] = useState<File | null>(null);
-  const [licenseDocument, setLicenseDocument] = useState<File | null>(null);
-  const [vehicleRegistrationDocument, setVehicleRegistrationDocument] = useState<File | null>(null);
-  const [proofOfAddress, setProofOfAddress] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -45,38 +43,57 @@ export default function DriverRegistrationPage() {
     setIsLoading(true);
 
     try {
-      // Update user role to driver in Firestore. Banking details live here,
-      // on the private users/{uid} doc, NOT on the public drivers/{driverId}
-      // doc (firestore.rules makes `drivers` world-readable — customers see
-      // who's bringing their food — so a bank account number belongs on the
-      // owner/admin-only `users` doc instead, same as the vendor payout fix).
-      if (auth.currentUser) {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), {
+      if (!auth.currentUser) {
+        toast.error('Sign in first, then apply to deliver.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Everything the platform decides with - what they drive, their licence
+      // and registration - goes to the API, which validates it and puts the
+      // application in the review queue. Nobody delivers until an admin
+      // approves it.
+      await submitDriverDetails({
+        vehicleType: formData.vehicleType,
+        idNumber: formData.idNumber,
+        licenceNumber: formData.licenseNumber,
+        vehicleRegistration: formData.vehicleRegistration,
+      });
+
+      // Contact and payout details stay on the person's own profile. Banking
+      // details are deliberately not on the world-readable drivers document.
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid),
+        {
           role: 'driver',
           email: formData.email,
           phone: formData.phone,
           firstName: formData.firstName,
           lastName: formData.lastName,
-          vehicleType: formData.vehicleType,
           bankName: formData.bankName,
           accountHolderName: formData.accountHolderName,
           accountNumber: formData.accountNumber,
           accountType: formData.accountType,
           updatedAt: new Date(),
-        }, { merge: true });
-      }
+        },
+        { merge: true },
+      );
 
-      // Simulate registration (will be replaced with Firebase)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      toast.success('Registration submitted! We\'ll review your application within 24-48 hours 🎉');
+      // What actually happens now, rather than a wait invented to look busy.
+      toast.success(
+        'Sent for checking. You will be told in the driver app when you are approved.',
+      );
       setIsLoading(false);
-
-      // Redirect to dashboard
       window.location.href = '/driver/dashboard';
     } catch (error) {
       console.error('Registration error:', error);
-      toast.error('Failed to submit registration');
+      // The API says which field is wrong and why; passing that on is the
+      // difference between a fixable form and a dead end.
+      toast.error(
+        error instanceof ApiError
+          ? error.firstFieldError ?? error.message
+          : 'Could not send your application. Please try again.',
+      );
       setIsLoading(false);
     }
   };
@@ -322,104 +339,15 @@ export default function DriverRegistrationPage() {
               </div>
             </div>
 
-            {/* Document Uploads */}
-            <div>
-              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                <Upload className="w-5 h-5 text-primary" />
-                Required Documents
-              </h2>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold mb-2">ID Document</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setIdDocument(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="id-upload"
-                    />
-                    <label htmlFor="id-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">
-                        {idDocument ? idDocument.name : 'Tap to take photo or upload ID document'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                    </label>
-                  </div>
-                </div>
-
-                {formData.vehicleType !== 'bicycle' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-semibold mb-2">Driver's License</label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(e) => setLicenseDocument(e.target.files?.[0] || null)}
-                          className="hidden"
-                          id="license-upload"
-                        />
-                        <label htmlFor="license-upload" className="cursor-pointer">
-                          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">
-                            {licenseDocument ? licenseDocument.name : "Tap to take photo or upload driver's license"}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold mb-2">Vehicle Registration</label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(e) => setVehicleRegistrationDocument(e.target.files?.[0] || null)}
-                          className="hidden"
-                          id="vehicle-upload"
-                        />
-                        <label htmlFor="vehicle-upload" className="cursor-pointer">
-                          <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-600">
-                            {vehicleRegistrationDocument
-                              ? vehicleRegistrationDocument.name
-                              : 'Tap to take photo or upload vehicle registration'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                        </label>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Proof of Address</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setProofOfAddress(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="address-upload"
-                    />
-                    <label htmlFor="address-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">
-                        {proofOfAddress ? proofOfAddress.name : 'Tap to take photo or upload proof of address'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">Camera enabled</p>
-                    </label>
-                  </div>
-                </div>
-              </div>
+            {/* What happens to these details */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+              <h2 className="text-lg font-bold mb-2">Before you can deliver</h2>
+              <p className="text-sm text-amber-900">
+                LokshinEats checks these details before approving you. You will
+                be told in the driver app when that is done, and you can take
+                deliveries from that moment. Keep your licence and vehicle
+                registration with you while you work — we may ask to see them.
+              </p>
             </div>
 
             {/* Terms */}
