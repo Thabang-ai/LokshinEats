@@ -19,7 +19,6 @@ import 'package:lokshineats_core/providers.dart';
 
 import 'package:lokshineats_driver/features/verification/models/driver_verification.dart';
 import 'package:lokshineats_driver/features/verification/pages/verification_page.dart';
-import 'package:lokshineats_driver/features/verification/providers/verification_providers.dart';
 
 http.Response _json(int status, Object? body) => http.Response(
   jsonEncode(body),

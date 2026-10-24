@@ -45,14 +45,23 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     if (ref.watch(needsProfileProvider)) return const _FinishSignUp();
 
     // Nobody delivers until a human has approved them, so the app does not
-    // pretend otherwise: a driver who has not been approved gets the form or
-    // the waiting screen instead of a board of work they would be refused.
-    // While the answer is still loading the board stays put, because
-    // flashing a sign-up screen at an approved driver on every cold start
-    // would be worse than a moment's wait.
+    // pretend otherwise: an unapproved driver gets the form or the waiting
+    // screen rather than a board of work they would be refused.
+    //
+    // "Not yet known" is not "approved". Treating it as approved dropped the
+    // driver into the tabs for a moment on every cold start - and again
+    // whenever this provider rebuilt, which Firebase causes by re-emitting
+    // the signed-in user when it refreshes a token. A driver filling in the
+    // form would find it replaced by whichever tab they were last on.
     final verification = ref.watch(verificationProvider);
-    final mayDeliver = verification.value?.mayDeliver ?? false;
-    if (verification.hasValue && !mayDeliver) return const VerificationPage();
+
+    if (verification.isLoading && !verification.hasValue) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (verification.value?.mayDeliver != true) {
+      return const VerificationPage();
+    }
 
     return Scaffold(
       appBar: AppBar(
