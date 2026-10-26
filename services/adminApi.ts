@@ -307,6 +307,8 @@ export type DriverApplication = {
   idNumber: string;
   status: DriverVerificationStatus;
   decisionReason: string | null;
+  /** The admin who decided it. An approval is somebody's decision. */
+  decidedBy: string | null;
   decidedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;

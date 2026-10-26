@@ -37,6 +37,25 @@ const STATUS_STYLE: Record<DriverVerificationStatus, string> = {
   rejected: 'bg-red-100 text-red-800',
 };
 
+/**
+ * A date an operator can act on, or an honest blank.
+ *
+ * A record with no timestamp is one that did not come through the normal
+ * route, which is worth seeing rather than papering over with "just now".
+ */
+function formatWhen(iso: string | null): string {
+  if (!iso) return 'at an unrecorded time';
+
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return 'at an unrecorded time';
+
+  return `on ${when.toLocaleDateString('en-ZA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })}`;
+}
+
 function VehicleIcon({ type }: { type: DriverApplication['vehicleType'] }) {
   return type === 'car' ? (
     <Car className="w-5 h-5" />
@@ -249,6 +268,20 @@ export default function AdminDriversPage() {
                       <dd className="font-semibold">{application.idNumber}</dd>
                     </div>
                   </dl>
+
+                  <p className="mt-4 text-sm text-gray-500">
+                    {application.status === 'pending'
+                      ? `Applied ${formatWhen(application.createdAt)}, still waiting`
+                      : `${
+                          application.status === 'approved'
+                            ? 'Approved'
+                            : 'Turned down'
+                        } ${formatWhen(application.decidedAt)}${
+                          application.decidedBy
+                            ? ` by ${application.decidedBy}`
+                            : ' — no admin recorded'
+                        }`}
+                  </p>
 
                   {application.decisionReason && (
                     <p className="mt-4 text-sm text-gray-700 bg-gray-50 rounded-xl p-3">
