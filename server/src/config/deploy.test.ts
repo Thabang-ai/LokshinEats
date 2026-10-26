@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { productionProblems } from './env';
+import { defaultPushProvider, productionProblems } from './env';
 
 type IndexField = { fieldPath: string; order?: string };
 type Index = { collectionGroup: string; fields: IndexField[] };
@@ -132,5 +132,23 @@ describe('production refuses to start on settings that fail silently', () => {
         usingEmulator: false,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('push is on in production and nowhere else', () => {
+  // Switched on by the user on 2026-10-26. It lives in the default rather
+  // than a dashboard setting, so a deploy cannot lose it - and
+  // PUSH_PROVIDER=off still silences it without a code change.
+  it('production pushes', () => {
+    expect(defaultPushProvider('production')).toBe('fcm');
+  });
+
+  it('a test run never buzzes a real phone', () => {
+    expect(defaultPushProvider('test')).toBe('off');
+  });
+
+  it('local development, where the emulators have no messaging', () => {
+    expect(defaultPushProvider('development')).toBe('off');
+    expect(defaultPushProvider(undefined)).toBe('off');
   });
 });

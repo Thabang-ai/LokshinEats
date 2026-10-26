@@ -73,16 +73,25 @@ No endpoint hands a device token back to any client, including its owner.
   `firebase_core_web`'s supported version. Update the two together, or
   messaging stops working on the web.
 
-## Switching it on (not done)
+## Switching it on — done 2026-10-26
 
-1. Set `PUSH_PROVIDER=fcm` on the API project and redeploy, so the setting is
-   read at start-up.
-2. For the web app only, add `FCM_VAPID_KEY` to the app builds — Firebase
-   console → Project settings → Cloud Messaging → Web Push certificates.
-3. For iOS, upload an APNs key in the same place.
+Push is **on in production**. `PUSH_PROVIDER` defaults to `fcm` when
+`NODE_ENV=production` and to `off` everywhere else, so a local stack and a
+test run still send nothing — the emulators have no messaging service, and a
+test must never buzz a real phone.
 
-Android needs neither of the last two: the service-account credentials the
-API already has are enough.
+**To silence it** without a code change: set `PUSH_PROVIDER=off` on the API
+project and redeploy. An explicit value always wins over the default.
+
+Still not done, and not needed for Android:
+
+- **Web** needs `FCM_VAPID_KEY` in the app build — Firebase console → Project
+  settings → Cloud Messaging → Web Push certificates. Without it a web build
+  does not ask for push at all, and the inbox is the notification.
+- **iOS** needs an APNs key uploaded in the same place.
+
+Android needs neither: the service-account credentials the API already has
+are enough.
 
 ## Seeing a notification with push off
 

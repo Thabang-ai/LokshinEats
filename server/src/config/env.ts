@@ -28,6 +28,19 @@ const csv = z
 const fraction = (fallback: number) =>
   z.coerce.number().min(0).max(1).default(fallback);
 
+/**
+ * Whether push is on when nothing says otherwise.
+ *
+ * On in production, where the service-account credentials FCM needs always
+ * exist, and off everywhere else: the emulators have no messaging service,
+ * and a test run must never buzz a real phone.
+ */
+export function defaultPushProvider(
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): 'off' | 'fcm' {
+  return nodeEnv === 'production' ? 'fcm' : 'off';
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -69,9 +82,13 @@ const schema = z.object({
    * How notifications reach phones. "off" still stores every notification
    * for the in-app inbox and sends nothing; "fcm" also pushes through Firebase
    * Cloud Messaging, which needs the deployment's service-account credentials.
-   * The emulators have no messaging service, so local stacks stay on "off".
+   *
+   * On by default in production, where those credentials always exist, and off
+   * everywhere else: the emulators have no messaging service, and a test run
+   * must never buzz a real phone. Set `PUSH_PROVIDER=off` in production to
+   * silence it without a code change.
    */
-  PUSH_PROVIDER: z.enum(['off', 'fcm']).default('off'),
+  PUSH_PROVIDER: z.enum(['off', 'fcm']).default(defaultPushProvider()),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),

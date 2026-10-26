@@ -83,7 +83,7 @@ Environment variables (Production):
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | The *whole contents* of the key file. Mark it **Sensitive**. |
 | `PAYMENT_PROVIDER` | `none`. Cash only; card and EFT orders are refused. |
 | `CORS_ORIGINS` | *Extra* browser origins, comma-separated, no trailing slash — a preview build, or a custom domain such as `https://www.lokshineats.co.za`. The live site's own origin, `https://lokshin-eats.vercel.app`, is in `server/src/app.ts` and needs no variable. |
-| `PUSH_PROVIDER` | `off` for launch. The in-app inbox still works. |
+| `PUSH_PROVIDER` | Leave unset: production defaults to `fcm`. Set `off` to silence push; the in-app inbox still works either way. |
 
 **Do not set `NODE_ENV`.** Vercel runs functions in production mode by
 itself. If you set it during the build as well, the install skips
@@ -230,8 +230,10 @@ Until then it borrows the customer app's.
 
 - **Cash only.** Card and EFT stay off until a live provider is connected.
   That is a code change plus `PAYMENT_PROVIDER`, not a setting on its own.
-- **Push notifications are off.** The notification inbox works. Turning on
-  `PUSH_PROVIDER=fcm` also needs `FCM_VAPID_KEY` in the app builds.
+- **Push notifications are on** (2026-10-26) for Android and the in-app
+  inbox. A web build also needs `FCM_VAPID_KEY`, and iOS an APNs key, before
+  push reaches either; without them those clients fall back to the inbox.
+  `PUSH_PROVIDER=off` silences it.
 - **Rate limits are per server instance.** Vercel can run several instances,
   so the real limit is a multiple of `RATE_LIMIT_MAX`. It is enough to stop
   one runaway client, but it is not a hard ceiling.
