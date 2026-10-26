@@ -5,31 +5,25 @@
 /// nothing else - no Firestore, no mock data.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/push/push_listener.dart';
 import 'package:lokshineats_core/push/push_messaging.dart';
 import 'package:lokshineats_core/push/push_registration.dart';
-import 'package:lokshineats_core/config/app_config.dart';
-import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
+import 'package:lokshineats_core/config/startup.dart';
 
 import 'features/orders/push_routing.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  AppConfig.assertConfigured();
-
-  await FirebaseBootstrap.initialise(
+  // Checks the build was pointed at a real API and brings Firebase up. A
+  // build that cannot start says why on screen rather than showing a
+  // kitchen a black one.
+  await startLokshinEats(
     options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  runApp(
-    ProviderScope(
+    app: () => ProviderScope(
       overrides: [
         // Note what is NOT overridden: the sign-up role. There is no way to
         // ask the API to make you a vendor, by design - an account becomes a

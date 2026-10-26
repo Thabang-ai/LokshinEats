@@ -6,35 +6,25 @@
 /// API from their role, not by which screens this app happens to show.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/push/push_listener.dart';
 import 'package:lokshineats_core/push/push_messaging.dart';
 import 'package:lokshineats_core/push/push_registration.dart';
-import 'package:lokshineats_core/config/app_config.dart';
-import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
+import 'package:lokshineats_core/config/startup.dart';
 
 import 'features/orders/push_routing.dart';
 import 'app.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Catches a release build that was never pointed at a real API, which would
-  // otherwise look like a network outage to every driver.
-  AppConfig.assertConfigured();
-
-  // Firebase supplies the ID token every authenticated API call carries, so
-  // it has to be up before the first request rather than lazily on sign-in.
-  await FirebaseBootstrap.initialise(
+  // Checks the build was pointed at a real API and brings Firebase up. A
+  // build that cannot start says why on screen rather than showing a driver
+  // a black one.
+  await startLokshinEats(
     options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  runApp(
-    ProviderScope(
+    app: () => ProviderScope(
       overrides: [
         // Anyone who signs up in this app is signing up to deliver. The API
         // only accepts `customer` or `driver` from the account itself, so this

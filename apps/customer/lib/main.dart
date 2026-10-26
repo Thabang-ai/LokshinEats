@@ -5,12 +5,10 @@
 /// empty database looks empty rather than looking populated.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
-import 'package:lokshineats_core/config/app_config.dart';
-import 'package:lokshineats_core/firebase/firebase_bootstrap.dart';
+import 'package:lokshineats_core/config/startup.dart';
 
 import 'app.dart';
 import 'package:lokshineats_core/notifications/notifications_page.dart';
@@ -21,20 +19,12 @@ import 'features/notifications/push/push_routing.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Catches a release build that was never pointed at a real API, which would
-  // otherwise look like a network outage to every customer.
-  AppConfig.assertConfigured();
-
-  // Firebase supplies the ID token every authenticated API call carries, so
-  // it has to be up before the first request rather than lazily on sign-in.
-  await FirebaseBootstrap.initialise(
+  // Checks the build was pointed at a real API and brings Firebase up. A
+  // build that cannot start says why on screen rather than showing a
+  // customer a black one.
+  await startLokshinEats(
     options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  runApp(
-    ProviderScope(
+    app: () => ProviderScope(
       overrides: [
         authCopyProvider.overrideWithValue(
           const AuthCopy(

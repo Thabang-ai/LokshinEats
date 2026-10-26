@@ -80,21 +80,28 @@ class AppConfig {
       url.contains('127.0.0.1') ||
       url.contains('10.0.2.2');
 
-  /// Fail fast on a release build that was never pointed at a real API.
+  /// Why this build must not start, or null if it may.
   ///
   /// Shipping a store build that silently talks to localhost would look like a
-  /// network outage to every customer, so it is worth crashing at startup
-  /// instead — in debug this is a no-op.
+  /// network outage to every customer, so such a build does not run at all —
+  /// in debug this is always null.
+  ///
+  /// `startLokshinEats` reads this and shows the reason on screen. Refusing in
+  /// `main` without one left the engine with no widget tree, which is a black
+  /// screen and tells nobody anything.
+  static String? get configurationProblem => releaseProblem(
+    isRelease: isRelease,
+    apiBaseUrl: apiBaseUrl,
+    useFirebaseEmulators: useFirebaseEmulators,
+    localReleaseBuild: localReleaseBuild,
+  );
+
+  /// Throw if this build must not start.
   ///
   /// Deliberately not an `assert`: release builds strip asserts, so the check
   /// would vanish from the only builds it exists for.
   static void assertConfigured() {
-    final problem = releaseProblem(
-      isRelease: isRelease,
-      apiBaseUrl: apiBaseUrl,
-      useFirebaseEmulators: useFirebaseEmulators,
-      localReleaseBuild: localReleaseBuild,
-    );
+    final problem = configurationProblem;
     if (problem != null) throw StateError(problem);
   }
 
