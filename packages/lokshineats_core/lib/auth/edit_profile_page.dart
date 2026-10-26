@@ -1,4 +1,14 @@
-/// Editing the customer's own profile: name, mobile number and address.
+/// Editing your own profile: name, mobile number and, where it means
+/// something, a home address.
+///
+/// Shared by every app, because the profile behind it is one profile — the
+/// same account ordering food in the customer app may be delivering it in the
+/// driver app, and a name corrected in one is corrected in both.
+///
+/// A driver's home address is nobody's business and nothing uses it, so
+/// [showAddress] leaves that section out. The saved address is untouched
+/// either way: the fields are still filled from the profile, so a hidden
+/// address is sent back exactly as it came.
 ///
 /// The address is all or nothing. A street with no city cannot fill in a
 /// checkout, and the API refuses to save one — so the form says so before the
@@ -20,10 +30,18 @@ import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/auth/auth_form_fields.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
-  const EditProfilePage({super.key, required this.profile});
+  const EditProfilePage({
+    super.key,
+    required this.profile,
+    this.showAddress = true,
+  });
 
-  /// The profile as it was when the customer chose to edit it.
+  /// The profile as it was when they chose to edit it.
   final UserProfile profile;
+
+  /// Whether to ask for a home address. False in the driver and vendor apps,
+  /// where nothing delivers to the person using it.
+  final bool showAddress;
 
   @override
   ConsumerState<EditProfilePage> createState() => _EditProfilePageState();
@@ -136,123 +154,125 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 ),
               ),
 
-              const SizedBox(height: 28),
-              Row(
-                children: [
-                  Icon(
-                    Icons.place_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Delivery address',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+              if (widget.showAddress) ...[
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.place_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Delivery address',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                  ),
-                  if (!_addressBlank)
-                    TextButton(
-                      onPressed: busy ? null : _clearAddress,
-                      child: const Text('Clear'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Saved here, it fills in checkout for you.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                    if (!_addressBlank)
+                      TextButton(
+                        onPressed: busy ? null : _clearAddress,
+                        child: const Text('Clear'),
+                      ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _street,
-                textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.next,
-                autofillHints: const [AutofillHints.streetAddressLine1],
-                onChanged: (_) => setState(() {}),
-                validator: (value) {
-                  final required = _requiredInAddress(
-                    value,
-                    'Add your street, or clear the address.',
-                  );
-                  if (required != null) return required;
-                  if (!_addressBlank && value!.trim().length < 3) {
-                    return 'Enter your street address.';
-                  }
-                  return null;
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Street address',
-                  hintText: '1234 Vilakazi Street',
-                  prefixIcon: Icon(Icons.home_outlined),
+                const SizedBox(height: 4),
+                Text(
+                  'Saved here, it fills in checkout for you.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: TextFormField(
-                      controller: _city,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.addressCity],
-                      onChanged: (_) => setState(() {}),
-                      validator: (value) {
-                        final required = _requiredInAddress(
-                          value,
-                          'Add your town or city.',
-                        );
-                        if (required != null) return required;
-                        if (!_addressBlank && value!.trim().length < 2) {
-                          return 'Enter your town or city.';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Town or city',
-                        hintText: 'Soweto',
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _street,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.streetAddressLine1],
+                  onChanged: (_) => setState(() {}),
+                  validator: (value) {
+                    final required = _requiredInAddress(
+                      value,
+                      'Add your street, or clear the address.',
+                    );
+                    if (required != null) return required;
+                    if (!_addressBlank && value!.trim().length < 3) {
+                      return 'Enter your street address.';
+                    }
+                    return null;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Street address',
+                    hintText: '1234 Vilakazi Street',
+                    prefixIcon: Icon(Icons.home_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _city,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.addressCity],
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          final required = _requiredInAddress(
+                            value,
+                            'Add your town or city.',
+                          );
+                          if (required != null) return required;
+                          if (!_addressBlank && value!.trim().length < 2) {
+                            return 'Enter your town or city.';
+                          }
+                          return null;
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Town or city',
+                          hintText: 'Soweto',
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: TextFormField(
-                      controller: _postalCode,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.postalCode],
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(4),
-                      ],
-                      onChanged: (_) => setState(() {}),
-                      validator: (value) {
-                        final required = _requiredInAddress(
-                          value,
-                          'Four digits.',
-                        );
-                        if (required != null) return required;
-                        if (!_addressBlank &&
-                            !_postalPattern.hasMatch(value!.trim())) {
-                          return 'Four digits.';
-                        }
-                        return null;
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Postal code',
-                        hintText: '1804',
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _postalCode,
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.postalCode],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(4),
+                        ],
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          final required = _requiredInAddress(
+                            value,
+                            'Four digits.',
+                          );
+                          if (required != null) return required;
+                          if (!_addressBlank &&
+                              !_postalPattern.hasMatch(value!.trim())) {
+                            return 'Four digits.';
+                          }
+                          return null;
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Postal code',
+                          hintText: '1804',
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
 
               const SizedBox(height: 32),
               FilledButton(

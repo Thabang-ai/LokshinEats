@@ -18,7 +18,7 @@ import 'package:lokshineats_core/network/api_client.dart';
 import 'package:lokshineats_core/providers.dart';
 import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/auth/user_profile.dart';
-import 'package:lokshineats_customer/features/auth/pages/edit_profile_page.dart';
+import 'package:lokshineats_core/auth/edit_profile_page.dart';
 import 'package:lokshineats_core/auth/profile_repository.dart';
 
 const _address = ProfileAddress(

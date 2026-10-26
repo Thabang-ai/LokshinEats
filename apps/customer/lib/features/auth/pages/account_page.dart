@@ -15,7 +15,7 @@ import 'package:lokshineats_core/auth/auth_error_banner.dart';
 import 'package:lokshineats_core/auth/auth_form_fields.dart';
 import '../../orders/pages/your_orders_page.dart';
 import '../../wallet/pages/wallet_page.dart';
-import 'edit_profile_page.dart';
+import 'package:lokshineats_core/auth/edit_profile_page.dart';
 import 'package:lokshineats_core/auth/sign_in_page.dart';
 import 'package:lokshineats_core/auth/sign_up_page.dart';
 

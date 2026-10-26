@@ -38,7 +38,7 @@ class VerificationPage extends ConsumerWidget {
           ),
           data: (current) => switch (current?.status) {
             VerificationStatus.pending => _Waiting(verification: current!),
-            _ => _DetailsForm(existing: current),
+            _ => DriverDetailsForm(existing: current),
           },
         ),
       ),
@@ -110,16 +110,32 @@ class _Waiting extends ConsumerWidget {
           OutlinedButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: const Text('Change your details')),
-                  body: SafeArea(child: _DetailsForm(existing: verification)),
-                ),
+                builder: (_) => DriverDetailsPage(existing: verification),
               ),
             ),
             child: const Text('Something wrong? Change it'),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Changing what you told us, from wherever the driver got to it.
+///
+/// Pushed from the waiting screen and from the account page, so a driver who
+/// has already been approved can correct a registration number without
+/// hunting for the screen that first asked for it.
+class DriverDetailsPage extends StatelessWidget {
+  const DriverDetailsPage({super.key, this.existing});
+
+  final DriverVerification? existing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Change your details')),
+      body: SafeArea(child: DriverDetailsForm(existing: existing)),
     );
   }
 }
@@ -160,16 +176,16 @@ class _Fact extends StatelessWidget {
   }
 }
 
-class _DetailsForm extends ConsumerStatefulWidget {
-  const _DetailsForm({this.existing});
+class DriverDetailsForm extends ConsumerStatefulWidget {
+  const DriverDetailsForm({super.key, this.existing});
 
   final DriverVerification? existing;
 
   @override
-  ConsumerState<_DetailsForm> createState() => _DetailsFormState();
+  ConsumerState<DriverDetailsForm> createState() => _DriverDetailsFormState();
 }
 
-class _DetailsFormState extends ConsumerState<_DetailsForm> {
+class _DriverDetailsFormState extends ConsumerState<DriverDetailsForm> {
   final _formKey = GlobalKey<FormState>();
   late VehicleType _vehicleType =
       widget.existing?.vehicleType ?? VehicleType.motorbike;

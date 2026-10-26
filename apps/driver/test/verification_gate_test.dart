@@ -58,7 +58,10 @@ ApiClient apiHolding(Completer<Object?>? held, {Object? answer}) => ApiClient(
       });
     }
     // Deliveries and anything else: empty, so a board would render if shown.
-    return _json(200, {'data': <Object>[], 'meta': {'unread': 0}});
+    return _json(200, {
+      'data': <Object>[],
+      'meta': {'unread': 0},
+    });
   }),
   baseUrl: 'http://api.test',
   tokenProvider: () async => 'test-id-token',
