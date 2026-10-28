@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { isImageUrl } from '../utils/isImageUrl';
+import { imageSrc } from '../services/imageUrl';
 
 type FeaturedRestaurant = {
   id: string;
@@ -140,7 +141,7 @@ export default function Home() {
                   className="premium-card p-4 flex flex-col items-center gap-3 cursor-pointer bg-white group"
                 >
                   <div className="w-24 h-24 rounded-full overflow-hidden shadow-md group-hover:shadow-lg transition-shadow border-4 border-white">
-                    <img src={category.image} alt={category.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img src={imageSrc(category.image) ?? ''} alt={category.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                   </div>
                   <span className="font-bold text-gray-900 group-hover:text-primary transition-colors">{category.name}</span>
                 </motion.div>
@@ -199,7 +200,7 @@ export default function Home() {
                     <div className="h-48 relative overflow-hidden">
                       {isImageUrl(restaurant.image) ? (
                         <>
-                          <img src={restaurant.image} alt={restaurant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                          <img src={imageSrc(restaurant.image) ?? ''} alt={restaurant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         </>
                       ) : (

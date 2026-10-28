@@ -14,7 +14,8 @@ import { useRouter } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../../firebase/config';
 import { useVendorStore } from '../../../../hooks/useVendorStore';
-import { extensionFor, ImageValidationError, uploadImage } from '../../../../services/storageService';
+import { ImageValidationError } from '../../../../services/storageService';
+import { ApiError, apiUpload } from '../../../../services/apiClient';
 
 const CATEGORIES = ['Main', 'Kota', 'Braai', 'Vegetarian', 'Drinks', 'Sides', 'Desserts'];
 
@@ -64,21 +65,13 @@ export default function NewProductPage() {
     setIsSubmitting(true);
 
     try {
-      // Upload first — if the vendor picked a photo, don't silently drop it;
-      // block submission on a genuine upload failure rather than falling
-      // back to the emoji without telling them.
-      let image = '🍽️';
-      if (imageFile) {
-        setIsUploadingImage(true);
-        try {
-          const path = `products/${store.id}/${crypto.randomUUID()}.${extensionFor(imageFile)}`;
-          image = await uploadImage(imageFile, path, user.uid);
-        } finally {
-          setIsUploadingImage(false);
-        }
-      }
-
-      await addDoc(collection(db, 'products'), {
+      // The dish is created first and photographed second, which is the
+      // opposite of what this page used to do. Uploading first meant a
+      // failed upload threw before the dish was written — and the upload
+      // always failed, because it went to a Firebase Storage bucket that
+      // does not exist on this plan. Vendors lost the whole submission for
+      // choosing a photo.
+      const created = await addDoc(collection(db, 'products'), {
         storeId: store.id, // REQUIRED by firestore rules
         name: formData.name.trim(),
         description: formData.description.trim(),
@@ -88,9 +81,28 @@ export default function NewProductPage() {
         isVegetarian: formData.isVegetarian,
         isSpicy: formData.isSpicy,
         preparationTime: 20, // sensible default; can be made configurable later
-        image,
+        image: '🍽️',
         createdAt: serverTimestamp(),
       });
+
+      if (imageFile) {
+        setIsUploadingImage(true);
+        try {
+          await apiUpload(`/api/v1/products/${created.id}/image`, imageFile);
+        } catch (uploadError) {
+          // The dish exists and is on the menu. Say what happened to the
+          // photo rather than making it look as though nothing saved.
+          toast.error(
+            uploadError instanceof ApiError
+              ? `Added, but the photo did not upload: ${uploadError.message}`
+              : 'Added, but the photo did not upload.',
+          );
+          router.push('/vendor/products');
+          return;
+        } finally {
+          setIsUploadingImage(false);
+        }
+      }
 
       toast.success('Product added 🎉');
       router.push('/vendor/products');

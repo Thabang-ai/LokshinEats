@@ -18,6 +18,10 @@ dependencies:
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.1
 
+  # Photographs of the food, taken or chosen on the phone. It resizes and
+  # compresses on the way out, which is what keeps an upload near 150KB.
+  image_picker: ^1.2.0
+
   # The API client, authentication and theme every LokshinEats app shares.
   lokshineats_core:
     path: ../../packages/lokshineats_core

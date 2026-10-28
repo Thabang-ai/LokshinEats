@@ -13,6 +13,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useFavorites } from '../../hooks/useFavorites';
 import { isImageUrl } from '../../utils/isImageUrl';
+import { imageSrc } from '../../services/imageUrl';
 
 type RestaurantCard = {
   id: string;
@@ -167,7 +168,7 @@ export default function FavoritesPage() {
                   <div className="h-48 bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-7xl relative overflow-hidden">
                     {isImageUrl(restaurant.image) ? (
                       <img
-                        src={restaurant.image}
+                        src={imageSrc(restaurant.image) ?? ''}
                         alt={restaurant.name}
                         className="absolute inset-0 w-full h-full object-cover"
                       />

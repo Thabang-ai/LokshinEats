@@ -22,6 +22,7 @@ import {
 import { db } from '../../../firebase/config';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { isImageUrl } from '../../../utils/isImageUrl';
+import { imageSrc } from '../../../services/imageUrl';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -324,7 +325,7 @@ export default function ProductsPage() {
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 bg-gradient-to-br from-primary-light to-primary rounded-lg flex items-center justify-center text-3xl flex-shrink-0 overflow-hidden">
                           {isImageUrl(product.image) ? (
-                            <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                            <img src={imageSrc(product.image) ?? ''} alt={product.name} className="w-full h-full object-cover" />
                           ) : (
                             product.image
                           )}

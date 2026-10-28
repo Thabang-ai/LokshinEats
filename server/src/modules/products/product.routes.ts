@@ -9,12 +9,14 @@
  * | GET    | /products/:id    | public        |
  * | PATCH  | /products/:id    | vendor (own)  |
  * | DELETE | /products/:id    | vendor (own)  |
+ * | PUT    | /products/:id/image | vendor (own) |
+ * | GET    | /products/:id/image | public       |
  *
  * Menus are public so customers can browse before signing in. Writes never
  * take a store id from the request — it comes from the caller's own store.
  */
 
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { authenticate, requireAuth } from '../../middleware/auth';
 import { requireRole } from '../../middleware/requireRole';
@@ -26,6 +28,11 @@ import {
   updateProductSchema,
   type ListProductsQuery,
 } from './product.model';
+import {
+  IMAGE_CONTENT_TYPES,
+  MAX_IMAGE_BYTES,
+  imageContentType,
+} from '../images/image.model';
 import * as service from './product.service';
 
 export const productRouter = Router();
@@ -99,5 +106,48 @@ productRouter.delete(
     await service.deleteProduct(requireAuth(req), req.params.id as string);
     // 204: the client already knows the id it deleted.
     res.status(204).send();
+  }),
+);
+
+/**
+ * Put a photograph on a menu item.
+ *
+ * Raw bytes rather than base64 in JSON, which would add a third again to
+ * every upload over mobile data. The body parser is attached here rather
+ * than globally so the rest of the API keeps its small JSON limit.
+ */
+productRouter.put(
+  '/:id/image',
+  authenticate,
+  requireRole('vendor', 'admin'),
+  express.raw({ type: [...IMAGE_CONTENT_TYPES], limit: MAX_IMAGE_BYTES }),
+  validate({ params: productIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const product = await service.setProductImage(
+      requireAuth(req),
+      req.params.id as string,
+      req.body as Buffer,
+      imageContentType(req.get('content-type')),
+    );
+    res.json({ data: product });
+  }),
+);
+
+/**
+ * The photograph itself. Public, because menus are.
+ *
+ * Cached hard: the path a product carries contains the version it was saved
+ * at, so a new photograph is a new URL and this response never needs to be
+ * revalidated.
+ */
+productRouter.get(
+  '/:id/image',
+  validate({ params: productIdParamSchema }),
+  asyncHandler(async (req, res) => {
+    const image = await service.getProductImage(req.params.id as string);
+
+    res.set('Content-Type', image.contentType);
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(image.bytes);
   }),
 );

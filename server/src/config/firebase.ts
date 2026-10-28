@@ -120,4 +120,12 @@ export const Collections = {
   notifications: 'notifications',
   /** Push tokens, one document per device, keyed by the token's hash. */
   deviceTokens: 'deviceTokens',
+  /**
+   * Uploaded photographs, one document per image.
+   *
+   * Kept out of the documents that reference them so a menu listing does not
+   * drag a megabyte of photographs along with it, and matching no security
+   * rule, so only the API can read or write them.
+   */
+  images: 'images',
 } as const;

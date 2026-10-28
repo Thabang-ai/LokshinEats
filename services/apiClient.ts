@@ -204,6 +204,45 @@ export async function apiRequest<T>(
   return payload as ApiSuccess<T>;
 }
 
+/**
+ * Send a file's bytes to the API.
+ *
+ * Raw rather than base64 in JSON, which would add a third again to every
+ * upload — and these come off phone cameras.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: Blob,
+): Promise<ApiSuccess<T>> {
+  const token = await idToken();
+
+  const response = await fetch(`${resolveApiBaseUrl()}${path}`, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': file.type,
+      Authorization: `Bearer ${token}`,
+    },
+    body: file,
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const error = (payload as { error?: Record<string, unknown> } | null)
+      ?.error;
+    throw new ApiError({
+      code: (error?.code as ApiErrorCode) ?? 'internal',
+      status: response.status,
+      message:
+        (error?.message as string) ??
+        'That photo could not be uploaded. Try another.',
+    });
+  }
+
+  return payload as ApiSuccess<T>;
+}
+
 /** Where requests are going right now. */
 export function apiBaseUrl(): string {
   return resolveApiBaseUrl();

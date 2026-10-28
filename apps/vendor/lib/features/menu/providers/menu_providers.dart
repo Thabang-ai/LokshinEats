@@ -1,6 +1,8 @@
 /// The menu, and the changes a kitchen makes to it.
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
@@ -42,6 +44,19 @@ class MenuNotifier extends AsyncNotifier<List<MenuItem>> {
 
   Future<MenuItem> updateItem(String id, MenuItemDraft draft) async {
     final updated = await ref.read(menuRepositoryProvider).update(id, draft);
+    _apply((items) => [for (final i in items) i.id == id ? updated : i]);
+    return updated;
+  }
+
+  /// Put a photograph on a dish, and show it in the list straight away.
+  Future<MenuItem> uploadPhoto(
+    String id, {
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final updated = await ref
+        .read(menuRepositoryProvider)
+        .uploadPhoto(id, bytes: bytes, contentType: contentType);
     _apply((items) => [for (final i in items) i.id == id ? updated : i]);
     return updated;
   }

@@ -5,6 +5,8 @@
 /// sends.
 library;
 
+import 'dart:typed_data';
+
 import 'package:lokshineats_core/network/api_client.dart';
 
 import '../models/menu_item.dart';
@@ -59,6 +61,25 @@ class MenuRepository {
   /// customer has been charged for changes. Usually the right move is
   /// [setAvailable] instead; this is for a dish the kitchen will not make
   /// again.
+  /// Put a photograph on a dish.
+  ///
+  /// Sent as raw bytes: the phone has already resized the picture, and
+  /// wrapping it in base64 would add a third again over mobile data. The API
+  /// stores it and answers with the dish, now pointing at it.
+  Future<MenuItem> uploadPhoto(
+    String id, {
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final response = await _client.putBytes<MenuItem>(
+      '/api/v1/products/$id/image',
+      bytes: bytes,
+      contentType: contentType,
+      decode: (json) => MenuItem.fromJson(json! as Map<String, dynamic>),
+    );
+    return response.data;
+  }
+
   Future<void> remove(String id) => _client.delete('/api/v1/products/$id');
 
   Future<MenuItem> _patch(String id, Map<String, Object?> body) async {

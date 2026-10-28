@@ -9,10 +9,14 @@
 /// it is sold out, and switching it off is what the kitchen actually means.
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
 
 import '../models/menu_item.dart';
 import '../providers/menu_providers.dart';
@@ -45,6 +49,14 @@ class _MenuItemFormPageState extends ConsumerState<MenuItemFormPage> {
 
   bool _busy = false;
   String? _error;
+
+  /// A photograph chosen but not yet sent.
+  ///
+  /// Held here rather than uploaded on the spot because a dish being added
+  /// has no id yet - there is nothing to attach a photograph to until it is
+  /// saved. So the picture waits, and goes up immediately afterwards.
+  Uint8List? _photo;
+  String? _photoType;
 
   bool get _editing => widget.item != null;
 
@@ -81,10 +93,33 @@ class _MenuItemFormPageState extends ConsumerState<MenuItemFormPage> {
     final messenger = ScaffoldMessenger.of(context);
 
     try {
-      if (_editing) {
-        await notifier.updateItem(widget.item!.id, draft);
-      } else {
-        await notifier.add(draft);
+      final saved = _editing
+          ? await notifier.updateItem(widget.item!.id, draft)
+          : await notifier.add(draft);
+
+      // The dish is saved either way; a photograph that fails to upload is
+      // worth saying so about, not worth losing the dish over.
+      final photo = _photo;
+      if (photo != null) {
+        try {
+          await notifier.uploadPhoto(
+            saved.id,
+            bytes: photo,
+            contentType: _photoType ?? 'image/jpeg',
+          );
+        } on ApiException catch (error) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Saved, but the photo did not go up: '
+                '${error.firstFieldError ?? error.message}',
+              ),
+            ),
+          );
+          if (mounted) setState(() => _busy = false);
+          navigator.pop();
+          return;
+        }
       }
       messenger.showSnackBar(
         SnackBar(
@@ -103,6 +138,43 @@ class _MenuItemFormPageState extends ConsumerState<MenuItemFormPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Take a photograph, or choose one already on the phone.
+  ///
+  /// Resized and compressed by the picker before it reaches us: a kitchen
+  /// photographs food on a phone that produces 4MB files, and what the API
+  /// accepts - and what a customer on mobile data wants to download - is a
+  /// fraction of that.
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 70,
+      );
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+
+      setState(() {
+        _photo = bytes;
+        _photoType = picked.mimeType ?? _typeFromName(picked.name);
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not open that photo. Try another.');
+    }
+  }
+
+  static String _typeFromName(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
   }
 
   Future<void> _remove() async {
@@ -188,6 +260,19 @@ class _MenuItemFormPageState extends ConsumerState<MenuItemFormPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             children: [
+              _PhotoField(
+                picked: _photo,
+                existing: widget.item?.photoUrl,
+                busy: _busy,
+                onPick: _pickPhoto,
+                onClear: _photo == null
+                    ? null
+                    : () => setState(() {
+                        _photo = null;
+                        _photoType = null;
+                      }),
+              ),
+              const SizedBox(height: 20),
               TextFormField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
@@ -326,3 +411,121 @@ class _MenuItemFormPageState extends ConsumerState<MenuItemFormPage> {
 }
 
 enum _RemoveChoice { off, remove }
+
+/// The dish's photograph: what it is now, or what is about to replace it.
+///
+/// A kitchen with no photograph sells less, so this sits at the top of the
+/// form rather than buried under the prices. It shows the picture at the
+/// shape customers see it in.
+class _PhotoField extends StatelessWidget {
+  const _PhotoField({
+    required this.picked,
+    required this.existing,
+    required this.busy,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  final Uint8List? picked;
+  final String? existing;
+  final bool busy;
+  final void Function(ImageSource source) onPick;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radius),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: ColoredBox(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: _preview(theme),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : () => onPick(ImageSource.camera),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Take a photo'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : () => onPick(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Choose one'),
+              ),
+            ),
+          ],
+        ),
+        if (onClear != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: busy ? null : onClear,
+              child: const Text('Undo this photo'),
+            ),
+          ),
+        const SizedBox(height: 4),
+        Text(
+          picked != null
+              ? 'This goes up when you save.'
+              : 'Customers choose with their eyes. One clear photo in good '
+                    'light sells a dish.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _preview(ThemeData theme) {
+    final chosen = picked;
+    if (chosen != null) return Image.memory(chosen, fit: BoxFit.cover);
+
+    final url = existing;
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _empty(theme, 'That photo would not load'),
+      );
+    }
+
+    return _empty(theme, 'No photo yet');
+  }
+
+  Widget _empty(ThemeData theme, String message) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.restaurant_menu_rounded,
+            size: 36,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -19,6 +19,7 @@ import { db } from '../../../firebase/config';
 import { useCart } from '../../../context/CartContext';
 import { useFavorites } from '../../../hooks/useFavorites';
 import { isImageUrl } from '../../../utils/isImageUrl';
+import { imageSrc } from '../../../services/imageUrl';
 import type { Product } from '../../../types';
 
 type StoreView = {
@@ -319,7 +320,7 @@ export default function RestaurantDetailPage({
 
             {isImageUrl(store.image) ? (
               <img
-                src={store.image}
+                src={imageSrc(store.image) ?? ''}
                 alt={store.name}
                 className="w-36 h-36 md:w-44 md:h-44 rounded-2xl object-cover shadow-lg flex-shrink-0"
               />
@@ -369,7 +370,7 @@ export default function RestaurantDetailPage({
                   <div className="flex gap-4 p-4">
                     <div className="w-24 h-24 bg-gradient-to-br from-primary-light to-primary rounded-lg flex items-center justify-center text-4xl flex-shrink-0 overflow-hidden">
                       {isImageUrl(item.image) ? (
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        <img src={imageSrc(item.image) ?? ''} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
                         item.image
                       )}

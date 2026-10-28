@@ -4,6 +4,7 @@
 /// three ways over time:
 ///
 ///   https://.../banner.jpeg   an absolute URL - usable as it is
+///   /api/v1/products/x/image  a photo a vendor uploaded, served by the API
 ///   /img/kasi-kota.jpeg       a path the website serves from its own origin
 ///   🍔                        an emoji standing in for a missing photo
 ///
@@ -21,6 +22,10 @@ String? resolveImageUrl(String? value) {
   if (raw == null || raw.isEmpty) return null;
 
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+
+  // A photo a vendor uploaded. Stored relative so it outlives the API's
+  // hostname, and resolved against whichever API this build talks to.
+  if (raw.startsWith('/api/')) return '${AppConfig.apiBaseUrl}$raw';
 
   // Site-relative: the website serves these from its public folder.
   if (raw.startsWith('/')) return '${AppConfig.webBaseUrl}$raw';

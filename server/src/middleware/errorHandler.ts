@@ -80,6 +80,25 @@ export function errorHandler(
     return;
   }
 
+  // A body larger than the route allows. Body-parser raises this before any
+  // handler runs, so it cannot be caught where the limit is set - and a
+  // vendor whose photo is too big deserves to be told that rather than
+  // "something went wrong".
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { type?: string }).type === 'entity.too.large'
+  ) {
+    res.status(413).json({
+      error: {
+        code: 'payload_too_large',
+        message: 'That file is too big. Send a smaller one.',
+        ...(requestId ? { requestId } : {}),
+      },
+    } satisfies ErrorBody);
+    return;
+  }
+
   logger.error({ err: error, requestId }, 'Unhandled error.');
 
   const body: ErrorBody = {

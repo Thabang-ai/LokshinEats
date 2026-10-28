@@ -13,6 +13,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -113,6 +114,25 @@ class ApiClient {
     decode: decode,
   );
 
+  /// Send raw bytes rather than JSON - an upload.
+  ///
+  /// A photograph as base64 inside JSON is a third larger, and these are
+  /// sent over mobile data by people paying for it.
+  Future<ApiResponse<T>> putBytes<T>(
+    String path, {
+    required Uint8List bytes,
+    required String contentType,
+    bool authenticated = true,
+    required T Function(Object? json) decode,
+  }) => _send(
+    method: 'PUT',
+    path: path,
+    bytes: bytes,
+    contentType: contentType,
+    authenticated: authenticated,
+    decode: decode,
+  );
+
   /// Remove something. The API answers a successful delete with 204 and no
   /// body, which [_send] turns into `decode(null)`.
   Future<void> delete(String path, {bool authenticated = true}) async {
@@ -130,6 +150,8 @@ class ApiClient {
     required T Function(Object? json) decode,
     Map<String, String>? query,
     Object? body,
+    Uint8List? bytes,
+    String? contentType,
     bool authenticated = false,
   }) async {
     final uri = Uri.parse(
@@ -138,6 +160,7 @@ class ApiClient {
 
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
+    if (bytes != null) headers['Content-Type'] = contentType ?? 'application/octet-stream';
 
     if (authenticated) {
       final token = await tokenProvider?.call();
@@ -157,6 +180,7 @@ class ApiClient {
     try {
       final request = http.Request(method, uri)..headers.addAll(headers);
       if (body != null) request.body = jsonEncode(body);
+      if (bytes != null) request.bodyBytes = bytes;
 
       final streamed = await _http.send(request).timeout(timeout);
       response = await http.Response.fromStream(streamed);

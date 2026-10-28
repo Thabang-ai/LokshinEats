@@ -12,6 +12,12 @@ import { moduleLogger } from '../../config/logger';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
 import * as storeService from '../stores/store.service';
+import {
+  assertUploadable,
+  productImagePath,
+  type ImageContentType,
+} from '../images/image.model';
+import { imageStore, type StoredImage } from '../images/image.store';
 import type {
   CreateProductInput,
   ListProductsQuery,
@@ -64,6 +70,46 @@ export async function deleteProduct(
   await assertOwnership(caller, productId);
   await repository.remove(productId);
   log.info({ uid: caller.uid, productId }, 'Product deleted.');
+}
+
+/**
+ * Put a photograph on a menu item.
+ *
+ * The photograph is stored on its own and the product is pointed at it, so a
+ * menu listing carries a short path rather than the bytes. The path changes
+ * whenever the photograph does, which is what makes it safe to cache the
+ * image response for a year.
+ */
+export async function setProductImage(
+  caller: AuthContext,
+  productId: string,
+  bytes: Buffer,
+  contentType: ImageContentType,
+): Promise<Product> {
+  await assertOwnership(caller, productId);
+
+  const version = await imageStore().put(productId, {
+    bytes: assertUploadable(bytes),
+    contentType,
+  });
+
+  log.info(
+    { uid: caller.uid, productId, bytes: bytes.length },
+    'Product photo uploaded.',
+  );
+
+  return repository.update(productId, {
+    image: productImagePath(productId, version),
+  });
+}
+
+/** The photograph itself, for anyone: menus are public. */
+export async function getProductImage(
+  productId: string,
+): Promise<StoredImage> {
+  const stored = await imageStore().get(productId);
+  if (!stored) throw ApiError.notFound('No photo for that item.');
+  return stored;
 }
 
 /** The calling vendor's full menu, including unavailable items. */
