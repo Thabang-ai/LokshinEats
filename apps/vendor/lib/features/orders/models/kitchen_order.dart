@@ -178,6 +178,21 @@ class KitchenOrder {
   bool get awaitsCashAnswer =>
       cashGivenToVendor && !vendorCashConfirmed && !vendorCashDisputed;
 
+  /// What the driver collects at the door and owes this kitchen: the food.
+  /// The delivery fee is the driver's, and the platform's share is settled
+  /// through the wallets rather than hand to hand.
+  double get cashDueFromDriver => cashGivenAmount ?? subtotal;
+
+  /// Delivered, paid for in cash, and the driver has not handed it over.
+  ///
+  /// Until this existed the kitchen was told only "Delivered." - there was
+  /// nowhere at all that said whether the money had arrived.
+  bool get awaitsDriverCash =>
+      isCash &&
+      status == KitchenOrderStatus.delivered &&
+      !cashGivenToVendor &&
+      !vendorCashConfirmed;
+
   /// The short form for a ticket header.
   String get reference =>
       id.length <= 6 ? id : id.substring(id.length - 6).toUpperCase();

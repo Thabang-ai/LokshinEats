@@ -277,11 +277,20 @@ class _Actions extends StatelessWidget {
               ? 'A driver is on the way to collect it.'
               : 'Waiting for a driver to claim it.',
         KitchenOrderStatus.pickedUp => 'A driver has it.',
-        KitchenOrderStatus.delivered =>
-          order.vendorCashDisputed
-              ? 'You said the cash never arrived. LokshinEats support will be '
-                    'in touch.'
-              : 'Delivered.',
+        // What a kitchen wants to know about a delivered cash order is
+        // whether the money arrived. "Delivered." was all it used to say.
+        KitchenOrderStatus.delivered => switch (order) {
+          _ when order.vendorCashDisputed =>
+            'You said the cash never arrived. LokshinEats support will be '
+                'in touch.',
+          _ when order.vendorCashConfirmed =>
+            'Delivered. You confirmed '
+                '${formatRands(order.cashDueFromDriver)} from the driver.',
+          _ when order.awaitsDriverCash =>
+            'Delivered. The driver has not handed over your '
+                '${formatRands(order.cashDueFromDriver)} yet.',
+          _ => 'Delivered.',
+        },
         KitchenOrderStatus.cancelled => 'Cancelled.',
         _ => order.status.label,
       },

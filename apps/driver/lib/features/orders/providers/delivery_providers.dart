@@ -196,6 +196,18 @@ List<Delivery> activeOf(DeliveryListState state) => state.deliveries
     .where((delivery) => delivery.status.isActive)
     .toList(growable: false);
 
+/// Delivered, paid in cash, and the kitchen has not been paid yet.
+///
+/// A driver carrying three kitchens' money needs to see that without
+/// opening each delivery to find out.
+List<Delivery> owedOf(DeliveryListState state) => state.deliveries
+    .where((delivery) => delivery.owesKitchenCash)
+    .toList(growable: false);
+
+/// What this driver owes kitchens across those deliveries.
+double owedTotalOf(DeliveryListState state) =>
+    owedOf(state).fold(0, (sum, delivery) => sum + delivery.kitchenCashDue);
+
 /// Done or cancelled.
 List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
     .where((delivery) => !delivery.status.isActive)

@@ -58,6 +58,17 @@ class OrderQueue {
   List<KitchenOrder> get cashToAnswer =>
       orders.where((order) => order.awaitsCashAnswer).toList(growable: false);
 
+  /// Delivered, and the driver has not handed the money over yet.
+  ///
+  /// Its own section rather than a line in "Done": money a kitchen is owed
+  /// should not have to be found.
+  List<KitchenOrder> get cashOwed =>
+      orders.where((order) => order.awaitsDriverCash).toList(growable: false);
+
+  /// Everything drivers still owe this kitchen, across those orders.
+  double get cashOwedTotal =>
+      cashOwed.fold(0, (sum, order) => sum + order.cashDueFromDriver);
+
   /// Gone: collected, delivered or cancelled.
   ///
   /// Excludes anything still waiting on a cash answer — it is delivered, but
@@ -70,7 +81,8 @@ class OrderQueue {
             !order.status.needsAnswer &&
             !order.status.isInKitchen &&
             order.status != KitchenOrderStatus.ready &&
-            !order.awaitsCashAnswer,
+            !order.awaitsCashAnswer &&
+            !order.awaitsDriverCash,
       )
       .toList(growable: false);
 

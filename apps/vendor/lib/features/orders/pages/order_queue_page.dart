@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
 
 import '../../store/providers/store_providers.dart';
@@ -61,6 +62,12 @@ class OrderQueuePage extends ConsumerWidget {
                     orders: state.cashToAnswer,
                     urgent: true,
                   ),
+                  if (state.cashOwed.isNotEmpty)
+                    _OwedNotice(
+                      total: state.cashOwedTotal,
+                      orders: state.cashOwed.length,
+                    ),
+                  _Section(title: 'Driver owes you', orders: state.cashOwed),
                   _Section(title: 'New', orders: state.newOrders, urgent: true),
                   _Section(title: 'Cooking', orders: state.cooking),
                   _Section(title: 'Waiting for a driver', orders: state.ready),
@@ -96,10 +103,14 @@ class _Section extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 10, top: 4),
           child: Row(
             children: [
-              Text(
-                title,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+              // Flexible so a longer heading wraps instead of running off
+              // the side of the phone, which is what a four-word one did.
+              Flexible(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -219,6 +230,48 @@ class _ClosedNoticeState extends ConsumerState<_ClosedNotice> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Text('Open the kitchen'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What drivers owe this kitchen, totalled.
+///
+/// A kitchen counting its money at the end of service should not have to add
+/// up tickets to find out what is still outstanding.
+class _OwedNotice extends StatelessWidget {
+  const _OwedNotice({required this.total, required this.orders});
+
+  final double total;
+  final int orders;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = StatusColors.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: status.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.payments_outlined, color: status.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              orders == 1
+                  ? 'A driver owes you ${formatRands(total)}.'
+                  : '$orders drivers owe you ${formatRands(total)} in total.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
