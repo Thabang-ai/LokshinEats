@@ -16,8 +16,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:lokshineats_core/auth/auth_providers.dart';
-
 import '../../auth/pages/account_page.dart';
 import '../../favourites/pages/favourites_page.dart';
 import '../../orders/pages/your_orders_page.dart';
@@ -30,11 +28,6 @@ class HomeShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Orders and favourites both need an account. Rather than offer tabs that
-    // can only say "sign in", a signed-out customer gets browsing and the
-    // account tab, which is where signing in happens.
-    final signedIn = ref.watch(isSignedInProvider);
-
     final destinations = <_Destination>[
       const _Destination(
         tab: HomeTab.home,
@@ -50,22 +43,20 @@ class HomeShell extends ConsumerWidget {
         label: 'Search',
         page: StoresPage(),
       ),
-      if (signedIn) ...[
-        const _Destination(
-          tab: HomeTab.orders,
-          icon: Icons.receipt_long_outlined,
-          selectedIcon: Icons.receipt_long_rounded,
-          label: 'Orders',
-          page: YourOrdersPage(),
-        ),
-        const _Destination(
-          tab: HomeTab.favourites,
-          icon: Icons.favorite_border_rounded,
-          selectedIcon: Icons.favorite_rounded,
-          label: 'Favourites',
-          page: FavouritesPage(),
-        ),
-      ],
+      const _Destination(
+        tab: HomeTab.orders,
+        icon: Icons.receipt_long_outlined,
+        selectedIcon: Icons.receipt_long_rounded,
+        label: 'Orders',
+        page: YourOrdersPage(),
+      ),
+      const _Destination(
+        tab: HomeTab.favourites,
+        icon: Icons.favorite_border_rounded,
+        selectedIcon: Icons.favorite_rounded,
+        label: 'Favourites',
+        page: FavouritesPage(),
+      ),
       const _Destination(
         tab: HomeTab.account,
         icon: Icons.person_outline_rounded,
@@ -75,9 +66,10 @@ class HomeShell extends ConsumerWidget {
       ),
     ];
 
-    // Signing out removes two tabs. Holding the tab by name rather than by
-    // number means whoever was on one of them lands on Home instead of on
-    // whatever has shuffled into that position.
+    // All five, signed in or not, as the website has them. Orders and
+    // favourites were hidden until sign-in, which left a customer looking at
+    // three tabs and wondering where the rest had gone. Both pages already
+    // offer to sign you in, which is a better answer than a missing tab.
     final selected = ref.watch(selectedTabProvider);
     final found = destinations.indexWhere((d) => d.tab == selected);
     final index = found == -1 ? 0 : found;
@@ -89,9 +81,8 @@ class HomeShell extends ConsumerWidget {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (next) => ref
-            .read(selectedTabProvider.notifier)
-            .go(destinations[next].tab),
+        onDestinationSelected: (next) =>
+            ref.read(selectedTabProvider.notifier).go(destinations[next].tab),
         destinations: [
           for (final destination in destinations)
             NavigationDestination(
