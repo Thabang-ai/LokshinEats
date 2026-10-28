@@ -19,6 +19,14 @@ import type {
   UpdateStoreInput,
 } from './store.model';
 import * as repository from './store.repository';
+import {
+  assertUploadable,
+  storeImageKey,
+  storeImagePath,
+  type ImageContentType,
+  type StoreImageKind,
+} from '../images/image.model';
+import { imageStore, type StoredImage } from '../images/image.store';
 
 const log = moduleLogger('stores');
 
@@ -84,6 +92,48 @@ export async function updateOwnStore(
 ): Promise<Store> {
   const store = await getOwnStore(caller);
   return repository.update(store.id, input);
+}
+
+/**
+ * Put a photograph on the caller's own kitchen.
+ *
+ * The banner is the wide picture across the top of a kitchen's page; the
+ * logo is the small round one. Both were impossible to set from either app:
+ * the website uploaded them to a Firebase Storage bucket that does not
+ * exist, and failed before the kitchen was written - so a vendor who chose a
+ * logo while registering lost the registration.
+ */
+export async function setOwnStoreImage(
+  caller: AuthContext,
+  kind: StoreImageKind,
+  bytes: Buffer,
+  contentType: ImageContentType,
+): Promise<Store> {
+  const store = await getOwnStore(caller);
+
+  const version = await imageStore().put(storeImageKey(store.id, kind), {
+    bytes: assertUploadable(bytes),
+    contentType,
+  });
+
+  log.info(
+    { uid: caller.uid, storeId: store.id, kind, bytes: bytes.length },
+    'Store photo uploaded.',
+  );
+
+  return repository.update(store.id, {
+    [kind]: storeImagePath(store.id, kind, version),
+  });
+}
+
+/** A kitchen's photograph, for anyone: storefronts are public. */
+export async function getStoreImage(
+  storeId: string,
+  kind: StoreImageKind,
+): Promise<StoredImage> {
+  const stored = await imageStore().get(storeImageKey(storeId, kind));
+  if (!stored) throw ApiError.notFound('No photo of that kind.');
+  return stored;
 }
 
 /**

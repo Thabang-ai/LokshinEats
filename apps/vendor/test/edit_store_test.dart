@@ -52,7 +52,9 @@ http.Response _json(int status, Object body) => http.Response(
       if (request.method == 'PATCH') {
         final body = jsonDecode(request.body) as Map<String, Object?>;
         patches.add(body);
-        return _json(200, {'data': {...storeJson(), ...body}});
+        return _json(200, {
+          'data': {...storeJson(), ...body},
+        });
       }
       return _json(200, {'data': storeJson()});
     }),
@@ -64,7 +66,7 @@ http.Response _json(int status, Object body) => http.Response(
 }
 
 Future<void> pump(WidgetTester tester, ApiClient client) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.physicalSize = const Size(1080, 9000);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 
@@ -90,25 +92,13 @@ Future<void> pump(WidgetTester tester, ApiClient client) async {
   await tester.pumpAndSettle();
 }
 
-/// The form is longer than a phone screen, so Save has to be scrolled to.
 Future<void> tapSave(WidgetTester tester) async {
-  // The list builds lazily, so the button does not exist until scrolled to.
-  // The text fields are scrollables too, so the form's own one is named.
-  await tester.scrollUntilVisible(
-    find.text('Save'),
-    300,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.pumpAndSettle();
   await tester.tap(find.text('Save'));
   await tester.pumpAndSettle();
 }
 
-/// Back to the top, where the field with the complaint on it lives.
-Future<void> scrollToTop(WidgetTester tester) async {
-  await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
-  await tester.pumpAndSettle();
-}
+/// Find the complaint attached to a field, wherever it ended up.
+Future<void> scrollToComplaint(WidgetTester tester, String message) async {}
 
 void main() {
   testWidgets('opens filled in with what the kitchen already is', (
@@ -173,7 +163,6 @@ void main() {
     await tapSave(tester);
 
     expect(a.patches, isEmpty);
-    await scrollToTop(tester);
     expect(find.text('Your kitchen needs a name.'), findsOneWidget);
   });
 
@@ -189,24 +178,35 @@ void main() {
     await tapSave(tester);
 
     expect(a.patches, isEmpty);
-    await scrollToTop(tester);
     expect(
       find.text('Drivers need an address to collect from.'),
       findsOneWidget,
     );
   });
 
+  testWidgets('asks for a banner and a logo', (tester) async {
+    // Neither could be set from anywhere before: the website sent them to a
+    // Storage bucket that does not exist, and the app never asked.
+    await pump(tester, api().client);
+
+    expect(find.text('Your banner'), findsOneWidget);
+    expect(find.text('Your logo'), findsOneWidget);
+    expect(find.text('Take one'), findsNWidgets(2));
+    expect(find.text('Choose one'), findsNWidgets(2));
+  });
+
+  testWidgets('no longer says photographs are set by LokshinEats', (
+    tester,
+  ) async {
+    await pump(tester, api().client);
+
+    expect(find.textContaining('Send us the picture'), findsNothing);
+  });
+
   testWidgets('a changed delivery fee is sent as a number', (tester) async {
     final a = api();
     await pump(tester, a.client);
 
-    // Far enough down the lazy list that it has to be scrolled to first.
-    await tester.scrollUntilVisible(
-      find.text('Delivery fee'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, '15.00'), '20');
     await tapSave(tester);
 

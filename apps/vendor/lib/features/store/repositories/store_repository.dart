@@ -1,6 +1,8 @@
 /// The kitchen, via the API.
 library;
 
+import 'dart:typed_data';
+
 import 'package:lokshineats_core/network/api_client.dart';
 import 'package:lokshineats_core/network/api_exception.dart';
 
@@ -103,6 +105,24 @@ class StoreRepository {
 
   /// Open or close the kitchen to new orders.
   Future<Store> setOpen({required bool isOpen}) => _update({'isOpen': isOpen});
+
+  /// Put a photograph on the kitchen: its banner or its logo.
+  ///
+  /// Raw bytes, as a dish's photograph is. The API answers with the kitchen,
+  /// now pointing at the picture.
+  Future<Store> uploadPhoto({
+    required String kind,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final response = await _client.putBytes<Store>(
+      '/api/v1/stores/mine/image/$kind',
+      bytes: bytes,
+      contentType: contentType,
+      decode: (json) => Store.fromJson(json! as Map<String, dynamic>),
+    );
+    return response.data;
+  }
 
   Future<Store> _update(Map<String, Object?> changes) async {
     final response = await _client.patch<Store>(

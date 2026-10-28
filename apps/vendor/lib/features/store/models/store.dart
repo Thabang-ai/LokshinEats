@@ -5,6 +5,8 @@
 /// on the storefront is read from here.
 library;
 
+import 'package:lokshineats_core/utils/image_url.dart';
+
 class Store {
   const Store({
     required this.id,
@@ -20,6 +22,8 @@ class Store {
     this.phone,
     this.rating,
     this.reviewCount = 0,
+    this.banner,
+    this.logo,
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
@@ -42,6 +46,8 @@ class Store {
       },
       rating: json['rating'] is num ? (json['rating'] as num).toDouble() : null,
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
+      banner: _text(json['banner']),
+      logo: _text(json['logo']),
     );
   }
 
@@ -55,6 +61,16 @@ class Store {
   /// without closing the kitchen's account.
   final bool isOpen;
 
+  /// The wide photograph across the top of the kitchen's page.
+  final String? banner;
+
+  /// The small round one beside its name.
+  final String? logo;
+
+  /// Both as URLs a phone can load, or null where there is no photograph.
+  String? get bannerUrl => resolveImageUrl(banner);
+  String? get logoUrl => resolveImageUrl(logo);
+
   final double deliveryFee;
   final double minOrderAmount;
   final String deliveryTime;
@@ -65,3 +81,9 @@ class Store {
 }
 
 double _money(Object? value) => value is num ? value.toDouble() : 0;
+
+String? _text(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}

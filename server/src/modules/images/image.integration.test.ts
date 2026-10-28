@@ -216,3 +216,70 @@ describe('what is refused', () => {
     expect(response.status).toBe(404);
   });
 });
+
+describe('a kitchen photographing itself', () => {
+  it('takes a banner and points the kitchen at it', async () => {
+    const response = await request(app)
+      .put('/api/v1/stores/mine/image/banner')
+      .set(...vendor.authHeader)
+      .set('Content-Type', 'image/jpeg')
+      .send(photo());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.banner).toMatch(
+      new RegExp(`^/api/v1/stores/${storeId}/image/banner\\?v=\\d+$`),
+    );
+  });
+
+  it('keeps the banner and the logo apart', async () => {
+    await request(app)
+      .put('/api/v1/stores/mine/image/banner')
+      .set(...vendor.authHeader)
+      .set('Content-Type', 'image/jpeg')
+      .send(photo(2048));
+
+    await request(app)
+      .put('/api/v1/stores/mine/image/logo')
+      .set(...vendor.authHeader)
+      .set('Content-Type', 'image/png')
+      .send(photo(4096));
+
+    const banner = await request(app).get(
+      `/api/v1/stores/${storeId}/image/banner`,
+    );
+    const logo = await request(app).get(`/api/v1/stores/${storeId}/image/logo`);
+
+    expect(banner.body).toHaveLength(2048);
+    expect(logo.body).toHaveLength(4096);
+  });
+
+  it('refuses a kind that is not a kind', async () => {
+    const response = await request(app)
+      .put('/api/v1/stores/mine/image/mascot')
+      .set(...vendor.authHeader)
+      .set('Content-Type', 'image/jpeg')
+      .send(photo());
+
+    expect(response.status).toBe(400);
+  });
+
+  it('refuses a customer, who owns no kitchen', async () => {
+    const response = await request(app)
+      .put('/api/v1/stores/mine/image/banner')
+      .set(...customer.authHeader)
+      .set('Content-Type', 'image/jpeg')
+      .send(photo());
+
+    expect(response.status).toBe(403);
+  });
+
+  it('gives a vendor with no kitchen a reason, not a crash', async () => {
+    const response = await request(app)
+      .put('/api/v1/stores/mine/image/banner')
+      .set(...otherVendor.authHeader)
+      .set('Content-Type', 'image/jpeg')
+      .send(photo());
+
+    expect(response.status).toBe(404);
+  });
+});

@@ -71,3 +71,25 @@ export function assertUploadable(bytes: Buffer | undefined): Buffer {
 export function productImagePath(productId: string, version: number): string {
   return `/api/v1/products/${productId}/image?v=${version}`;
 }
+
+/** The two photographs a kitchen has of itself. */
+export const STORE_IMAGE_KINDS = ['banner', 'logo'] as const;
+export type StoreImageKind = (typeof STORE_IMAGE_KINDS)[number];
+
+export function storeImagePath(
+  storeId: string,
+  kind: StoreImageKind,
+  version: number,
+): string {
+  return `/api/v1/stores/${storeId}/image/${kind}?v=${version}`;
+}
+
+/**
+ * The key a kitchen's photograph is stored under.
+ *
+ * Namespaced so a store and a product of the same id cannot collide - ids
+ * are generated per collection and nothing stops them matching.
+ */
+export function storeImageKey(storeId: string, kind: StoreImageKind): string {
+  return `store-${storeId}-${kind}`;
+}

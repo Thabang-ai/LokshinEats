@@ -10,7 +10,8 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../../firebase/config';
 import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { extensionFor, ImageValidationError, uploadImage } from '../../../services/storageService';
+import { ImageValidationError } from '../../../services/storageService';
+import { ApiError, apiUpload } from '../../../services/apiClient';
 
 export default function StoreRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -116,28 +117,14 @@ export default function StoreRegistrationPage() {
       // avoids a create-then-patch round trip.
       const storeRef = doc(collection(db, 'stores'));
 
-      let logoUrl: string | null = null;
-      let bannerUrl: string | null = null;
-      if (logoFile || bannerFile) {
-        setIsUploadingImages(true);
-        try {
-          [logoUrl, bannerUrl] = await Promise.all([
-            logoFile ? uploadImage(logoFile, `stores/${storeRef.id}/logo.${extensionFor(logoFile)}`, ownerId) : Promise.resolve(null),
-            bannerFile ? uploadImage(bannerFile, `stores/${storeRef.id}/banner.${extensionFor(bannerFile)}`, ownerId) : Promise.resolve(null),
-          ]);
-        } finally {
-          setIsUploadingImages(false);
-        }
-      }
       // Business registration document / proof of address remain stubbed —
       // those are private compliance docs, not public photos, and need a
       // different (non-public-read) storage rule than logo/banner get.
 
-      // Card/list thumbnails use whichever wide image is available; the
-      // logo is the fallback so a store isn't left with the plain emoji if
-      // they only bothered uploading one image.
-      const image = bannerUrl ?? logoUrl ?? '🍽️';
-
+      // The photographs are sent after the kitchen exists, not before. They
+      // used to go first, to a Firebase Storage bucket that does not exist
+      // on this plan, and the failure threw before setDoc ran — so choosing
+      // a logo cost the vendor their whole registration.
       await setDoc(storeRef, {
         name: formData.storeName,
         cuisine: formData.cuisine,
@@ -150,9 +137,7 @@ export default function StoreRegistrationPage() {
         openingTime: formData.openingTime,
         closingTime: formData.closingTime,
         categories: formData.categories,
-        image,
-        logo: logoUrl,
-        banner: bannerUrl,
+        image: '🍽️',
         rating: 0,
         reviewCount: 0,
         deliveryTime: '30-45 min',
@@ -161,6 +146,35 @@ export default function StoreRegistrationPage() {
         isOpen: false, // vendor opens manually from the dashboard
         createdAt: serverTimestamp(),
       });
+
+      if (logoFile || bannerFile) {
+        setIsUploadingImages(true);
+        try {
+          // One at a time: each answers with the whole kitchen, and two in
+          // flight would race to write the same document.
+          if (bannerFile) {
+            await apiUpload('/api/v1/stores/mine/image/banner', bannerFile);
+          }
+          if (logoFile) {
+            await apiUpload('/api/v1/stores/mine/image/logo', logoFile);
+          }
+        } catch (uploadError) {
+          // The kitchen is registered. Say what happened to the pictures
+          // rather than making it look as though nothing saved.
+          toast.error(
+            uploadError instanceof ApiError
+              ? `Registered, but a photo did not upload: ${uploadError.message}`
+              : 'Registered, but the photos did not upload. Add them from your kitchen page.',
+          );
+          setIsLoading(false);
+          // The same full reload the success path does: the account's role
+          // has just changed, and the dashboard reads it from a fresh token.
+          window.location.href = '/vendor/dashboard';
+          return;
+        } finally {
+          setIsUploadingImages(false);
+        }
+      }
 
       toast.success('Store registered successfully! 🎉');
       setIsLoading(false);

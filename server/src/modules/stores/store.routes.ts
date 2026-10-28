@@ -15,7 +15,7 @@
  * accepts a store id that decides what gets written.
  */
 
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { authenticate, requireAuth } from '../../middleware/auth';
 import { requireAdmin, requireRole } from '../../middleware/requireRole';
@@ -27,6 +27,14 @@ import {
   updateStoreSchema,
   type ListStoresQuery,
 } from './store.model';
+import {
+  IMAGE_CONTENT_TYPES,
+  MAX_IMAGE_BYTES,
+  STORE_IMAGE_KINDS,
+  imageContentType,
+  type StoreImageKind,
+} from '../images/image.model';
+import { ApiError } from '../../lib/ApiError';
 import * as service from './store.service';
 
 export const storeRouter = Router();
@@ -102,5 +110,47 @@ storeRouter.patch(
       req.body,
     );
     res.json({ data: store });
+  }),
+);
+
+/** banner or logo, and nothing else. */
+function storeImageKind(value: string | undefined): StoreImageKind {
+  if (!(STORE_IMAGE_KINDS as readonly string[]).includes(value ?? '')) {
+    throw ApiError.badRequest(
+      `A kitchen has a ${STORE_IMAGE_KINDS.join(' and a ')}.`,
+    );
+  }
+  return value as StoreImageKind;
+}
+
+/** Put a photograph on your own kitchen. Raw bytes, as for a dish. */
+storeRouter.put(
+  '/mine/image/:kind',
+  authenticate,
+  requireRole('vendor', 'admin'),
+  express.raw({ type: [...IMAGE_CONTENT_TYPES], limit: MAX_IMAGE_BYTES }),
+  asyncHandler(async (req, res) => {
+    const store = await service.setOwnStoreImage(
+      requireAuth(req),
+      storeImageKind(req.params.kind),
+      req.body as Buffer,
+      imageContentType(req.get('content-type')),
+    );
+    res.json({ data: store });
+  }),
+);
+
+/** The photograph itself. Public, because a storefront is. */
+storeRouter.get(
+  '/:id/image/:kind',
+  asyncHandler(async (req, res) => {
+    const image = await service.getStoreImage(
+      req.params.id as string,
+      storeImageKind(req.params.kind),
+    );
+
+    res.set('Content-Type', image.contentType);
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(image.bytes);
   }),
 );

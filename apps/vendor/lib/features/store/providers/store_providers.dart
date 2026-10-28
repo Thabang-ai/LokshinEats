@@ -1,6 +1,8 @@
 /// The kitchen itself: whether there is one, and whether it is open.
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/auth/auth_providers.dart';
@@ -82,6 +84,19 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
           deliveryFee: deliveryFee,
           minOrderAmount: minOrderAmount,
         );
+
+    if (ref.mounted) state = AsyncData(updated);
+  }
+
+  /// Put a photograph on the kitchen, and show it straight away.
+  Future<void> uploadPhoto({
+    required String kind,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final updated = await ref
+        .read(storeRepositoryProvider)
+        .uploadPhoto(kind: kind, bytes: bytes, contentType: contentType);
 
     if (ref.mounted) state = AsyncData(updated);
   }

@@ -19,6 +19,7 @@ import 'package:lokshineats_core/utils/money.dart';
 
 import '../models/store.dart';
 import '../providers/store_providers.dart';
+import '../widgets/store_photo_field.dart';
 
 class EditStorePage extends ConsumerStatefulWidget {
   const EditStorePage({super.key, required this.store});
@@ -145,6 +146,25 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                 ),
               ),
               const SizedBox(height: 16),
+              StorePhotoField(
+                kind: 'banner',
+                title: 'Your banner',
+                explanation:
+                    'The wide picture across the top of your page. Your food '
+                    'or your shopfront, in good light.',
+                currentUrl: widget.store.bannerUrl,
+                aspectRatio: 16 / 9,
+              ),
+              const SizedBox(height: 22),
+              StorePhotoField(
+                kind: 'logo',
+                title: 'Your logo',
+                explanation: 'The small round picture beside your name.',
+                currentUrl: widget.store.logoUrl,
+                aspectRatio: 1,
+                round: true,
+              ),
+              const SizedBox(height: 24),
               TextFormField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
@@ -287,15 +307,6 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('Save'),
-              ),
-
-              const SizedBox(height: 16),
-              Text(
-                'Your photographs are set by LokshinEats for now. Send us the '
-                'picture you want on your page and we will put it up.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
               ),
             ],
           ),
