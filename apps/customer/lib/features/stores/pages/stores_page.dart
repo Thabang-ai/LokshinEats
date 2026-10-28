@@ -9,13 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/widgets/async_states.dart';
-import '../../auth/pages/account_page.dart';
-import '../../cart/widgets/cart_badge_button.dart';
-import '../../orders/pages/your_orders_page.dart';
-import 'package:lokshineats_core/notifications/notification_bell.dart';
-import 'package:lokshineats_core/auth/auth_providers.dart';
 import '../models/store.dart';
 import '../providers/store_providers.dart';
+import '../widgets/home_header.dart';
 import '../widgets/store_card.dart';
 import 'store_detail_page.dart';
 
@@ -35,7 +31,7 @@ class StoresPage extends ConsumerWidget {
           onRefresh: () async => ref.invalidate(storesProvider),
           child: CustomScrollView(
             slivers: [
-              const SliverToBoxAdapter(child: _Header()),
+              const SliverToBoxAdapter(child: HomeHeader()),
               SliverToBoxAdapter(
                 child: _Filters(
                   openOnly: openOnly,
@@ -76,78 +72,13 @@ class StoresPage extends ConsumerWidget {
   }
 }
 
-class _Header extends ConsumerWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final signedIn = ref.watch(isSignedInProvider);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'LokshinEats',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Township food. Delivered.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Only for signed-in customers: orders belong to an account, and a
-          // button that leads straight to "sign in" adds nothing the account
-          // button beside it does not already offer.
-          if (signedIn)
-            IconButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const YourOrdersPage()),
-              ),
-              icon: const Icon(Icons.receipt_long_outlined),
-              tooltip: 'Your orders',
-            ),
-          if (signedIn) const NotificationBell(),
-          const CartBadgeButton(),
-
-          // Signed out shows an outline; signed in shows a filled icon, so
-          // account state is legible without opening the page.
-          IconButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const AccountPage()),
-            ),
-            icon: Icon(
-              signedIn
-                  ? Icons.account_circle_rounded
-                  : Icons.account_circle_outlined,
-              size: 30,
-              color: signedIn
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            tooltip: signedIn ? 'Your account' : 'Sign in',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Filters extends StatelessWidget {
+/// The search field and the open-now switch.
+///
+/// The field has a controller rather than just an `onChanged` because the
+/// search is no longer only typed here: tapping Kota on the home tab sets it
+/// and brings you to this screen, and a filtered list above an empty search
+/// box would look broken.
+class _Filters extends ConsumerStatefulWidget {
   const _Filters({
     required this.openOnly,
     required this.onOpenOnlyChanged,
@@ -159,26 +90,58 @@ class _Filters extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
 
   @override
+  ConsumerState<_Filters> createState() => _FiltersState();
+}
+
+class _FiltersState extends ConsumerState<_Filters> {
+  late final _search = TextEditingController(
+    text: ref.read(storeSearchQueryProvider),
+  );
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Only when it was set somewhere else; writing back what was just typed
+    // would move the cursor to the end mid-word.
+    ref.listen(storeSearchQueryProvider, (_, next) {
+      if (next != _search.text) _search.text = next;
+    });
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       child: Column(
         children: [
           TextField(
-            onChanged: onSearchChanged,
+            controller: _search,
+            onChanged: widget.onSearchChanged,
             textInputAction: TextInputAction.search,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Search kitchens or cuisines',
-              prefixIcon: Icon(Icons.search_rounded),
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _search.clear();
+                        widget.onSearchChanged('');
+                      },
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Clear search',
+                    ),
             ),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               FilterChip(
-                selected: openOnly,
-                onSelected: onOpenOnlyChanged,
-                avatar: openOnly
+                selected: widget.openOnly,
+                onSelected: widget.onOpenOnlyChanged,
+                avatar: widget.openOnly
                     ? null
                     : const Icon(Icons.schedule_rounded, size: 18),
                 label: const Text('Open now'),
