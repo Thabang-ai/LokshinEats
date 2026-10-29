@@ -270,6 +270,16 @@ class _Submitted extends StatelessWidget {
               ),
             _Detail(label: 'ID', value: details.idNumber),
 
+            // Only once somebody has actually rated them. "0.0 out of 5" on
+            // the first day of a job is a lie told by an empty average.
+            if (details.hasRating) ...[
+              const SizedBox(height: 14),
+              _RatingLine(
+                rating: details.rating,
+                count: details.ratingCount,
+              ),
+            ],
+
             const SizedBox(height: 14),
             OutlinedButton(
               onPressed: () => Navigator.of(context).push(
@@ -290,6 +300,43 @@ class _Submitted extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// What customers made of this driver.
+class _RatingLine extends StatelessWidget {
+  const _RatingLine({required this.rating, required this.count});
+
+  final double rating;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        Icon(Icons.star_rounded, size: 20, color: AppColors.brand),
+        const SizedBox(width: 6),
+        Text(
+          rating.toStringAsFixed(1),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            count == 1 ? 'from 1 customer' : 'from $count customers',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

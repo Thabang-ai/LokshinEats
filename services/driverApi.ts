@@ -20,6 +20,9 @@ export type DriverVerification = {
   idNumber: string;
   status: 'pending' | 'approved' | 'rejected';
   decisionReason: string | null;
+  /** Out of five, and how many customers said so. Zero means nobody yet. */
+  rating: number;
+  ratingCount: number;
 };
 
 /**

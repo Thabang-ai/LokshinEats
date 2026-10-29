@@ -436,6 +436,21 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "comment": "listFor: a kitchen's or a driver's reviews, newest first.",
+      "collectionGroup": "reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "subjectId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

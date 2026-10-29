@@ -13,6 +13,7 @@ import 'package:lokshineats_core/theme/app_theme.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
 import 'package:lokshineats_core/wallet/wallet_providers.dart';
 import '../models/order.dart';
+import '../widgets/rate_order_card.dart';
 import '../providers/order_tracking_providers.dart';
 import '../widgets/cancel_order_button.dart';
 import '../widgets/order_sections.dart';
@@ -65,6 +66,10 @@ class OrderTrackingPage extends ConsumerWidget {
                 OrderTotalsCard(order: data.order),
                 const SizedBox(height: 16),
                 OrderAddressCard(order: data.order),
+                if (data.order.status == OrderStatus.delivered) ...[
+                  const SizedBox(height: 16),
+                  RateOrderCard(order: data.order),
+                ],
                 if (data.order.status.isActive) ...[
                   const SizedBox(height: 28),
                   CancelOrderButton(

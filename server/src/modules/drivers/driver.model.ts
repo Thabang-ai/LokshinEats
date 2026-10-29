@@ -22,7 +22,7 @@
 
 import { z } from 'zod';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
-import { toIso, toStringOr } from '../../lib/serialize';
+import { toIso, toNumber, toStringOr } from '../../lib/serialize';
 
 /** What someone delivers on. */
 export const VEHICLE_TYPES = ['bicycle', 'motorbike', 'car'] as const;
@@ -46,6 +46,14 @@ export type DriverProfile = {
   vehicleRegistration: string | null;
   idNumber: string;
   status: VerificationStatus;
+  /**
+   * What customers made of them, out of five, and how many said so.
+   *
+   * Zero means nobody has rated them yet - which is not the same as nought
+   * out of five, and every screen showing it has to say so.
+   */
+  rating: number;
+  ratingCount: number;
   /** Why an application was turned down, shown to the driver. */
   decisionReason: string | null;
   decidedAt: string | null;
@@ -186,6 +194,8 @@ export function toDriverProfile(snapshot: DocumentSnapshot): DriverProfile {
     status: (VERIFICATION_STATUSES as readonly string[]).includes(status)
       ? (status as VerificationStatus)
       : 'pending',
+    rating: toNumber(data.rating),
+    ratingCount: toNumber(data.ratingCount),
     decisionReason: data.decisionReason
       ? toStringOr(data.decisionReason)
       : null,

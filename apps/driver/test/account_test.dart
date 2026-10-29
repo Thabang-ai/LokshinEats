@@ -38,7 +38,11 @@ Map<String, Object?> vehicle({
   String status = 'approved',
   String vehicleType = 'motorbike',
   String? decisionReason,
+  double rating = 0,
+  int ratingCount = 0,
 }) => {
+  'rating': rating,
+  'ratingCount': ratingCount,
   'vehicleType': vehicleType,
   'licenceNumber': vehicleType == 'bicycle' ? null : 'DL-4482913',
   'vehicleRegistration': vehicleType == 'bicycle' ? null : 'CA 512 345',
@@ -90,6 +94,29 @@ Future<void> pump(
 }
 
 void main() {
+  testWidgets('shows what customers made of them', (tester) async {
+    await pump(tester, verification: vehicle(rating: 4.75, ratingCount: 12));
+
+    expect(find.text('4.8'), findsOneWidget);
+    expect(find.text('from 12 customers'), findsOneWidget);
+  });
+
+  testWidgets('one customer is one customer', (tester) async {
+    await pump(tester, verification: vehicle(rating: 5, ratingCount: 1));
+
+    expect(find.text('from 1 customer'), findsOneWidget);
+  });
+
+  testWidgets('says nothing at all before anybody has rated them', (
+    tester,
+  ) async {
+    // An empty average is not nought out of five.
+    await pump(tester, verification: vehicle());
+
+    expect(find.text('0.0'), findsNothing);
+    expect(find.textContaining('customer'), findsNothing);
+  });
+
   testWidgets('shows who the API has them down as', (tester) async {
     await pump(tester, profile: me(), verification: vehicle());
 

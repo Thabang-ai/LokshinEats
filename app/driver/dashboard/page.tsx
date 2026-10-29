@@ -6,6 +6,7 @@
 // and so an order disappears from the feed the instant another driver claims it.
 
 import RoleGuard from '../../../components/RoleGuard';
+import { fetchMyDriverVerification } from '../../../services/driverApi';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -352,29 +353,30 @@ export default function DriverDashboard() {
     return unsub;
   }, [user]);
 
-  // Subscribe to my driver ratings (computed on-the-fly from driverReviews docs
-  // rather than denormalized to drivers/{uid} — keeps writes simple and avoids
-  // having to bootstrap a drivers doc).
+  // My rating, from the API.
+  //
+  // It used to be summed in the browser from every driverReviews document,
+  // which meant any signed-in account could write one. The average now lives
+  // on the driver record and only the API moves it, so this reads a number
+  // rather than computing one.
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, 'driverReviews'),
-      where('driverId', '==', user.uid),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        let total = 0;
-        snap.docs.forEach((d) => {
-          const r = d.data().rating;
-          if (typeof r === 'number') total += r;
-        });
-        setRatingTotal(total);
-        setRatingCount(snap.size);
-      },
-      (err) => setErrorMessage(err.message),
-    );
-    return unsub;
+    let cancelled = false;
+
+    fetchMyDriverVerification()
+      .then((me) => {
+        if (cancelled || !me) return;
+        setRatingTotal(me.rating * me.ratingCount);
+        setRatingCount(me.ratingCount);
+      })
+      .catch(() => {
+        // A rating that will not load is not worth an error banner over the
+        // deliveries this page is actually for.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   // ---- Actions -----------------------------------------------------------

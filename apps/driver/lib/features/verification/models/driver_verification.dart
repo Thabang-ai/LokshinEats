@@ -43,6 +43,8 @@ class DriverVerification {
     required this.idNumber,
     required this.status,
     required this.decisionReason,
+    this.rating = 0,
+    this.ratingCount = 0,
   });
 
   factory DriverVerification.fromJson(Map<String, dynamic> json) {
@@ -53,6 +55,14 @@ class DriverVerification {
       idNumber: _text(json['idNumber']) ?? '',
       status: VerificationStatus.fromWire(json['status']),
       decisionReason: _text(json['decisionReason']),
+      rating: switch (json['rating']) {
+        final num value => value.toDouble(),
+        _ => 0.0,
+      },
+      ratingCount: switch (json['ratingCount']) {
+        final num value => value.toInt(),
+        _ => 0,
+      },
     );
   }
 
@@ -64,6 +74,15 @@ class DriverVerification {
 
   /// Why it was turned down, in the reviewer's words.
   final String? decisionReason;
+
+  /// What customers made of them, out of five.
+  ///
+  /// Zero is "nobody has rated you yet", which is not nought out of five -
+  /// every screen showing it has to say which it means.
+  final double rating;
+  final int ratingCount;
+
+  bool get hasRating => ratingCount > 0;
 
   bool get mayDeliver => status == VerificationStatus.approved;
 }

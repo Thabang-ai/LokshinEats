@@ -109,18 +109,16 @@ service cloud.firestore {
       allow read: if true;
       allow create: if request.auth != null &&
         request.resource.data.ownerId == request.auth.uid;
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.ownerId ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['rating', 'reviewCount']) &&
-          request.resource.data.rating is number &&
-          request.resource.data.rating >= 0 &&
-          request.resource.data.rating <= 5 &&
-          request.resource.data.reviewCount is int &&
-          request.resource.data.reviewCount >= 0
-        )
-      );
+      // Only the owner, and only through their own pages. The second branch
+      // here used to let ANY signed-in account write `rating` and
+      // `reviewCount` on ANY kitchen - the hole the browser's old review
+      // transaction needed, and a hole big enough to give yourself five stars
+      // and your neighbour one. Reviews go through POST
+      // /api/v1/reviews/orders/:orderId now, which checks that the caller
+      // ordered the food and that it arrived, and moves the average itself
+      // with the Admin SDK.
+      allow update: if request.auth != null &&
+        request.auth.uid == resource.data.ownerId;
       allow delete: if request.auth != null &&
         request.auth.uid == resource.data.ownerId;
     }
@@ -205,11 +203,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Reviews collection - anyone can read, only customers who ordered can write
+    // Reviews: public to read, and written by the API alone.
+    //
+    // "Only customers who ordered can write" is what the old rule was for,
+    // but it could not check that: all it compared was the customerId on the
+    // document the browser was writing, which the browser also chose. The API
+    // checks the order - yours, and delivered - and refuses a second review
+    // of the same meal.
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.customerId;
+      allow write: if false;
     }
 
     // Drivers collection
@@ -228,11 +231,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Driver reviews - public read, only customer can create their own
+    // Driver reviews, as the website used to write them. Nothing writes here
+    // any more: a driver's rating is a review in `reviews` with
+    // target 'driver', and lives as an average on the driver's own record.
+    // Left readable so the old documents are not lost.
     match /driverReviews/{reviewId} {
       allow read: if true;
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.customerId;
+      allow write: if false;
     }
   }
 }

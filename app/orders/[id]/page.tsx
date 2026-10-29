@@ -21,18 +21,16 @@ import {
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
+import { doc, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 // The delivery code comes from the API: it is deliberately absent from the
 // order document, which drivers can read.
 import { getOrder } from '../../../services/ordersApi';
+import { ApiError } from '../../../services/apiClient';
+import {
+  fetchOrderReviews,
+  submitReview as submitReviewToApi,
+} from '../../../services/reviewsApi';
 import { useAuthUser } from '../../../hooks/useAuthUser';
 import CancelOrderButton from '../../../components/CancelOrderButton';
 import { readOrderItems } from '../../../services/orderItems';
@@ -127,6 +125,12 @@ export default function OrderTrackingPage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Store-review submission UI state
+  // Whether this order has been reviewed is the API's answer now, not a flag
+  // the browser wrote on the order document.
+  const [reviewed, setReviewed] = useState(false);
+  const [driverRated, setDriverRated] = useState(false);
+  const [storeStarsGiven, setStoreStarsGiven] = useState<number | null>(null);
+  const [driverStarsGiven, setDriverStarsGiven] = useState<number | null>(null);
   const [reviewStars, setReviewStars] = useState(0);
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -147,49 +151,16 @@ export default function OrderTrackingPage({
     setIsSubmittingReview(true);
 
     try {
-      const reviewRef = doc(collection(db, 'reviews'));
-      const storeRef = doc(db, 'stores', order.storeId);
-      const orderRef = doc(db, 'orders', order.id);
-
-      // Atomic: read store, recompute average, write review + order + store.
-      await runTransaction(db, async (tx) => {
-        const storeSnap = await tx.get(storeRef);
-        if (!storeSnap.exists()) throw new Error('Restaurant no longer exists');
-
-        const sd = storeSnap.data();
-        const prevRating = typeof sd.rating === 'number' ? sd.rating : 0;
-        const prevCount = typeof sd.reviewCount === 'number' ? sd.reviewCount : 0;
-        const newCount = prevCount + 1;
-        // Running average: rounded to 1 decimal place for display
-        const newRating = Math.round(((prevRating * prevCount + reviewStars) / newCount) * 10) / 10;
-
-        tx.set(reviewRef, {
-          customerId: user.uid,
-          customerName: order.customerName,
-          storeId: order.storeId,
-          orderId: order.id,
-          rating: reviewStars,
-          comment: reviewComment.trim(),
-          createdAt: serverTimestamp(),
-        });
-
-        tx.update(orderRef, {
-          reviewed: true,
-          ratingGiven: reviewStars,
-        });
-
-        tx.update(storeRef, {
-          rating: newRating,
-          reviewCount: newCount,
-        });
+      await submitReviewToApi(order.id, {
+        store: { rating: reviewStars, comment: reviewComment.trim() },
       });
-
-      toast.success('Thanks for the review! ⭐');
-      // The onSnapshot listener on this page will refresh `order.reviewed`
-      // automatically, so the UI flips to "You rated X" without manual state work.
+      setReviewed(true);
+      setStoreStarsGiven(reviewStars);
+      toast.success('Thanks for the review!');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not submit review';
-      toast.error(msg);
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not submit review',
+      );
     } finally {
       setIsSubmittingReview(false);
     }
@@ -204,38 +175,45 @@ export default function OrderTrackingPage({
     setIsSubmittingDriverReview(true);
 
     try {
-      // Driver-rating aggregates are computed on read from driverReviews docs
-      // (cheaper than maintaining a denormalized counter and avoids the
-      // create-vs-update rule complication on drivers/{uid}). So this
-      // transaction only needs to write the review + mark the order rated.
-      const reviewRef = doc(collection(db, 'driverReviews'));
-      const orderRef = doc(db, 'orders', order.id);
-
-      await runTransaction(db, async (tx) => {
-        tx.set(reviewRef, {
-          customerId: user.uid,
-          customerName: order.customerName,
-          driverId: order.driverId,
-          orderId: order.id,
-          rating: driverStars,
-          comment: driverComment.trim(),
-          createdAt: serverTimestamp(),
-        });
-
-        tx.update(orderRef, {
-          driverRated: true,
-          driverRatingGiven: driverStars,
-        });
+      await submitReviewToApi(order.id, {
+        driver: { rating: driverStars, comment: driverComment.trim() },
       });
-
-      toast.success('Driver rated. Thanks! 🚴');
+      setDriverRated(true);
+      setDriverStarsGiven(driverStars);
+      toast.success('Driver rated. Thanks!');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not submit driver rating';
-      toast.error(msg);
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not submit driver rating',
+      );
     } finally {
       setIsSubmittingDriverReview(false);
     }
   };
+
+  // What this customer has already said about the order. Asked once, from
+  // the API, because the order document's own flags are no longer written.
+  useEffect(() => {
+    if (!authReady || !user) return;
+    let cancelled = false;
+
+    fetchOrderReviews(id)
+      .then((reviews) => {
+        if (cancelled) return;
+        const store = reviews.find((r) => r.target === 'store');
+        const driver = reviews.find((r) => r.target === 'driver');
+        setReviewed(store !== undefined);
+        setStoreStarsGiven(store?.rating ?? null);
+        setDriverRated(driver !== undefined);
+        setDriverStarsGiven(driver?.rating ?? null);
+      })
+      // Not worth a message: the worst case is being offered the form for
+      // something already rated, and the API refuses a second one.
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user, id]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -700,21 +678,21 @@ export default function OrderTrackingPage({
                 transition={{ delay: 0.3 }}
                 className="bg-white rounded-xl shadow-md p-6"
               >
-                {order.reviewed ? (
+                {reviewed ? (
                   <div className="text-center">
                     <div className="flex justify-center gap-1 mb-2">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star
                           key={star}
                           className={`w-6 h-6 ${
-                            star <= (order.ratingGiven ?? 0)
+                            star <= (storeStarsGiven ?? 0)
                               ? 'fill-yellow-400 text-yellow-400'
                               : 'text-gray-300'
                           }`}
                         />
                       ))}
                     </div>
-                    <p className="font-semibold">You rated this {order.ratingGiven} / 5</p>
+                    <p className="font-semibold">You rated this {storeStarsGiven} / 5</p>
                     <p className="text-sm text-gray-500 mt-1">Thanks for the feedback!</p>
                   </div>
                 ) : (
@@ -777,21 +755,21 @@ export default function OrderTrackingPage({
                 transition={{ delay: 0.35 }}
                 className="bg-white rounded-xl shadow-md p-6"
               >
-                {order.driverRated ? (
+                {driverRated ? (
                   <div className="text-center">
                     <div className="flex justify-center gap-1 mb-2">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star
                           key={star}
                           className={`w-6 h-6 ${
-                            star <= (order.driverRatingGiven ?? 0)
+                            star <= (driverStarsGiven ?? 0)
                               ? 'fill-yellow-400 text-yellow-400'
                               : 'text-gray-300'
                           }`}
                         />
                       ))}
                     </div>
-                    <p className="font-semibold">You rated your driver {order.driverRatingGiven} / 5</p>
+                    <p className="font-semibold">You rated your driver {driverStarsGiven} / 5</p>
                     <p className="text-sm text-gray-500 mt-1">Thanks for the feedback!</p>
                   </div>
                 ) : (
