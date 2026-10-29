@@ -255,6 +255,46 @@ describe('an account that applied to drive after signing up as a customer', () =
     expect(response.status).toBe(200);
   });
 
+  it('takes work on the token it already has, without signing in again', async () => {
+    // The one that matters most: this is what the driver's phone is holding
+    // when they tap accept. Its claim still says customer - the role was
+    // granted minutes ago, and a token is good for an hour - so refusing on
+    // the claim alone leaves an approved driver refused for that whole hour,
+    // however many times they try.
+    await submit(applicant, motorbike);
+    await approve('cust-9');
+
+    const orderId = await claimableOrder();
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/accept`)
+      .set(...applicant.authHeader);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('still refuses somebody the account itself says is a customer', async () => {
+    // The check reads the account; it does not stop checking.
+    const orderId = await claimableOrder();
+
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/accept`)
+      .set(...applicant.authHeader);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toMatch(/driver or admin role/i);
+  });
+
+  it('refuses an account with no profile at all', async () => {
+    const stranger = await createTestAccount({ uid: 'ghost-1' });
+    const orderId = await claimableOrder();
+
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/accept`)
+      .set(...stranger.authHeader);
+
+    expect(response.status).toBe(403);
+  });
+
   it('is told its token is out of date, rather than left guessing', async () => {
     await submit(applicant, motorbike);
     await approve('cust-9');

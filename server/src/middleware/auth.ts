@@ -48,20 +48,34 @@ function readBearerToken(req: Request): string | null {
 }
 
 /**
+ * The role on the account itself, or null if there is no profile yet.
+ *
+ * The document is where a role lives; the claim in a token is a copy of it
+ * taken when that token was minted. `requireRole` reads this when the copy
+ * would refuse somebody, so a role granted since they signed in works at once
+ * rather than in an hour.
+ */
+export async function readRoleFromDocument(uid: string): Promise<Role | null> {
+  const snapshot = await db.collection(Collections.users).doc(uid).get();
+  if (!snapshot.exists) return null;
+
+  const role = snapshot.get('role');
+  return isRole(role) ? role : 'customer';
+}
+
+/**
  * Look up a role in Firestore for accounts that predate custom claims, and
  * backfill the claim so this only ever happens once per account.
  */
 async function resolveRoleFromDocument(uid: string): Promise<Role> {
-  const snapshot = await db.collection(Collections.users).doc(uid).get();
+  const stored = await readRoleFromDocument(uid);
 
-  if (!snapshot.exists) {
-    // Authenticated with Firebase but has no profile yet. Treated as a
-    // customer, which is the least-privileged role.
-    return 'customer';
-  }
+  // Authenticated with Firebase but no profile yet. Treated as a customer,
+  // which is the least-privileged role, and nothing is written: the profile
+  // they are about to create is what decides their role.
+  if (stored === null) return 'customer';
 
-  const role = snapshot.get('role');
-  const resolved: Role = isRole(role) ? role : 'customer';
+  const resolved = stored;
 
   try {
     await adminAuth.setCustomUserClaims(uid, { role: resolved });
