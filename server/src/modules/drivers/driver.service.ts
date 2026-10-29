@@ -10,6 +10,7 @@ import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import type { AuthContext } from '../../middleware/auth';
 import * as notificationService from '../notifications/notification.service';
+import * as userService from '../users/user.service';
 import type {
   DriverProfile,
   SubmitDriverDetailsInput,
@@ -19,8 +20,31 @@ import * as repository from './driver.repository';
 
 const log = moduleLogger('drivers');
 
-export async function getOwn(uid: string): Promise<DriverProfile | null> {
-  return repository.findById(uid);
+/**
+ * This driver's own application, and whether their token is out of date.
+ *
+ * Being approved is what makes somebody a driver, but approval used to change
+ * only the application: the account kept the customer role it signed up with,
+ * and every delivery route answered "This endpoint requires the driver or
+ * admin role". Approvals from here on grant the role (see `decide`); this
+ * repairs the ones already approved, the first time the driver opens the app.
+ */
+export async function getOwn(caller: AuthContext): Promise<{
+  profile: DriverProfile | null;
+  tokenRefreshRequired: boolean;
+}> {
+  const profile = await repository.findById(caller.uid);
+
+  if (profile?.status !== 'approved' || caller.role !== 'customer') {
+    return { profile, tokenRefreshRequired: false };
+  }
+
+  await userService.grantEarnedRole(caller.uid, 'driver');
+
+  // Reported whether or not this call is what changed anything: the token in
+  // the driver's hand says customer either way, and one minted after an
+  // earlier repair would otherwise stay stale for its full hour.
+  return { profile, tokenRefreshRequired: true };
 }
 
 /** Submit, or resubmit, your own details for review. */
@@ -99,6 +123,17 @@ export async function decide(
     reason: input.reason ?? null,
     decidedBy: actor.uid,
   });
+
+  // Approval is what makes an account a driver. Without this the delivery
+  // routes keep refusing them for not having the role - which is how an
+  // approved driver ends up unable to accept a single order.
+  //
+  // A refusal does not take the role back. `assertApproved` already stops
+  // them claiming anything, and stripping the role would break the delivery
+  // they may be in the middle of.
+  if (status === 'approved') {
+    await userService.grantEarnedRole(driverId, 'driver');
+  }
 
   log.info(
     { driverId, decision: status, by: actor.uid },

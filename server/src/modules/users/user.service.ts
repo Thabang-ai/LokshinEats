@@ -129,6 +129,36 @@ export async function assignRole(
   return profile;
 }
 
+/**
+ * Give an account a role it has earned, without touching one it already has.
+ *
+ * Separate from `assignRole`, which is an admin acting on somebody else and
+ * therefore revokes their sessions. This is the platform acting on a decision
+ * the account asked for - being approved to deliver - so nothing is revoked:
+ * a driver halfway through a delivery should not be signed out by their own
+ * approval. Their token simply does not carry the new role until it is next
+ * minted, which is what `tokenRefreshRequired` tells the client.
+ *
+ * Only a customer is promoted. A vendor who is approved to drive keeps their
+ * kitchen: roles here are one per account, so promoting them would quietly
+ * lock them out of it. An admin already passes every check a driver does.
+ *
+ * Returns whether anything was changed.
+ */
+export async function grantEarnedRole(
+  uid: string,
+  role: Role,
+): Promise<boolean> {
+  const current = await repository.findById(uid);
+  if (!current || current.role !== 'customer') return false;
+
+  await syncRoleClaim(uid, role);
+  await repository.setRole(uid, role);
+
+  log.info({ uid, from: current.role, to: role }, 'Role granted.');
+  return true;
+}
+
 async function revokeSessions(uid: string): Promise<void> {
   try {
     await adminAuth.revokeRefreshTokens(uid);

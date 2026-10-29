@@ -36,8 +36,17 @@ driverRouter.use(authenticate);
 driverRouter.get(
   '/me',
   asyncHandler(async (req, res) => {
-    const profile = await service.getOwn(requireAuth(req).uid);
-    res.json({ data: profile });
+    const { profile, tokenRefreshRequired } = await service.getOwn(
+      requireAuth(req),
+    );
+
+    res.json({
+      data: profile,
+      // An approved driver whose token still says customer. Every delivery
+      // route reads the role from the token, so the app has to mint a new
+      // one before it can accept anything.
+      ...(tokenRefreshRequired ? { meta: { tokenRefreshRequired: true } } : {}),
+    });
   }),
 );
 

@@ -24,6 +24,7 @@ import {
   assertAuthEmulator,
   createTestAccount,
   resetAuth,
+  signIn,
   type TestAccount,
 } from '../../test/auth';
 
@@ -206,6 +207,121 @@ describe('until an admin approves', () => {
       .get('/api/v1/drivers/me')
       .set(...driver.authHeader);
     expect(mine.body.data.status).toBe('pending');
+  });
+});
+
+describe('an account that applied to drive after signing up as a customer', () => {
+  // Which is most of them: somebody orders food, then decides to deliver it.
+  // Every test above hands the driver an account that was already a driver,
+  // so all of this passed while a real approved driver could not accept a
+  // single order - the delivery routes read the role, and approving an
+  // application never changed it.
+  let applicant: TestAccount;
+
+  async function claimableOrder(): Promise<string> {
+    const storeId = await seedStore({ ownerId: 'vend-1' });
+    return seedOrder({
+      customerId: 'cust-1',
+      storeId,
+      storeName: 'Mama Ntuli',
+      status: 'confirmed',
+    });
+  }
+
+  async function approve(uid: string): Promise<void> {
+    await request(app)
+      .patch(`/api/v1/drivers/${uid}/verification`)
+      .set(...admin.authHeader)
+      .send({ decision: 'approve' });
+  }
+
+  beforeEach(async () => {
+    applicant = await createTestAccount({ uid: 'cust-9', role: 'customer' });
+    await seedUser({ uid: 'cust-9', role: 'customer' });
+  });
+
+  it('is a driver once approved, and can accept work', async () => {
+    await submit(applicant, motorbike);
+    await approve('cust-9');
+
+    // What the app does when told its token is out of date.
+    const refreshed = await signIn(applicant.email);
+
+    const orderId = await claimableOrder();
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/accept`)
+      .set('Authorization', `Bearer ${refreshed}`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('is told its token is out of date, rather than left guessing', async () => {
+    await submit(applicant, motorbike);
+    await approve('cust-9');
+
+    const mine = await request(app)
+      .get('/api/v1/drivers/me')
+      .set(...applicant.authHeader);
+
+    expect(mine.body.meta?.tokenRefreshRequired).toBe(true);
+  });
+
+  it('repairs an approval granted before any of this existed', async () => {
+    // No promotion happened at the time, so opening the app has to do it.
+    await submit(applicant, motorbike);
+    await db.collection(Collections.drivers).doc('cust-9').update({
+      status: 'approved',
+    });
+
+    const mine = await request(app)
+      .get('/api/v1/drivers/me')
+      .set(...applicant.authHeader);
+    expect(mine.body.meta?.tokenRefreshRequired).toBe(true);
+
+    const orderId = await claimableOrder();
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/accept`)
+      .set('Authorization', `Bearer ${await signIn(applicant.email)}`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('says nothing to a driver whose token is already right', async () => {
+    await submit(driver, motorbike);
+    await approve('drv-1');
+
+    const mine = await request(app)
+      .get('/api/v1/drivers/me')
+      .set(...driver.authHeader);
+
+    expect(mine.body.meta).toBeUndefined();
+  });
+
+  it('a refusal does not take the role away again', async () => {
+    // They may be mid-delivery, and `assertApproved` already stops them
+    // claiming anything new.
+    await submit(applicant, motorbike);
+    await approve('cust-9');
+    await request(app)
+      .patch('/api/v1/drivers/cust-9/verification')
+      .set(...admin.authHeader)
+      .send({ decision: 'reject', reason: 'Licence has expired.' });
+
+    const user = await db.collection(Collections.users).doc('cust-9').get();
+    expect(user.get('role')).toBe('driver');
+  });
+
+  it('a kitchen owner approved to drive keeps their kitchen', async () => {
+    // One role per account: promoting a vendor would lock them out of the
+    // kitchen they are running.
+    const vendor = await createTestAccount({ uid: 'vend-9', role: 'vendor' });
+    await seedUser({ uid: 'vend-9', role: 'vendor' });
+
+    await submit(vendor, motorbike);
+    await approve('vend-9');
+
+    const user = await db.collection(Collections.users).doc('vend-9').get();
+    expect(user.get('role')).toBe('vendor');
   });
 });
 
