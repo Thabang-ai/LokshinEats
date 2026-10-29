@@ -256,6 +256,38 @@ export async function listAll(options: ListOptions): Promise<Page<Order>> {
   return runList((base) => base, options);
 }
 
+/** Orders still owed to somebody: food to cook, carry, pay for or receive. */
+const UNFINISHED_STATUSES: readonly OrderStatus[] = [
+  'pending',
+  'confirmed',
+  'preparing',
+  'ready',
+  'picked_up',
+];
+
+/**
+ * How many orders this account is still part of, up to a handful.
+ *
+ * Asked before an account is removed. A driver carrying somebody's dinner, a
+ * kitchen with food on the stove and a customer waiting on either of them all
+ * have an order that nobody else can finish, and deleting the account that
+ * owes it strands the order and its money.
+ *
+ * Equality filters only - no ordering - so this needs no composite index.
+ */
+export async function countUnfinished(
+  field: 'customerId' | 'storeId' | 'driverId',
+  id: string,
+): Promise<number> {
+  const snapshot = await collection()
+    .where(field, '==', id)
+    .where('status', 'in', [...UNFINISHED_STATUSES])
+    .limit(25)
+    .get();
+
+  return snapshot.size;
+}
+
 /**
  * Apply a status change, re-checking the transition against the order's
  * current state inside the transaction.

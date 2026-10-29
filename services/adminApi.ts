@@ -157,12 +157,19 @@ export async function fetchPlatformWallet(): Promise<WalletBalance> {
 
 export type UserRole = 'customer' | 'vendor' | 'driver' | 'admin';
 
+/** Whether an account may use the platform at all, apart from what it may do. */
+export type AccountStatus = 'active' | 'suspended' | 'removed';
+
 export type AdminUser = {
   id: string;
   email: string;
   displayName: string;
   phone: string | null;
   role: UserRole;
+  status: AccountStatus;
+  statusReason: string | null;
+  statusChangedAt: string | null;
+  statusChangedBy: string | null;
   createdAt: string | null;
 };
 
@@ -207,6 +214,45 @@ export async function setUserRole(
     method: 'PATCH',
     body: { role },
   });
+  return response.data;
+}
+
+/**
+ * Suspend an account, or lift a suspension.
+ *
+ * A suspension takes hold at once: the API disables the sign-in and ends the
+ * session they have open, so a driver suspended mid-shift stops on their next
+ * tap rather than when their token happens to expire. A suspended vendor's
+ * kitchen is closed with them.
+ */
+export async function setAccountStatus(
+  userId: string,
+  status: Exclude<AccountStatus, 'removed'>,
+  reason?: string,
+): Promise<AdminUser> {
+  const response = await apiRequest<AdminUser>(
+    `/api/v1/users/${encodeURIComponent(userId)}/status`,
+    { method: 'PATCH', body: { status, ...(reason ? { reason } : {}) } },
+  );
+  return response.data;
+}
+
+/**
+ * Remove an account from the platform.
+ *
+ * Their sign-in is deleted, which frees the email address - somebody removed
+ * by mistake can start again. The profile stays, marked, because their old
+ * orders point at it. The API refuses while they are still part of an
+ * unfinished order.
+ */
+export async function removeUser(
+  userId: string,
+  reason: string,
+): Promise<AdminUser> {
+  const response = await apiRequest<AdminUser>(
+    `/api/v1/users/${encodeURIComponent(userId)}`,
+    { method: 'DELETE', body: { reason } },
+  );
   return response.data;
 }
 

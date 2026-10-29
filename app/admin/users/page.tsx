@@ -1,8 +1,9 @@
 'use client';
 
 // Admin / People
-// Everyone with an account, what they are allowed to do, and the one control
-// that changes it.
+// Everyone with an account, what they are allowed to do, and the controls
+// that change it: their role, whether they may use LokshinEats at all, and
+// whether they are on it at all.
 //
 // A role is the whole of what an account may do on LokshinEats, so changing
 // one is never a small click: the confirmation says what the new role can do
@@ -11,12 +12,27 @@
 // now rather than when their sign-in happens to expire, and they sign in
 // again to pick up the new one.
 //
-// Nobody can change their own role here. The API already refuses an admin
-// removing their own admin rights; the page does not offer the control.
+// Nobody can act on their own account here, and nobody can act on another
+// admin's without demoting them first. Both are refused by the API as well as
+// hidden here, because a console that only hides a control is a console one
+// stale tab gets around.
+//
+// Suspending and removing both lock a real person out, so each asks for a
+// reason that is kept with the decision, and removing asks for the email to
+// be typed: it deletes their sign-in.
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Search, Shield, UserCog, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Ban,
+  Search,
+  Shield,
+  Trash2,
+  UndoDot,
+  UserCog,
+  Users,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import RoleGuard from '../../../components/RoleGuard';
@@ -24,7 +40,10 @@ import { auth } from '../../../firebase/config';
 import { ApiError } from '../../../services/apiClient';
 import {
   fetchUsers,
+  removeUser,
+  setAccountStatus,
   setUserRole,
+  type AccountStatus,
   type AdminUser,
   type UserRole,
 } from '../../../services/adminApi';
@@ -48,6 +67,46 @@ const roleGrants: Record<UserRole, string> = {
   admin:
     'see every order, wallet and account on the platform, cancel any order, and change anyone’s role — including yours',
 };
+
+const statusStyle: Record<AccountStatus, { label: string; color: string }> = {
+  active: { label: 'Active', color: 'bg-green-100 text-green-700' },
+  suspended: { label: 'Suspended', color: 'bg-amber-100 text-amber-800' },
+  removed: { label: 'Removed', color: 'bg-gray-200 text-gray-600' },
+};
+
+/** What a suspension actually does, said before it is done. */
+function describeSuspension(user: AdminUser): string {
+  const who = user.displayName || user.email;
+  const lines = [
+    `Suspend ${who}?`,
+    '',
+    'They are signed out at once and cannot sign in again until you lift it.',
+  ];
+
+  if (user.role === 'vendor') {
+    lines.push('', 'Their kitchen is closed with them, so it stops taking orders.');
+  }
+  if (user.role === 'driver') {
+    lines.push(
+      '',
+      'Any delivery they are carrying stays assigned to them and will need sorting out.',
+    );
+  }
+
+  return lines.join(String.fromCharCode(10));
+}
+
+function describeRemoval(user: AdminUser): string {
+  const who = user.displayName || user.email;
+  return [
+    `Remove ${who} from LokshinEats?`,
+    '',
+    'Their sign-in is deleted. Their past orders keep their name, and the',
+    'email is free again if they ever want to start over.',
+    '',
+    'This cannot be undone from here.',
+  ].join(String.fromCharCode(10));
+}
 
 /**
  * The confirmation for a role change.
@@ -183,6 +242,78 @@ export default function AdminUsersPage() {
     }
   };
 
+  /** Replace one person in the list with what the API just returned. */
+  const replace = (updated: AdminUser) =>
+    setUsers((current) =>
+      current.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)),
+    );
+
+  const handleSuspend = async (user: AdminUser) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm(describeSuspension(user))) return;
+
+    const reason = window.prompt(
+      'Why are they being suspended? They may be told, and the next admin to look will see it.',
+    );
+    if (reason === null) return;
+
+    setBusyId(user.id);
+    try {
+      replace(await setAccountStatus(user.id, 'suspended', reason.trim()));
+      toast.success(`${user.displayName || user.email} is suspended.`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not suspend them.',
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleReinstate = async (user: AdminUser) => {
+    setBusyId(user.id);
+    try {
+      replace(await setAccountStatus(user.id, 'active'));
+      toast.success(`${user.displayName || user.email} is back in.`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not reinstate them.',
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRemove = async (user: AdminUser) => {
+    if (typeof window === 'undefined') return;
+    if (!window.confirm(describeRemoval(user))) return;
+
+    // Typed, not clicked. The sign-in does not come back.
+    const typed = window.prompt(
+      `Type ${user.email} to confirm you are removing this account.`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== user.email.toLowerCase()) {
+      toast.error('That did not match. Nothing was changed.');
+      return;
+    }
+
+    const reason = window.prompt('Why are they being removed?');
+    if (reason === null) return;
+
+    setBusyId(user.id);
+    try {
+      replace(await removeUser(user.id, reason.trim()));
+      toast.success(`${user.displayName || user.email} has been removed.`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not remove them.',
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Search narrows what is already loaded. The API filters by role; a name or
   // email search across every account belongs on the server once there are
   // enough people for it to matter.
@@ -294,6 +425,13 @@ export default function AdminUsersPage() {
                           {u.phone ? ` · ${u.phone}` : ''} · joined{' '}
                           {joined(u.createdAt)}
                         </p>
+                        {u.status !== 'active' && u.statusReason && (
+                          <p className="text-xs text-amber-700 mt-0.5">
+                            {statusStyle[u.status].label}{' '}
+                            {joined(u.statusChangedAt)}: &ldquo;{u.statusReason}
+                            &rdquo;
+                          </p>
+                        )}
                       </div>
 
                       <Link
@@ -310,6 +448,14 @@ export default function AdminUsersPage() {
                         {style.label}
                       </span>
 
+                      {u.status !== 'active' && (
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusStyle[u.status].color}`}
+                        >
+                          {statusStyle[u.status].label}
+                        </span>
+                      )}
+
                       {isMe ? (
                         <span className="text-xs text-gray-400 w-36 text-right">
                           Another admin can change this
@@ -318,7 +464,7 @@ export default function AdminUsersPage() {
                         <select
                           aria-label={`Change role for ${u.displayName || u.email}`}
                           value={u.role}
-                          disabled={busyId === u.id}
+                          disabled={busyId === u.id || u.status === 'removed'}
                           onChange={(e) =>
                             handleRoleChange(u, e.target.value as UserRole)
                           }
@@ -330,6 +476,41 @@ export default function AdminUsersPage() {
                             </option>
                           ))}
                         </select>
+                      )}
+
+                      {/* An admin is demoted before they can be shut out, so
+                          the controls are not offered for one. */}
+                      {!isMe && u.role !== 'admin' && u.status !== 'removed' && (
+                        <div className="flex items-center gap-2">
+                          {u.status === 'suspended' ? (
+                            <button
+                              type="button"
+                              disabled={busyId === u.id}
+                              onClick={() => handleReinstate(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-green-700 border border-green-200 hover:bg-green-50 disabled:opacity-50"
+                            >
+                              <UndoDot className="w-3.5 h-3.5" /> Reinstate
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busyId === u.id}
+                              onClick={() => handleSuspend(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-800 border border-amber-200 hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              <Ban className="w-3.5 h-3.5" /> Suspend
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={busyId === u.id}
+                            onClick={() => handleRemove(u)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-700 border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Remove
+                          </button>
+                        </div>
                       )}
                     </li>
                   );
@@ -354,7 +535,10 @@ export default function AdminUsersPage() {
           <p className="text-xs text-gray-400 mt-4">
             Changing a role signs the person out and applies at once. Vendors
             usually get their role by registering a kitchen in the vendor app,
-            not from here.
+            not from here. Suspending ends their session immediately and closes
+            a vendor&rsquo;s kitchen; removing deletes their sign-in and is
+            refused while they are part of an unfinished order. To shut out
+            another admin, make them a customer first.
           </p>
         </div>
       </div>

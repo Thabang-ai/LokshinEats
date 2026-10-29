@@ -12,6 +12,7 @@ import { buildPage, type Page } from '../../lib/pagination';
 import type { Role } from '../../middleware/auth';
 import {
   toUserProfile,
+  type AccountStatus,
   type CreateProfileInput,
   type UpdateProfileInput,
   type UserProfile,
@@ -70,6 +71,35 @@ export async function update(
 
   const snapshot = await ref.get();
   return toUserProfile(snapshot);
+}
+
+/**
+ * Record a suspension, a reinstatement or a removal.
+ *
+ * The document is the record; Firebase Auth is the enforcement. Written
+ * second, so an account that is already locked out can never look active
+ * here - a document saying "active" over an account that cannot sign in is
+ * the version of this that wastes somebody's afternoon.
+ */
+export async function setStatus(
+  uid: string,
+  input: {
+    status: AccountStatus;
+    reason: string | null;
+    changedBy: string;
+  },
+): Promise<UserProfile> {
+  const ref = collection().doc(uid);
+
+  await ref.update({
+    status: input.status,
+    statusReason: input.reason,
+    statusChangedBy: input.changedBy,
+    statusChangedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return toUserProfile(await ref.get());
 }
 
 export async function setRole(uid: string, role: Role): Promise<UserProfile> {

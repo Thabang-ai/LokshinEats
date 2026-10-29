@@ -113,7 +113,17 @@ export async function authenticate(
     if (code === 'auth/id-token-expired') {
       return next(ApiError.unauthenticated('Session expired — sign in again.'));
     }
-    if (code === 'auth/id-token-revoked' || code === 'auth/user-disabled') {
+    if (code === 'auth/user-disabled') {
+      // A suspension, almost always. Worth saying plainly: "session is no
+      // longer valid" sends somebody to sign in again, over and over, when
+      // signing in is the one thing that will not work.
+      return next(
+        ApiError.unauthenticated(
+          'This account has been suspended. Contact LokshinEats if you think that is wrong.',
+        ),
+      );
+    }
+    if (code === 'auth/id-token-revoked') {
       return next(ApiError.unauthenticated('Session is no longer valid.'));
     }
 

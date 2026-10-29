@@ -26,6 +26,18 @@ export type ProfileAddress = {
   postalCode: string;
 };
 
+/**
+ * Whether an account may use the platform at all.
+ *
+ * Separate from the role, which says what someone may do when they are let
+ * in. A suspended account is off the platform until an admin says otherwise;
+ * a removed one is off it for good and its sign-in no longer exists. Both are
+ * enforced by Firebase Auth rather than by this field - the field is what the
+ * console shows, and why.
+ */
+export const ACCOUNT_STATUSES = ['active', 'suspended', 'removed'] as const;
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
 export type UserProfile = {
   id: string;
   email: string;
@@ -33,6 +45,12 @@ export type UserProfile = {
   phone: string | null;
   address: ProfileAddress | null;
   role: Role;
+  status: AccountStatus;
+  /** Why they were suspended or removed, in the admin's words. */
+  statusReason: string | null;
+  statusChangedAt: string | null;
+  /** The admin who decided, so a suspension is never anonymous. */
+  statusChangedBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -111,6 +129,36 @@ export const setRoleSchema = z
   .object({ role: z.enum(ROLES) })
   .strict();
 
+/**
+ * A reason, because somebody is going to be shut out by this.
+ *
+ * Required rather than optional: an account that stops working with no
+ * recorded reason is one no other admin can judge, and the person on the
+ * other end deserves an answer when they ask why.
+ */
+const statusReasonSchema = z
+  .string()
+  .trim()
+  .min(5, 'Say why, in a few words.')
+  .max(300, 'That reason is too long.');
+
+/** Suspend, or lift a suspension. */
+export const setAccountStatusSchema = z
+  .object({
+    status: z.enum(['active', 'suspended']),
+    reason: statusReasonSchema.optional(),
+  })
+  .strict()
+  .refine((input) => input.status === 'active' || input.reason !== undefined, {
+    path: ['reason'],
+    message: 'Say why this account is being suspended.',
+  });
+
+/** Remove an account from the platform. */
+export const removeAccountSchema = z
+  .object({ reason: statusReasonSchema })
+  .strict();
+
 export const userIdParamSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
@@ -129,6 +177,19 @@ export function toUserProfile(snapshot: DocumentSnapshot): UserProfile {
     role: (ROLES as readonly string[]).includes(role)
       ? (role as Role)
       : 'customer',
+    // Every account that predates suspensions is an active one.
+    status: (ACCOUNT_STATUSES as readonly string[]).includes(data.status)
+      ? (data.status as AccountStatus)
+      : 'active',
+    statusReason:
+      typeof data.statusReason === 'string' && data.statusReason
+        ? data.statusReason
+        : null,
+    statusChangedAt: toIso(data.statusChangedAt),
+    statusChangedBy:
+      typeof data.statusChangedBy === 'string' && data.statusChangedBy
+        ? data.statusChangedBy
+        : null,
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };

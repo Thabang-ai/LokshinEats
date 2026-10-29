@@ -12,6 +12,8 @@
  * | GET    | /users                | admin                       |
  * | GET    | /users/:id            | admin                       |
  * | PATCH  | /users/:id/role       | admin                       |
+ * | PATCH  | /users/:id/status     | admin                       |
+ * | DELETE | /users/:id            | admin                       |
  *
  * Sign-up itself stays in Firebase Auth on the client. This module owns the
  * profile document and the role that authorises every other endpoint.
@@ -27,6 +29,8 @@ import { sensitiveRateLimit } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import {
   createProfileSchema,
+  removeAccountSchema,
+  setAccountStatusSchema,
   setRoleSchema,
   updateProfileSchema,
   userIdParamSchema,
@@ -135,6 +139,43 @@ userRouter.get(
   validate({ params: userIdParamSchema }),
   asyncHandler(async (req, res) => {
     const profile = await service.getUserAsAdmin(req.params.id as string);
+    res.json({ data: profile });
+  }),
+);
+
+/**
+ * Suspend an account, or lift a suspension.
+ *
+ * Rate-limited with the other account controls: these lock real people out,
+ * and a script running through the user list is not something to make easy.
+ */
+userRouter.patch(
+  '/:id/status',
+  requireAdmin,
+  sensitiveRateLimit,
+  validate({ params: userIdParamSchema, body: setAccountStatusSchema }),
+  asyncHandler(async (req, res) => {
+    const profile = await service.setAccountStatus(
+      requireAuth(req),
+      req.params.id as string,
+      req.body,
+    );
+    res.json({ data: profile });
+  }),
+);
+
+/** Remove an account from the platform. Their sign-in is deleted. */
+userRouter.delete(
+  '/:id',
+  requireAdmin,
+  sensitiveRateLimit,
+  validate({ params: userIdParamSchema, body: removeAccountSchema }),
+  asyncHandler(async (req, res) => {
+    const profile = await service.removeAccount(
+      requireAuth(req),
+      req.params.id as string,
+      req.body.reason,
+    );
     res.json({ data: profile });
   }),
 );
