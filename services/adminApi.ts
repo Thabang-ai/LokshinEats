@@ -358,6 +358,18 @@ export type DriverApplication = {
   decidedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /**
+   * Who applied. Null only if the profile is gone, which is worth seeing
+   * rather than hiding the application.
+   */
+  account: {
+    displayName: string;
+    email: string;
+    phone: string | null;
+    status: AccountStatus;
+    /** What the account may do. An approval does not help if this is not a driver. */
+    role: UserRole;
+  } | null;
 };
 
 /**

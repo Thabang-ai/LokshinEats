@@ -55,6 +55,31 @@ export type DriverProfile = {
   updatedAt: string | null;
 };
 
+/**
+ * Who an application belongs to, for the admin reviewing it.
+ *
+ * The queue used to show a bare uid: nothing to recognise, nothing to call,
+ * and no way to tell an applicant who had already been suspended from one who
+ * had not. Served only to admins, with the application itself.
+ */
+export type DriverAccount = {
+  displayName: string;
+  email: string;
+  phone: string | null;
+  /** Of the account, not the application: active, suspended or removed. */
+  status: string;
+  /**
+   * What the account may actually do. Worth showing beside an approval,
+   * because the two can disagree - an approved application on an account
+   * that is not a driver is somebody who cannot take a single delivery.
+   */
+  role: string;
+};
+
+export type DriverApplication = DriverProfile & {
+  account: DriverAccount | null;
+};
+
 const trimmed = (min: number, max: number, message: string) =>
   z.string().trim().min(min, message).max(max, message);
 

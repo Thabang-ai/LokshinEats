@@ -11,7 +11,9 @@ import { moduleLogger } from '../../config/logger';
 import type { AuthContext } from '../../middleware/auth';
 import * as notificationService from '../notifications/notification.service';
 import * as userService from '../users/user.service';
+import * as userRepository from '../users/user.repository';
 import type {
+  DriverApplication,
   DriverProfile,
   SubmitDriverDetailsInput,
   VerificationStatus,
@@ -94,10 +96,38 @@ export async function assertApproved(uid: string): Promise<void> {
   }
 }
 
+/**
+ * The review queue, with a person attached to each application.
+ *
+ * One batch read for the lot rather than one per row: the queue is small, but
+ * a read per application is the kind of thing that is fine until the day it
+ * is not.
+ */
 export async function listForReview(options: {
   status?: VerificationStatus;
-}): Promise<DriverProfile[]> {
-  return repository.list(options);
+}): Promise<DriverApplication[]> {
+  const applications = await repository.list(options);
+
+  const accounts = await userRepository.findMany(
+    applications.map((application) => application.id),
+  );
+
+  return applications.map((application) => {
+    const account = accounts.get(application.id);
+
+    return {
+      ...application,
+      account: account
+        ? {
+            displayName: account.displayName,
+            email: account.email,
+            phone: account.phone,
+            status: account.status,
+            role: account.role,
+          }
+        : null,
+    };
+  });
 }
 
 /**

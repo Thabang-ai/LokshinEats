@@ -445,6 +445,35 @@ describe('what a driver can see', () => {
     expect(asAdmin.body.data).toHaveLength(1);
   });
 
+  it('says who each application belongs to', async () => {
+    // A queue of bare uids is a queue nobody can judge: no name to recognise,
+    // no number to call, and no way to see that an applicant is already
+    // suspended.
+    await submit(driver, motorbike);
+
+    const queue = await request(app)
+      .get('/api/v1/drivers')
+      .set(...admin.authHeader);
+
+    expect(queue.body.data[0].account).toMatchObject({
+      email: 'drv-1@example.test',
+      displayName: 'drv-1',
+      status: 'active',
+    });
+  });
+
+  it('an application whose account is gone still lists, without one', async () => {
+    await submit(driver, motorbike);
+    await db.collection(Collections.users).doc('drv-1').delete();
+
+    const queue = await request(app)
+      .get('/api/v1/drivers')
+      .set(...admin.authHeader);
+
+    expect(queue.body.data).toHaveLength(1);
+    expect(queue.body.data[0].account).toBeNull();
+  });
+
   it('every tab of the queue answers, not only "All"', async () => {
     await submit(driver, motorbike);
     await submit(otherDriver, bicycle);

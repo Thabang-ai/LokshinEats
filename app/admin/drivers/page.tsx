@@ -10,17 +10,27 @@
 //
 // A refusal has to say why. The driver is shown the reason in their app, and
 // one that says nothing is an application they will send again unchanged.
+//
+// Turning an application down is not the same as stopping the person: an
+// approved driver who then takes a customer's cash needs suspending, and this
+// is where an admin is already looking at them. So the account controls are
+// here as well as on People, rather than a page away.
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Bike, Car, Check, Clock, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import AccountControls, {
+  AccountStatusChip,
+} from '../../../components/AccountControls';
 import RoleGuard from '../../../components/RoleGuard';
+import { auth } from '../../../firebase/config';
 import { ApiError } from '../../../services/apiClient';
 import {
   decideDriverApplication,
   fetchDriverApplications,
+  type AccountStatus,
   type DriverApplication,
   type DriverVerificationStatus,
 } from '../../../services/adminApi';
@@ -72,6 +82,20 @@ export default function AdminDriversPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Whoever is looking. Their own application, if they have one, gets no
+  // account controls.
+  const myUid = auth.currentUser?.uid ?? null;
+
+  /** Keep the card in step with what the API just said about the account. */
+  const noteAccountStatus = (id: string, status: AccountStatus) =>
+    setApplications((current) =>
+      current.map((application) =>
+        application.id === id && application.account
+          ? { ...application, account: { ...application.account, status } }
+          : application,
+      ),
+    );
 
   // State is set in the promise's callbacks rather than in the effect body:
   // setting it synchronously there cascades renders, which React now warns
@@ -221,7 +245,17 @@ export default function AdminDriversPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {applications.map((application) => (
+              {applications.map((application) => {
+                // Approved, but the account never got the driver role - so
+                // every delivery route still refuses them. Approving again
+                // grants it, so the button stays on offer for this one case.
+                const cannotDeliver =
+                  application.status === 'approved' &&
+                  application.account !== null &&
+                  application.account.role !== 'driver' &&
+                  application.account.role !== 'admin';
+
+                return (
                 <div
                   key={application.id}
                   className="bg-white rounded-2xl shadow-md p-6"
@@ -233,21 +267,36 @@ export default function AdminDriversPage() {
                       </div>
                       <div>
                         <p className="font-bold text-lg">
-                          {VEHICLE_LABEL[application.vehicleType]}
+                          {application.account?.displayName ||
+                            VEHICLE_LABEL[application.vehicleType]}
                         </p>
-                        <p className="text-sm text-gray-600 font-mono">
+                        <p className="text-sm text-gray-600">
+                          {application.account
+                            ? `${application.account.email}${
+                                application.account.phone
+                                  ? ` · ${application.account.phone}`
+                                  : ''
+                              } · ${VEHICLE_LABEL[application.vehicleType]}`
+                            : 'No profile for this account'}
+                        </p>
+                        <p className="text-xs text-gray-400 font-mono mt-0.5">
                           {application.id}
                         </p>
                       </div>
                     </div>
 
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
-                        STATUS_STYLE[application.status]
-                      }`}
-                    >
-                      {application.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {application.account && (
+                        <AccountStatusChip status={application.account.status} />
+                      )}
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
+                          STATUS_STYLE[application.status]
+                        }`}
+                      >
+                        {application.status}
+                      </span>
+                    </div>
                   </div>
 
                   <dl className="grid sm:grid-cols-3 gap-4 mt-6">
@@ -290,32 +339,61 @@ export default function AdminDriversPage() {
                     </p>
                   )}
 
-                  {application.status !== 'approved' && (
-                    <div className="flex gap-3 mt-6">
-                      <button
-                        type="button"
-                        disabled={busyId === application.id}
-                        onClick={() => decide(application, 'approve')}
-                        className="flex items-center gap-2 bg-green-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-green-700 disabled:opacity-60"
-                      >
-                        <Check className="w-4 h-4" />
-                        Approve
-                      </button>
-                      {application.status !== 'rejected' && (
+                  {cannotDeliver && application.account && (
+                    <p className="mt-4 text-sm text-amber-800 bg-amber-50 rounded-xl p-3">
+                      Approved, but this account is a{' '}
+                      {application.account.role}, so it cannot take a delivery.
+                      Make them a driver to put that right.
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-3 mt-6">
+                    {(application.status !== 'approved' || cannotDeliver) && (
+                      <>
                         <button
                           type="button"
                           disabled={busyId === application.id}
-                          onClick={() => decide(application, 'reject')}
-                          className="flex items-center gap-2 border border-red-300 text-red-600 px-5 py-3 rounded-xl font-semibold hover:bg-red-50 disabled:opacity-60"
+                          onClick={() => decide(application, 'approve')}
+                          className="flex items-center gap-2 bg-green-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-green-700 disabled:opacity-60"
                         >
-                          <X className="w-4 h-4" />
-                          Turn down
+                          <Check className="w-4 h-4" />
+                          {cannotDeliver ? 'Make them a driver' : 'Approve'}
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {application.status === 'pending' && (
+                          <button
+                            type="button"
+                            disabled={busyId === application.id}
+                            onClick={() => decide(application, 'reject')}
+                            className="flex items-center gap-2 border border-red-300 text-red-600 px-5 py-3 rounded-xl font-semibold hover:bg-red-50 disabled:opacity-60"
+                          >
+                            <X className="w-4 h-4" />
+                            Turn down
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Turning an application down is not the same as
+                        stopping the person. */}
+                    {application.account && (
+                      <AccountControls
+                        account={{
+                          id: application.id,
+                          displayName: application.account.displayName,
+                          email: application.account.email,
+                          role: application.account.role,
+                          status: application.account.status,
+                        }}
+                        isSelf={application.id === myUid}
+                        onChanged={(status) =>
+                          noteAccountStatus(application.id, status)
+                        }
+                      />
+                    )}
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

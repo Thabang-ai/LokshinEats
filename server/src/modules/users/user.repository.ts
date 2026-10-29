@@ -25,6 +25,30 @@ export async function findById(uid: string): Promise<UserProfile | null> {
   return snapshot.exists ? toUserProfile(snapshot) : null;
 }
 
+/**
+ * Several profiles in one round trip.
+ *
+ * For lists that are about people but keyed by something else - the driver
+ * review queue is a list of applications, and an application with a uid on it
+ * and no name is one an admin cannot judge.
+ */
+export async function findMany(
+  uids: readonly string[],
+): Promise<Map<string, UserProfile>> {
+  const unique = [...new Set(uids)];
+  if (unique.length === 0) return new Map();
+
+  const snapshots = await db.getAll(
+    ...unique.map((uid) => collection().doc(uid)),
+  );
+
+  return new Map(
+    snapshots
+      .filter((snapshot) => snapshot.exists)
+      .map((snapshot) => [snapshot.id, toUserProfile(snapshot)]),
+  );
+}
+
 export async function exists(uid: string): Promise<boolean> {
   const snapshot = await collection().doc(uid).get();
   return snapshot.exists;
