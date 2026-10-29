@@ -58,6 +58,7 @@ class MyDeliveriesPage extends ConsumerWidget {
                       _OwedNotice(
                         total: owedTotalOf(state),
                         kitchens: owed.length,
+                        dueAt: nextCashDueOf(state),
                       ),
                       const SizedBox(height: 10),
                       for (final delivery in owed)
@@ -114,11 +115,52 @@ void _open(BuildContext context, String orderId) {
 ///
 /// Said plainly and at the top, because it is the one thing on this screen
 /// somebody else is waiting for.
+/// A deadline written the way somebody standing in the street reads it.
+///
+/// "by 18:00 today" means something; "by 2026-10-30T18:00:00Z" does not.
+String _when(DateTime due) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(due.year, due.month, due.day);
+  final clock =
+      '${due.hour.toString().padLeft(2, '0')}:'
+      '${due.minute.toString().padLeft(2, '0')}';
+
+  final days = day.difference(today).inDays;
+  if (days == 0) return '$clock today';
+  if (days == 1) return '$clock tomorrow';
+
+  const names = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
+  return '$clock on ${names[due.weekday - 1]}';
+}
+
+/// What the driver owes, and what happens if it stays that way.
+///
+/// The amount alone was a statement with no consequence attached. A driver
+/// holding a kitchen's takings is holding somebody else's money, and the
+/// platform now stops them taking more work - and then suspends them - if it
+/// stays in their pocket. Saying so here is the point: nobody should learn
+/// about the deadline by being locked out.
 class _OwedNotice extends StatelessWidget {
-  const _OwedNotice({required this.total, required this.kitchens});
+  const _OwedNotice({
+    required this.total,
+    required this.kitchens,
+    this.dueAt,
+  });
 
   final double total;
   final int kitchens;
+  final DateTime? dueAt;
+
+  bool get _overdue => dueAt != null && dueAt!.isBefore(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
@@ -128,21 +170,47 @@ class _OwedNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: status.warning.withValues(alpha: 0.12),
+        color: (_overdue ? status.danger : status.warning).withValues(
+          alpha: 0.12,
+        ),
         borderRadius: BorderRadius.circular(AppTheme.radius),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.payments_outlined, color: status.warning),
+          Icon(
+            _overdue ? Icons.error_outline : Icons.payments_outlined,
+            color: _overdue ? status.danger : status.warning,
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              kitchens == 1
-                  ? 'You still owe a kitchen ${formatRands(total)}.'
-                  : 'You still owe $kitchens kitchens ${formatRands(total)}.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  kitchens == 1
+                      ? 'You still owe a kitchen ${formatRands(total)}.'
+                      : 'You still owe $kitchens kitchens ${formatRands(total)}.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (dueAt != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _overdue
+                        ? 'Overdue. You cannot take another delivery until '
+                              'the kitchen has it, and your account can be '
+                              'suspended.'
+                        : 'Hand it over by ${_when(dueAt!)} or you cannot take '
+                              'another delivery.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: _overdue ? status.danger : null,
+                      fontWeight: _overdue ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

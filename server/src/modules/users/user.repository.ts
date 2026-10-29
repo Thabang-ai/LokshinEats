@@ -13,6 +13,7 @@ import type { Role } from '../../middleware/auth';
 import {
   toUserProfile,
   type AccountStatus,
+  type SuspensionCode,
   type CreateProfileInput,
   type UpdateProfileInput,
   type UserProfile,
@@ -111,6 +112,8 @@ export async function setStatus(
     status: AccountStatus;
     reason: string | null;
     changedBy: string;
+    /** What imposed it, when the platform did: only that can lift it again. */
+    code?: SuspensionCode | null;
   },
 ): Promise<UserProfile> {
   const ref = collection().doc(uid);
@@ -119,6 +122,7 @@ export async function setStatus(
     status: input.status,
     statusReason: input.reason,
     statusChangedBy: input.changedBy,
+    suspensionCode: input.code ?? null,
     statusChangedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

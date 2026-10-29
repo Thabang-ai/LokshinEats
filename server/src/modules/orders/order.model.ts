@@ -16,6 +16,7 @@ import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { toIso, toNumber, toStringOr } from '../../lib/serialize';
 import type { Role } from '../../middleware/auth';
 import { CANCELLATION_STAGES } from './cancellation.policy';
+import { env } from '../../config/env';
 
 export const ORDER_STATUSES = [
   'pending',
@@ -143,6 +144,12 @@ export type Order = {
   cashGivenAmount: number | null;
   vendorCashConfirmed: boolean;
   vendorCashDisputed: boolean;
+  /**
+   * When this cash is due to the kitchen, for a delivered cash order the
+   * driver is still holding. Null once it is handed over, and null for an
+   * order that was never cash.
+   */
+  cashDueAt: string | null;
   /** Store-to-customer estimate, used to filter by driver vehicle range. */
   estimatedDistanceKm: number | null;
   /** Frozen platform economics. Never accepted from a client. */
@@ -160,6 +167,34 @@ export type Order = {
   /** Present once the order is cancelled: the tier applied, and who got what. */
   cancellation: CancellationRecord | null;
 };
+
+/**
+ * When a driver holding a kitchen's cash has to have handed it over.
+ *
+ * Measured from delivery, because that is the moment they have both the
+ * money and nothing left to do for the order. An order delivered before the
+ * clock existed has no deliveredAt to measure from; those read as not due,
+ * rather than as overdue by years.
+ */
+export function cashDueAt(deliveredAt: string | null): string | null {
+  if (!deliveredAt) return null;
+
+  const delivered = new Date(deliveredAt);
+  if (Number.isNaN(delivered.getTime())) return null;
+
+  return new Date(
+    delivered.getTime() + env.CASH_HANDOVER_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+}
+
+/** Whether that deadline has passed. */
+export function isCashOverdue(
+  deliveredAt: string | null,
+  now: Date = new Date(),
+): boolean {
+  const due = cashDueAt(deliveredAt);
+  return due !== null && new Date(due).getTime() <= now.getTime();
+}
 
 /** The outcome recorded on a cancelled order. */
 export type CancellationRecord = {
@@ -393,6 +428,12 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
         : null,
     vendorCashConfirmed: data.vendorCashConfirmed === true,
     vendorCashDisputed: data.vendorCashDisputed === true,
+    cashDueAt:
+      data.paymentMethod === 'cash' &&
+      data.status === 'delivered' &&
+      data.cashGivenToVendor !== true
+        ? cashDueAt(toIso(data.deliveredAt))
+        : null,
     estimatedDistanceKm:
       typeof data.estimatedDistanceKm === 'number' &&
       Number.isFinite(data.estimatedDistanceKm)

@@ -90,6 +90,21 @@ const schema = z.object({
    */
   PUSH_PROVIDER: z.enum(['off', 'fcm']).default(defaultPushProvider()),
 
+  /**
+   * How long a driver has to hand a kitchen its cash after delivering.
+   *
+   * The platform never touches this money: the customer pays the driver, and
+   * the driver pays the kitchen. Until there was a deadline, "later" was a
+   * perfectly good answer and the kitchen's only recourse was to ask.
+   */
+  CASH_HANDOVER_HOURS: z.coerce.number().positive().max(720).default(24),
+
+  /**
+   * Shared secret for the scheduled cash sweep, which has no admin to sign
+   * in as. Unset means the sweep can only be run by an admin by hand.
+   */
+  CRON_SECRET: z.string().trim().min(16).optional(),
+
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_SENSITIVE_MAX: z.coerce.number().int().positive().default(20),

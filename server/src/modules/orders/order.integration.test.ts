@@ -742,11 +742,27 @@ describe('cash settlement between driver and vendor', () => {
     expect(settled.vendorCashConfirmed).toBe(false);
   });
 
-  it('refuses before the driver has claimed a handover', async () => {
+  it('a kitchen may confirm cash the driver never recorded', async () => {
+    // The driver's claim was only ever a prompt for this answer, and a driver
+    // suspended over this cash cannot record anything - so without this the
+    // debt could never be cleared.
+    const { orderId } = await deliveredCashOrder();
+
+    const settled = await orderService.settleCashReceipt(
+      vendorActor,
+      orderId,
+      'confirm',
+    );
+
+    expect(settled.vendorCashConfirmed).toBe(true);
+    expect(settled.cashGivenToVendor).toBe(true);
+  });
+
+  it('but has nothing to dispute until the driver claims one', async () => {
     const { orderId } = await deliveredCashOrder();
 
     await expect(
-      orderService.settleCashReceipt(vendorActor, orderId, 'confirm'),
+      orderService.settleCashReceipt(vendorActor, orderId, 'dispute'),
     ).rejects.toThrow(/not recorded handing/i);
   });
 

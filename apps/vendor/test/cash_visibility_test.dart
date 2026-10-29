@@ -137,6 +137,16 @@ void main() {
     expect(find.text('Driver owes you'), findsOneWidget);
   });
 
+  testWidgets('the kitchen can settle it without waiting for the driver', (
+    tester,
+  ) async {
+    // A driver suspended over this cash cannot record a handover at all, so
+    // without this the debt could never be cleared.
+    await pump(tester, [order()]);
+
+    expect(find.text('I got the cash'), findsOneWidget);
+  });
+
   testWidgets('says so once the kitchen has confirmed it', (tester) async {
     await pump(tester, [
       order(cashGivenToVendor: true, vendorCashConfirmed: true),

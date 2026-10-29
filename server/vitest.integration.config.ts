@@ -30,6 +30,8 @@ export default defineConfig({
       COMMISSION_RATE: '0.08',
       DRIVER_DELIVERY_SHARE: '0.85',
       PAYMENT_PROVIDER: 'sandbox',
+      // So the cash sweep's scheduled path can be exercised at all.
+      CRON_SECRET: 'test-cron-secret-not-a-real-one',
     },
   },
 });

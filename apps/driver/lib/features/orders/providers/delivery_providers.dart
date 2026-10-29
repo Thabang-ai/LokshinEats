@@ -208,6 +208,17 @@ List<Delivery> owedOf(DeliveryListState state) => state.deliveries
 double owedTotalOf(DeliveryListState state) =>
     owedOf(state).fold(0, (sum, delivery) => sum + delivery.kitchenCashDue);
 
+/// The soonest kitchen cash deadline still to come, or already gone.
+DateTime? nextCashDueOf(DeliveryListState state) {
+  final dues =
+      owedOf(state)
+          .map((delivery) => delivery.cashDueAt)
+          .whereType<DateTime>()
+          .toList()
+        ..sort();
+  return dues.isEmpty ? null : dues.first;
+}
+
 /// Done or cancelled.
 List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
     .where((delivery) => !delivery.status.isActive)

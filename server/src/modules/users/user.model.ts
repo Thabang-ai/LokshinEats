@@ -38,6 +38,15 @@ export type ProfileAddress = {
 export const ACCOUNT_STATUSES = ['active', 'suspended', 'removed'] as const;
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
+/**
+ * What imposed a suspension, when it was not a person.
+ *
+ * Only the thing that imposed it may lift it: cash arriving ends a cash
+ * suspension and leaves an admin's decision alone.
+ */
+export const SUSPENSION_CODES = ['unsettled_cash'] as const;
+export type SuspensionCode = (typeof SUSPENSION_CODES)[number];
+
 export type UserProfile = {
   id: string;
   email: string;
@@ -49,8 +58,10 @@ export type UserProfile = {
   /** Why they were suspended or removed, in the admin's words. */
   statusReason: string | null;
   statusChangedAt: string | null;
-  /** The admin who decided, so a suspension is never anonymous. */
+  /** The admin who decided, or `system`, so a suspension is never anonymous. */
   statusChangedBy: string | null;
+  /** Set when the platform suspended them itself. */
+  suspensionCode: SuspensionCode | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -190,6 +201,11 @@ export function toUserProfile(snapshot: DocumentSnapshot): UserProfile {
       typeof data.statusChangedBy === 'string' && data.statusChangedBy
         ? data.statusChangedBy
         : null,
+    suspensionCode: (SUSPENSION_CODES as readonly string[]).includes(
+      data.suspensionCode,
+    )
+      ? (data.suspensionCode as SuspensionCode)
+      : null,
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };

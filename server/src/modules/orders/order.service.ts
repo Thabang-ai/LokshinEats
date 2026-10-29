@@ -17,6 +17,7 @@ import { createDeliveryCode } from '../../lib/otp';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
 import * as driverService from '../drivers/driver.service';
+import * as cashService from './cash.service';
 import * as paymentService from '../payments/payment.service';
 import { cardPaymentsEnabled } from '../payments/payment.provider';
 import * as productRepository from '../products/product.repository';
@@ -449,6 +450,10 @@ export async function acceptOrder(
   // an approval can be withdrawn while a driver has the app open.
   await driverService.assertApproved(caller.uid);
 
+  // Nobody carries a second kitchen's dinner while they are late paying the
+  // first. This is the half of the deadline that needs nothing to be running.
+  await cashService.assertNothingOverdue(caller.uid);
+
   const assigned = await repository.assignDriver(orderId, caller.uid);
 
   log.info({ orderId, driverId: caller.uid }, 'Driver accepted order.');
@@ -548,7 +553,6 @@ export async function settleCashReceipt(
   // still owe the kitchen, which is exactly what a dispute claims.
   if (
     outcome === 'confirm' &&
-    order.cashGivenToVendor &&
     !order.vendorCashConfirmed &&
     !order.vendorCashDisputed &&
     order.driverId
@@ -570,6 +574,18 @@ export async function settleCashReceipt(
     { orderId, vendorId: caller.uid, outcome },
     'Vendor settled a cash receipt.',
   );
+
+  // The money arriving is what ends an automatic suspension. Never fatal:
+  // the receipt is recorded either way, and the sweep will not re-suspend
+  // somebody who owes nothing.
+  if (outcome === 'confirm' && settled.driverId) {
+    await cashService
+      .reinstateIfSettled(settled.driverId)
+      .catch((error: unknown) =>
+        log.error({ orderId, err: error }, 'Could not lift a cash suspension.'),
+      );
+  }
+
   return settled;
 }
 

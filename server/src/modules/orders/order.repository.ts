@@ -256,6 +256,30 @@ export async function listAll(options: ListOptions): Promise<Page<Order>> {
   return runList((base) => base, options);
 }
 
+/**
+ * Delivered cash orders whose money is still with the driver.
+ *
+ * Equality filters only and no ordering, so it needs no composite index. The
+ * set is small by construction and shrinks as drivers pay: an order leaves it
+ * the moment the handover is recorded.
+ */
+export async function listUnsettledCash(options: {
+  driverId?: string;
+  limit?: number;
+} = {}): Promise<Order[]> {
+  let query = collection()
+    .where('status', '==', 'delivered')
+    .where('paymentMethod', '==', 'cash')
+    .where('cashGivenToVendor', '==', false);
+
+  if (options.driverId) {
+    query = query.where('driverId', '==', options.driverId);
+  }
+
+  const snapshot = await query.limit(options.limit ?? 500).get();
+  return snapshot.docs.map((doc) => toOrder(doc, 'admin'));
+}
+
 /** Orders still owed to somebody: food to cook, carry, pay for or receive. */
 const UNFINISHED_STATUSES: readonly OrderStatus[] = [
   'pending',
@@ -480,10 +504,28 @@ export async function settleCashReceipt(
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists) throw ApiError.notFound('No such order.');
 
-    if (snapshot.get('cashGivenToVendor') !== true) {
+    const claimed = snapshot.get('cashGivenToVendor') === true;
+
+    // A kitchen may confirm cash the driver never got round to recording -
+    // they are the one saying they have the money, and the driver's claim was
+    // only ever a prompt for this answer. It matters for a driver suspended
+    // over this cash: suspended, they cannot record anything, so without it
+    // the debt could never be cleared and the suspension never lifted.
+    //
+    // Disputing still needs a claim. There is nothing to dispute otherwise.
+    if (!claimed && outcome === 'dispute') {
       throw ApiError.conflict(
         'The driver has not recorded handing this cash over yet.',
       );
+    }
+
+    // Implied by a claim, and so never checked before. Confirming without one
+    // has to check for itself.
+    if (snapshot.get('paymentMethod') !== 'cash') {
+      throw ApiError.unprocessable('This is not a cash order.');
+    }
+    if (snapshot.get('status') !== 'delivered') {
+      throw ApiError.conflict('This order has not been delivered yet.');
     }
     if (
       snapshot.get('vendorCashConfirmed') === true ||
@@ -493,6 +535,14 @@ export async function settleCashReceipt(
     }
 
     transaction.update(ref, {
+      // Recorded on the kitchen's word, if the driver never recorded it.
+      ...(claimed
+        ? {}
+        : {
+            cashGivenToVendor: true,
+            cashGivenToVendorAt: FieldValue.serverTimestamp(),
+            cashGivenAmount: Number(snapshot.get('subtotal') ?? 0),
+          }),
       ...(outcome === 'confirm'
         ? {
             vendorCashConfirmed: true,

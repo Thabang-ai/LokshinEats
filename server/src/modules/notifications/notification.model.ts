@@ -40,6 +40,8 @@ export const NOTIFICATION_KINDS = [
   // To a driver, about themselves rather than about an order.
   'driver_approved',
   'driver_rejected',
+  'cash_due_soon',
+  'driver_suspended_cash',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -202,6 +204,26 @@ export function messageFor(
         kind,
         title: 'You are approved',
         body: 'You can start taking deliveries now.',
+      };
+
+    case 'cash_due_soon':
+      return {
+        kind,
+        title: 'A kitchen is waiting for its cash',
+        body: `Hand ${kitchen} the ${rands(
+          facts.cashHandedOver ?? 0,
+        )} you collected. Your account is suspended if you do not.`,
+      };
+
+    case 'driver_suspended_cash':
+      return {
+        kind,
+        title: 'Your account is suspended',
+        // The amount and the way back, in the same breath: a suspension that
+        // does not say how to end it is one that just ends somebody's work.
+        body:
+          `${facts.decisionReason?.trim() ?? 'Cash is outstanding.'} ` +
+          'Hand it over and ask the kitchen to confirm, and you are back on.',
       };
 
     case 'driver_rejected':

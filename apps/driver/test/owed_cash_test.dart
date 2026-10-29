@@ -26,6 +26,7 @@ Map<String, Object?> delivery({
   bool cashGivenToVendor = false,
   double subtotal = 55.17,
   String storeName = "Mini's Mashy Eatery",
+  Duration? dueIn,
 }) => {
   'id': id,
   'status': status,
@@ -43,6 +44,8 @@ Map<String, Object?> delivery({
   'vendorCashConfirmed': false,
   'deliveryAddress': {'street': '1 Vilakazi Street', 'city': 'Soweto'},
   'createdAt': '2026-10-28T10:00:00.000Z',
+  if (dueIn != null)
+    'cashDueAt': DateTime.now().add(dueIn).toUtc().toIso8601String(),
 };
 
 ApiClient _api(List<Map<String, Object?>> deliveries) => ApiClient(
@@ -78,6 +81,35 @@ Future<void> pump(
 }
 
 void main() {
+  testWidgets('says by when, so nobody learns the rule by being locked out', (
+    tester,
+  ) async {
+    await pump(tester, [delivery(dueIn: const Duration(hours: 5))]);
+
+    expect(
+      find.textContaining('cannot take another delivery'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Hand it over by'), findsOneWidget);
+  });
+
+  testWidgets('says plainly when the deadline has gone', (tester) async {
+    await pump(tester, [delivery(dueIn: const Duration(hours: -3))]);
+
+    expect(find.textContaining('Overdue.'), findsOneWidget);
+    expect(find.textContaining('can be suspended'), findsOneWidget);
+  });
+
+  testWidgets('an order with no deadline says nothing about one', (
+    tester,
+  ) async {
+    // Delivered before the clock existed: no deliveredAt to measure from.
+    await pump(tester, [delivery()]);
+
+    expect(find.textContaining('Hand it over by'), findsNothing);
+    expect(find.textContaining('Overdue.'), findsNothing);
+  });
+
   testWidgets('says what is owed, and to how many kitchens', (tester) async {
     await pump(tester, [
       delivery(),

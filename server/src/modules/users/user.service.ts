@@ -206,6 +206,9 @@ export async function setAccountStatus(
     status: input.status,
     reason: input.reason ?? null,
     changedBy: actor.uid,
+    // An admin's decision is their own, and is not lifted by a kitchen
+    // confirming cash later.
+    code: null,
   });
 
   log.warn(
@@ -266,6 +269,7 @@ export async function removeAccount(
     status: 'removed',
     reason,
     changedBy: actor.uid,
+    code: null,
   });
 
   log.warn(
@@ -273,6 +277,65 @@ export async function removeAccount(
     'Account removed from the platform.',
   );
   return profile;
+}
+
+/**
+ * Suspend a driver the platform is waiting on, with no admin involved.
+ *
+ * Marked as the platform's doing (`statusChangedBy: 'system'`) and with a
+ * code, so the money arriving can lift exactly this suspension and nothing
+ * else: an admin who suspended somebody for taking a customer's phone is not
+ * overruled by a kitchen confirming a separate R55.
+ *
+ * Returns false if they were already suspended, for whatever reason - the
+ * sweep runs repeatedly and must be dull about it.
+ */
+export async function suspendForUnsettledCash(
+  driverId: string,
+  reason: string,
+): Promise<boolean> {
+  const target = await repository.findById(driverId);
+  if (!target || target.status !== 'active') return false;
+
+  try {
+    await adminAuth.updateUser(driverId, { disabled: true });
+  } catch (error) {
+    log.error({ uid: driverId, err: error }, 'Could not suspend over cash.');
+    return false;
+  }
+
+  await revokeSessions(driverId);
+  await repository.setStatus(driverId, {
+    status: 'suspended',
+    reason,
+    changedBy: 'system',
+    code: 'unsettled_cash',
+  });
+
+  return true;
+}
+
+/** Lift a suspension this platform imposed over cash, and only that one. */
+export async function liftCashSuspension(driverId: string): Promise<boolean> {
+  const target = await repository.findById(driverId);
+  if (!target || target.status !== 'suspended') return false;
+  if (target.suspensionCode !== 'unsettled_cash') return false;
+
+  try {
+    await adminAuth.updateUser(driverId, { disabled: false });
+  } catch (error) {
+    log.error({ uid: driverId, err: error }, 'Could not lift a cash suspension.');
+    return false;
+  }
+
+  await repository.setStatus(driverId, {
+    status: 'active',
+    reason: null,
+    changedBy: 'system',
+    code: null,
+  });
+
+  return true;
 }
 
 /**

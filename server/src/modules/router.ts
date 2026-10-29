@@ -9,6 +9,7 @@
 import { Router } from 'express';
 import { driverRouter } from './drivers/driver.routes';
 import { notificationRouter } from './notifications/notification.routes';
+import { cashRouter } from './orders/cash.routes';
 import { orderRouter } from './orders/order.routes';
 import { registerPaymentProviders } from './payments/payment.bootstrap';
 import { cardPaymentsEnabled } from './payments/payment.provider';
@@ -54,6 +55,7 @@ apiRouter.use('/drivers', driverRouter);
 apiRouter.use('/stores', storeRouter);
 apiRouter.use('/products', productRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/cash', cashRouter);
 apiRouter.use('/payments', paymentRouter);
 apiRouter.use('/wallets', walletRouter);
 apiRouter.use('/notifications', notificationRouter);

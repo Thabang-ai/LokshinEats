@@ -128,6 +128,7 @@ class Delivery {
     this.distanceKm,
     this.createdAt,
     this.deliveredAt,
+    this.cashDueAt,
   });
 
   factory Delivery.fromJson(Map<String, dynamic> json) {
@@ -169,6 +170,10 @@ class Delivery {
         _ => null,
       },
       deliveredAt: switch (json['deliveredAt']) {
+        final String s => DateTime.tryParse(s)?.toLocal(),
+        _ => null,
+      },
+      cashDueAt: switch (json['cashDueAt']) {
         final String s => DateTime.tryParse(s)?.toLocal(),
         _ => null,
       },
@@ -214,6 +219,19 @@ class Delivery {
   final double? distanceKm;
   final DateTime? createdAt;
   final DateTime? deliveredAt;
+
+  /// When the kitchen's cash has to be in its hands.
+  ///
+  /// The API decides it - the window is a platform rule, not a phone's idea
+  /// of one - and sends it only while the money is still with the driver.
+  /// Past it, no new delivery can be claimed and the account is suspended.
+  final DateTime? cashDueAt;
+
+  /// The deadline has passed and the kitchen still does not have its money.
+  bool get cashOverdue {
+    final due = cashDueAt;
+    return due != null && due.isBefore(DateTime.now());
+  }
 
   /// The driver collects the money at the door and owes the kitchen its share.
   bool get isCash => paymentMethod == 'cash';

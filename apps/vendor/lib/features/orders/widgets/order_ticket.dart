@@ -227,6 +227,32 @@ class _Actions extends StatelessWidget {
       );
     }
 
+    // The driver never said anything - they may have simply gone quiet, and
+    // a driver suspended over this cash cannot record a handover at all. The
+    // kitchen saying it has the money is what settles the order and lets them
+    // back to work.
+    if (order.awaitsDriverCash) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Delivered. The driver has not handed over your '
+            '${formatRands(order.cashDueFromDriver)} yet. If they have since '
+            'paid you, say so and this is settled.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => onCashAnswer(true),
+            icon: const Icon(Icons.check_circle_outline),
+            label: _busyOr(busy, 'I got the cash'),
+          ),
+        ],
+      );
+    }
+
     if (order.status.needsAnswer) {
       return Row(
         children: [
@@ -286,9 +312,6 @@ class _Actions extends StatelessWidget {
           _ when order.vendorCashConfirmed =>
             'Delivered. You confirmed '
                 '${formatRands(order.cashDueFromDriver)} from the driver.',
-          _ when order.awaitsDriverCash =>
-            'Delivered. The driver has not handed over your '
-                '${formatRands(order.cashDueFromDriver)} yet.',
           _ => 'Delivered.',
         },
         KitchenOrderStatus.cancelled => 'Cancelled.',
