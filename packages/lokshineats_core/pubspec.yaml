@@ -24,3 +24,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # The badge the website puts beside the name. Shipped at three resolutions
+  # so a 3x phone does not scale a 128px image up.
+  assets:
+    - assets/logo.png
