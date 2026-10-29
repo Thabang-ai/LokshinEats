@@ -288,4 +288,68 @@ describe('what a driver can see', () => {
     expect(asAdmin.status).toBe(200);
     expect(asAdmin.body.data).toHaveLength(1);
   });
+
+  it('every tab of the queue answers, not only "All"', async () => {
+    await submit(driver, motorbike);
+    await submit(otherDriver, bicycle);
+    await request(app)
+      .patch('/api/v1/drivers/drv-2/verification')
+      .set(...admin.authHeader)
+      .send({ decision: 'approve' });
+
+    // The emulator does not enforce composite indexes, so this passed here
+    // while the three filtered tabs returned a 500 against the real database:
+    // the query ordered by `createdAt` and filtered on `status`, and no such
+    // index was ever declared. It needs no index now.
+    const [pending, approved, rejected, all] = await Promise.all(
+      ['?status=pending', '?status=approved', '?status=rejected', ''].map(
+        (query) =>
+          request(app)
+            .get(`/api/v1/drivers${query}`)
+            .set(...admin.authHeader),
+      ),
+    );
+
+    expect(pending.body.data.map((d: { id: string }) => d.id)).toEqual(['drv-1']);
+    expect(approved.body.data.map((d: { id: string }) => d.id)).toEqual(['drv-2']);
+    expect(rejected.body.data).toEqual([]);
+    expect(all.body.data).toHaveLength(2);
+  });
+
+  it('an application with no date is still in the queue', async () => {
+    // `orderBy('createdAt')` drops documents that lack the field entirely.
+    // For a review queue that is an application nobody can see, let alone
+    // decide - and one of those is how a driver ends up approved with no
+    // record of anybody approving them.
+    await submit(driver, motorbike);
+    await db.collection(Collections.drivers).doc('drv-1').update({
+      createdAt: null,
+    });
+
+    const queue = await request(app)
+      .get('/api/v1/drivers?status=pending')
+      .set(...admin.authHeader);
+
+    expect(queue.body.data.map((d: { id: string }) => d.id)).toEqual(['drv-1']);
+  });
+
+  it('newest first, whatever the database hands back', async () => {
+    await submit(driver, motorbike);
+    await submit(otherDriver, bicycle);
+    await db.collection(Collections.drivers).doc('drv-1').update({
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    await db.collection(Collections.drivers).doc('drv-2').update({
+      createdAt: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const queue = await request(app)
+      .get('/api/v1/drivers')
+      .set(...admin.authHeader);
+
+    expect(queue.body.data.map((d: { id: string }) => d.id)).toEqual([
+      'drv-2',
+      'drv-1',
+    ]);
+  });
 });
