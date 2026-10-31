@@ -17,6 +17,14 @@ type FeaturedRestaurant = {
   deliveryTime: string;
   deliveryFee: number;
   image: string;
+  /**
+   * Whether the kitchen is taking orders.
+   *
+   * Carried here because this page is where most people pick one, and it
+   * used to say nothing: you could choose a closed kitchen from the front
+   * page, fill a basket, and only be told at checkout.
+   */
+  isOpen: boolean;
 };
 
 
@@ -43,6 +51,7 @@ export default function Home() {
             deliveryTime: data.deliveryTime ?? '—',
             deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
             image: data.image ?? '🍽️',
+            isOpen: data.isOpen !== false,
           };
         });
         if (!cancelled) {
@@ -208,10 +217,27 @@ export default function Home() {
                           {restaurant.image}
                         </div>
                       )}
+                      {/* Not hidden when closed: somebody looking for a
+                          particular kitchen should find it and see that it is
+                          shut, rather than conclude it has gone. */}
+                      {!restaurant.isOpen && (
+                        <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                          <span className="text-white font-bold text-lg tracking-wide">
+                            Closed
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="p-6 relative">
                       <h3 className="font-bold text-xl mb-2 group-hover:text-primary transition-colors">{restaurant.name}</h3>
-                      <p className="text-gray-600 text-sm mb-4">{restaurant.cuisine}</p>
+                      <p className="text-gray-600 text-sm mb-4">
+                        {restaurant.cuisine}
+                        {!restaurant.isOpen && (
+                          <span className="ml-2 text-gray-500 font-semibold">
+                            · Closed right now
+                          </span>
+                        )}
+                      </p>
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />

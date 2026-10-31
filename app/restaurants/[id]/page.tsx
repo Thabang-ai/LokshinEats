@@ -301,6 +301,18 @@ export default function RestaurantDetailPage({
               <p className="text-white/90 mb-4">{store.cuisine}</p>
               {store.description && <p className="text-white/80 mb-4">{store.description}</p>}
 
+              {!store.isOpen && (
+                // Said in the header, before a single dish is read. This page
+                // used to say nothing at all: you could fill a basket from a
+                // kitchen that was shut and only be turned away at checkout.
+                <div className="inline-flex items-center gap-2 bg-black/30 border border-white/30 rounded-xl px-3 py-2 mb-4">
+                  <Clock className="w-4 h-4" />
+                  <span className="font-semibold">
+                    Closed right now — you can look, but not order yet
+                  </span>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
@@ -333,6 +345,23 @@ export default function RestaurantDetailPage({
 
       {/* Menu Section */}
       <div className="container mx-auto px-4 py-8">
+        {!store.isOpen && (
+          // Again here, because somebody who scrolled straight to the food
+          // has left the header behind.
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+            <Clock className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-900">
+                {store.name} is closed right now
+              </p>
+              <p className="text-sm text-amber-800">
+                The menu is here to look at, but nothing can be ordered until
+                they open again.
+              </p>
+            </div>
+          </div>
+        )}
+
         {menu.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-700 text-lg font-semibold mb-2">No menu items yet</p>
@@ -401,7 +430,11 @@ export default function RestaurantDetailPage({
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="font-bold text-lg">R{item.price}</span>
 
-                        {item.available ? (
+                        {!store.isOpen ? (
+                          <span className="text-gray-500 text-sm font-semibold">
+                            Closed
+                          </span>
+                        ) : item.available ? (
                           <div className="flex items-center gap-1.5 flex-wrap justify-end">
                             {quantities[item.id] && quantities[item.id] > 0 ? (
                               <>
