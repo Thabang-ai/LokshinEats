@@ -100,6 +100,14 @@ class AppTheme {
   /// Corner radius used across cards, sheets and inputs.
   static const double radius = 16;
 
+  /// The site's typeface, bundled in this package.
+  ///
+  /// Prefixed, because a font declared in a package is only reachable from an
+  /// app under `packages/<name>/<family>`. Written as plain 'Geist' it
+  /// resolves to nothing and every screen quietly falls back to Roboto -
+  /// which looks exactly like forgetting to set a font at all.
+  static const String fontFamily = 'packages/lokshineats_core/Geist';
+
   static ThemeData get light => _build(Brightness.light);
   static ThemeData get dark => _build(Brightness.dark);
 
@@ -127,6 +135,10 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: isLight ? AppColors.sand : AppColors.charcoal,
       splashFactory: InkSparkle.splashFactory,
+      // The site's own typeface, loaded there through next/font and bundled
+      // here. Same words, same letters: Roboto against Geist was the
+      // difference you could see without being able to name it.
+      fontFamily: fontFamily,
     );
 
     return base.copyWith(

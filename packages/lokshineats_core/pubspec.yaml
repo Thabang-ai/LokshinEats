@@ -29,3 +29,21 @@ flutter:
   # so a 3x phone does not scale a 128px image up.
   assets:
     - assets/logo.png
+
+  # Geist, which is the site's typeface (app/layout.tsx loads it through
+  # next/font). Bundled rather than fetched at runtime: the apps are used on
+  # mobile data by people paying for it, and a font that arrives late shows
+  # every screen in Roboto first.
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist-400.ttf
+          weight: 400
+        - asset: assets/fonts/Geist-500.ttf
+          weight: 500
+        - asset: assets/fonts/Geist-600.ttf
+          weight: 600
+        - asset: assets/fonts/Geist-700.ttf
+          weight: 700
+        - asset: assets/fonts/Geist-800.ttf
+          weight: 800
