@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/widgets/brand_button.dart';
 
 import '../../shell/providers/shell_providers.dart';
 import '../models/food_category.dart';
@@ -157,13 +158,16 @@ class _HeroState extends ConsumerState<_Hero> {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
+                      // The site's own `.premium-button` for the one action
+                      // this screen exists for.
+                      child: BrandButton(
                         onPressed: _find,
-                        icon: const Icon(Icons.search_rounded),
-                        label: const Text('Find Food'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        icon: const Icon(
+                          Icons.search_rounded,
+                          color: Colors.white,
+                          size: 20,
                         ),
+                        child: const Text('Find Food'),
                       ),
                     ),
                   ],

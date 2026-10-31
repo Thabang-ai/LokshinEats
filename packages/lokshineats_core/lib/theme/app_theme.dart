@@ -142,22 +142,22 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        // The site lifts its cards off the cream with a warm shadow
-        // (--shadow-md is tinted with the brand orange, not grey), so the
-        // same card here is raised rather than outlined.
-        elevation: isLight ? 3 : 0,
+        // `.premium-card` on the site: white, 16px, a warm shadow (its
+        // --shadow-lg is tinted with the brand orange rather than grey) and
+        // a hairline of near-black at 5%. The hairline is what keeps a white
+        // card from dissolving into the cream behind it where the shadow is
+        // faintest, and it was the piece missing here.
+        elevation: isLight ? 4 : 0,
         shadowColor: isLight
-            ? AppColors.brand.withValues(alpha: 0.18)
+            ? AppColors.brand.withValues(alpha: 0.16)
             : Colors.transparent,
         surfaceTintColor: Colors.transparent,
         margin: EdgeInsets.zero,
         color: scheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
-          // Dark mode has no web counterpart to copy, and a shadow does
-          // nothing there, so it keeps the hairline that reads well.
           side: isLight
-              ? BorderSide.none
+              ? BorderSide(color: Colors.black.withValues(alpha: 0.05))
               : BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
         ),
         clipBehavior: Clip.antiAlias,
@@ -169,6 +169,23 @@ class AppTheme {
             borderRadius: BorderRadius.circular(radius),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          // `.premium-button` carries `0 4px 15px rgba(255,107,53,.3)` - an
+          // orange glow under the button rather than a grey drop shadow. A
+          // flat button was the single clearest difference between a screen
+          // here and the same screen on the site.
+          elevation: isLight ? 6 : 0,
+          shadowColor: isLight
+              ? AppColors.brandLight.withValues(alpha: 0.45)
+              : Colors.transparent,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radius),
+          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

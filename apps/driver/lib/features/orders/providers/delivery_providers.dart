@@ -224,6 +224,14 @@ List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
     .where((delivery) => !delivery.status.isActive && !delivery.owesKitchenCash)
     .toList(growable: false);
 
+/// Owed money whose deadline has already passed.
+///
+/// What stops a driver claiming anything else: the API refuses the claim,
+/// and the board says so rather than letting them find out a tap at a time.
+List<Delivery> overdueOf(DeliveryListState state) => owedOf(state)
+    .where((delivery) => delivery.cashOverdue)
+    .toList(growable: false);
+
 /// Any of the owed money a kitchen says never reached it.
 bool anyCashDisputed(DeliveryListState state) =>
     owedOf(state).any((delivery) => delivery.cashDisputed);

@@ -54,6 +54,10 @@ class OrderTrackingPage extends ConsumerWidget {
               children: [
                 _StatusHeader(tracking: data),
                 const SizedBox(height: 16),
+                if (data.order.status == OrderStatus.delivered) ...[
+                  RateOrderCard(order: data.order),
+                  const SizedBox(height: 16),
+                ],
                 if (data.order.status == OrderStatus.cancelled)
                   CancellationNotice(order: data.order)
                 else
@@ -66,10 +70,6 @@ class OrderTrackingPage extends ConsumerWidget {
                 OrderTotalsCard(order: data.order),
                 const SizedBox(height: 16),
                 OrderAddressCard(order: data.order),
-                if (data.order.status == OrderStatus.delivered) ...[
-                  const SizedBox(height: 16),
-                  RateOrderCard(order: data.order),
-                ],
                 if (data.order.status.isActive) ...[
                   const SizedBox(height: 28),
                   CancelOrderButton(

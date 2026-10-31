@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/network/api_exception.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
+import 'package:lokshineats_core/utils/money.dart';
 import 'package:lokshineats_core/widgets/async_states.dart';
 
 import '../models/delivery.dart';
@@ -24,6 +26,24 @@ class AvailableDeliveriesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final available = ref.watch(availableDeliveriesProvider);
     final notifier = ref.read(availableDeliveriesProvider.notifier);
+
+    // A driver past the deadline on a kitchen's cash cannot claim anything -
+    // the API refuses it. Showing them a board full of work and letting them
+    // find that out one tap at a time is the wrong way round, so the board
+    // says why instead.
+    final mine = ref.watch(myDeliveriesProvider).value;
+    final overdue = mine == null ? const <Delivery>[] : overdueOf(mine);
+    if (overdue.isNotEmpty) {
+      return _BlockedByCash(
+        total: overdue.fold<double>(
+          0,
+          (sum, delivery) => sum + delivery.kitchenCashDue,
+        ),
+        kitchens: {
+          for (final delivery in overdue) delivery.storeName,
+        }.where((name) => name.isNotEmpty).toList(),
+      );
+    }
 
     return available.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -47,6 +67,61 @@ class AvailableDeliveriesPage extends ConsumerWidget {
                 ],
               ),
       ),
+    );
+  }
+}
+
+/// Why there is no work on this screen.
+///
+/// Not an empty board and not an error: money that belongs to a kitchen is
+/// sitting in this driver's pocket past the day it was due, and nothing else
+/// happens until it is handed over.
+class _BlockedByCash extends StatelessWidget {
+  const _BlockedByCash({required this.total, required this.kitchens});
+
+  final double total;
+  final List<String> kitchens;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = StatusColors.of(context);
+
+    final who = switch (kitchens.length) {
+      0 => 'a kitchen',
+      1 => kitchens.first,
+      _ => '${kitchens.length} kitchens',
+    };
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+      children: [
+        Icon(Icons.pause_circle_outline, size: 56, color: status.danger),
+        const SizedBox(height: 16),
+        Text(
+          'No new deliveries until you pay',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'You are holding ${formatRands(total)} that belongs to $who, and '
+          'the time to hand it over has passed. Pay it, ask them to confirm '
+          'it, and the board comes back.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Leave it much longer and your account is suspended.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(color: status.danger),
+        ),
+      ],
     );
   }
 }

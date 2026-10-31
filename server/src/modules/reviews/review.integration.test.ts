@@ -161,6 +161,45 @@ describe('leaving a review', () => {
   });
 });
 
+describe('when only half of it can be saved', () => {
+  it('keeps the kitchen review when the driver has no record', async () => {
+    // Found by rating a real order: the kitchen's review was written, the
+    // driver's threw because that driver had no document, and the whole
+    // call came back as a failure - so the customer was told it had not
+    // saved, and could never retry, because the half that saved collided.
+    await db.collection(Collections.drivers).doc('drv-1').delete();
+
+    const response = await review(orderId, {
+      store: { rating: 5 },
+      driver: { rating: 5 },
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].target).toBe('store');
+  });
+
+  it('lets the other half be sent afterwards', async () => {
+    await review(orderId, { store: { rating: 5 } });
+
+    const response = await review(orderId, { driver: { rating: 4 } });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data[0].target).toBe('driver');
+  });
+
+  it('still refuses when nothing at all could be saved', async () => {
+    await review(orderId, { store: { rating: 5 }, driver: { rating: 5 } });
+
+    const again = await review(orderId, {
+      store: { rating: 1 },
+      driver: { rating: 1 },
+    });
+
+    expect(again.status).toBe(409);
+  });
+});
+
 describe('what is refused', () => {
   it('somebody else order', async () => {
     const response = await review(orderId, { store: { rating: 1 } }, other);

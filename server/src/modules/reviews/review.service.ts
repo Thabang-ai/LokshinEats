@@ -49,37 +49,52 @@ export async function submit(
   const customerName = profile?.displayName?.trim() || 'A customer';
 
   const written: Review[] = [];
+  const skipped: string[] = [];
 
-  if (input.store) {
-    written.push(
-      await repository.write({
-        orderId,
-        target: 'store',
-        subjectId: order.storeId,
-        customerId: caller.uid,
-        customerName,
-        rating: input.store.rating,
-        comment: input.store.comment?.trim() || null,
-      }),
-    );
+  /** Each half stands on its own: one failing must not lose the other. */
+  const leave = async (
+    target: 'store' | 'driver',
+    subjectId: string,
+    one: { rating: number; comment?: string },
+  ) => {
+    const outcome = await repository.write({
+      orderId,
+      target,
+      subjectId,
+      customerId: caller.uid,
+      customerName,
+      rating: one.rating,
+      comment: one.comment?.trim() || null,
+    });
+
+    if ('written' in outcome) written.push(outcome.written);
+    else skipped.push(outcome.skipped);
+  };
+
+  if (input.store) await leave('store', order.storeId, input.store);
+  if (input.driver && order.driverId) {
+    await leave('driver', order.driverId, input.driver);
   }
 
-  if (input.driver && order.driverId) {
-    written.push(
-      await repository.write({
-        orderId,
-        target: 'driver',
-        subjectId: order.driverId,
-        customerId: caller.uid,
-        customerName,
-        rating: input.driver.rating,
-        comment: input.driver.comment?.trim() || null,
-      }),
-    );
+  // Nothing saved is the only case worth an error, and which error depends
+  // on why: a repeat submission is the customer's mistake, a missing subject
+  // is ours.
+  if (written.length === 0) {
+    if (skipped.includes('already_reviewed')) {
+      throw ApiError.conflict('You have already reviewed this order.');
+    }
+    if (skipped.includes('no_such_subject')) {
+      throw ApiError.notFound('There is nobody here to review.');
+    }
   }
 
   log.info(
-    { orderId, customerId: caller.uid, left: written.map((r) => r.target) },
+    {
+      orderId,
+      customerId: caller.uid,
+      left: written.map((r) => r.target),
+      skipped,
+    },
     'Review left.',
   );
 

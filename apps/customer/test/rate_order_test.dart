@@ -42,9 +42,12 @@ Map<String, Object?> orderJson({String? driverId = 'drv-1'}) => {
 /// The API, with whatever has already been said about this order.
 late List<Map<String, Object?>> sent;
 
-ApiClient _api(List<Map<String, Object?>> existing) {
+ApiClient _api(List<Map<String, Object?>> existing, {bool failLookup = false}) {
   return ApiClient(
     httpClient: MockClient((request) async {
+      if (failLookup && request.method == 'GET') {
+        return http.Response('{}', 500);
+      }
       if (request.method == 'POST') {
         sent.add(jsonDecode(request.body) as Map<String, Object?>);
         return http.Response(
@@ -73,6 +76,7 @@ Future<void> pump(
   WidgetTester tester, {
   List<Map<String, Object?>> existing = const [],
   String? driverId = 'drv-1',
+  bool failLookup = false,
 }) async {
   sent = [];
   tester.view.physicalSize = const Size(1080, 2400);
@@ -82,7 +86,9 @@ Future<void> pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(_api(existing)),
+        apiClientProvider.overrideWithValue(
+          _api(existing, failLookup: failLookup),
+        ),
         isSignedInProvider.overrideWithValue(true),
       ],
       child: MaterialApp(
@@ -180,6 +186,16 @@ void main() {
     await pump(tester, existing: [
       {'target': 'store', 'rating': 4},
     ]);
+
+    expect(find.text('How was it?'), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
+  });
+
+  testWidgets('a failed lookup still offers the form', (tester) async {
+    // It used to fall through the same gap as "still loading" and show
+    // nothing at all - no stars, no error, no way to tell the feature was
+    // even there.
+    await pump(tester, failLookup: true);
 
     expect(find.text('How was it?'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);

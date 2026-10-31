@@ -73,9 +73,15 @@ class _RateOrderCardState extends ConsumerState<RateOrderCard> {
     final theme = Theme.of(context);
     final already = ref.watch(orderReviewsProvider(widget.order.id));
 
-    // While it is unknown, nothing: offering a form to somebody who has
+    // While it is still loading, nothing: offering a form to somebody who has
     // already rated, and then refusing it, is worse than a moment's wait.
-    final reviews = already.value;
+    //
+    // A failure is different. It used to fall through the same hole and the
+    // card simply never appeared - no stars, no error, nothing to tap, and
+    // no way for anybody to tell whether the feature was there at all. If
+    // the answer cannot be fetched, the form is shown: the worst case is
+    // being offered it twice, and the API refuses the second one by name.
+    final reviews = already.value ?? (already.hasError ? const OrderReviews() : null);
     if (reviews == null) return const SizedBox.shrink();
 
     final storeGiven = reviews.storeRating;

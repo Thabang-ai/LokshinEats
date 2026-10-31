@@ -9,7 +9,6 @@
 
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { Collections, db } from '../../config/firebase';
-import { ApiError } from '../../lib/ApiError';
 import { buildPage, type Page } from '../../lib/pagination';
 import {
   addToAverage,
@@ -31,29 +30,39 @@ export type WriteReviewInput = {
   comment: string | null;
 };
 
+/** Why one half of a submission was not written. */
+export type WriteOutcome =
+  | { written: Review }
+  | { skipped: 'already_reviewed' | 'no_such_subject' };
+
 /**
  * Record one review and move the average it belongs to.
  *
  * The subject's document holds the running average rather than a count of
  * every review: a store page is read on every visit and must not read the
  * whole review history to show a number.
+ *
+ * Neither "already reviewed" nor "there is no such subject" throws, because
+ * a submission can carry two reviews and the other one may be perfectly
+ * good. Rating a kitchen and a driver where the driver has no record used to
+ * write the kitchen's review, throw on the driver's, and report the whole
+ * thing as a failure - leaving a customer who had rated told they had not,
+ * and unable to try again, because the half that saved now collided.
  */
-export async function write(input: WriteReviewInput): Promise<Review> {
+export async function write(input: WriteReviewInput): Promise<WriteOutcome> {
   const ref = collection().doc(reviewId(input.orderId, input.target));
   const subjectRef = subjectDoc(input.target, input.subjectId);
 
-  await db.runTransaction(async (transaction: Transaction) => {
+  const skipped = await db.runTransaction<
+    'already_reviewed' | 'no_such_subject' | null
+  >(async (transaction: Transaction) => {
     const [existing, subject] = await Promise.all([
       transaction.get(ref),
       transaction.get(subjectRef),
     ]);
 
-    if (existing.exists) {
-      throw ApiError.conflict('You have already reviewed this order.');
-    }
-    if (!subject.exists) {
-      throw ApiError.notFound('There is nobody here to review.');
-    }
+    if (existing.exists) return 'already_reviewed';
+    if (!subject.exists) return 'no_such_subject';
 
     const countField = input.target === 'store' ? 'reviewCount' : 'ratingCount';
     const next = addToAverage(
@@ -83,9 +92,12 @@ export async function write(input: WriteReviewInput): Promise<Review> {
       [countField]: next.count,
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    return null;
   });
 
-  return toReview(await ref.get());
+  if (skipped) return { skipped };
+  return { written: toReview(await ref.get()) };
 }
 
 function subjectDoc(target: ReviewTarget, subjectId: string) {

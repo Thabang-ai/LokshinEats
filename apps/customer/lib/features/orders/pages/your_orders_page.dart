@@ -192,6 +192,29 @@ class _OrderRow extends ConsumerWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (order.status == OrderStatus.delivered) ...[
+                const SizedBox(height: 8),
+                // Says the rating exists at all. It lives on the order's own
+                // screen, and nobody opens a finished order to find out what
+                // is on it.
+                Row(
+                  children: [
+                    Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: AppColors.brand,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Rate the kitchen and your driver',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.brand,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (order.items.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
