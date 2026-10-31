@@ -45,6 +45,7 @@ import {
   fetchAllOrders,
   fetchPlatformWallet,
   previewCancellation,
+  resolveCashDispute,
 } from '../../services/adminApi';
 
 type OrderStatus =
@@ -266,6 +267,62 @@ export default function AdminConsole() {
         err instanceof ApiError ? err.message : 'Could not cancel that order.',
       );
       // Either it moved on, or something else is wrong. Re-read, don't guess.
+      setRefreshKey((key) => key + 1);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /**
+   * Decide a cash dispute.
+   *
+   * The two outcomes are not symmetrical and the confirmation says so:
+   * upholding puts a debt back on a driver and can cost them their account,
+   * while dismissing moves money to a kitchen that says it never arrived.
+   */
+  const handleResolveDispute = async (
+    order: { id: string; storeName: string; subtotal: number },
+    outcome: 'uphold' | 'dismiss',
+  ) => {
+    if (typeof window === 'undefined') return;
+
+    const who = order.storeName || 'the kitchen';
+    const amount = 'R' + order.subtotal.toFixed(2);
+
+    const lines =
+      outcome === 'uphold'
+        ? [
+            'Decide that ' + who + ' never got the ' + amount + '?',
+            '',
+            'The driver owes it again from now, and cannot take another',
+            'delivery until it is paid. The deadline has already been',
+            'running, so they may be suspended for it.',
+          ]
+        : [
+            'Decide that the driver did hand over the ' + amount + '?',
+            '',
+            'The money moves to ' + who + ', the matter is closed, and any',
+            'suspension the driver picked up over it is lifted.',
+          ];
+
+    if (!window.confirm(lines.join(String.fromCharCode(10)))) return;
+
+    const note = window.prompt('Why? Kept with the decision.');
+    if (note === null) return;
+
+    setBusyId(order.id);
+    try {
+      await resolveCashDispute(order.id, outcome, note.trim() || undefined);
+      toast.success(
+        outcome === 'uphold'
+          ? 'Recorded. The driver owes it again.'
+          : 'Recorded. The money has moved.',
+      );
+      setRefreshKey((key) => key + 1);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'Could not record that.',
+      );
       setRefreshKey((key) => key + 1);
     } finally {
       setBusyId(null);
@@ -610,10 +667,32 @@ export default function AdminConsole() {
                       </div>
 
                       {o.vendorCashDisputed && (
-                        <span className="w-full text-xs font-semibold text-red-700 flex items-center gap-1">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Cash dispute — driver and vendor
-                          disagree on handover
-                        </span>
+                        <div className="w-full flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-red-700 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Cash dispute — the driver says
+                            they paid R{o.subtotal.toFixed(2)}, {o.storeName || 'the kitchen'} says
+                            it never arrived
+                          </span>
+                          {/* It used to say this and stop. Somebody has to be
+                              able to decide it, or it sits red for ever while
+                              the money stays with whoever is holding it. */}
+                          <button
+                            type="button"
+                            disabled={busyId === o.id}
+                            onClick={() => handleResolveDispute(o, 'uphold')}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-red-700 border border-red-200 hover:bg-red-50 disabled:opacity-40"
+                          >
+                            Driver still owes it
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === o.id}
+                            onClick={() => handleResolveDispute(o, 'dismiss')}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 border border-green-200 hover:bg-green-50 disabled:opacity-40"
+                          >
+                            It was paid
+                          </button>
+                        </div>
                       )}
                     </li>
                   );

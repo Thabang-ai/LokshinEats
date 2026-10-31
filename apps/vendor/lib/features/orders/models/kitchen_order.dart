@@ -187,11 +187,19 @@ class KitchenOrder {
   ///
   /// Until this existed the kitchen was told only "Delivered." - there was
   /// nowhere at all that said whether the money had arrived.
+  /// A disputed handover is included. Saying the money never arrived is not
+  /// the same as receiving it, and the ticket used to leave this list - and
+  /// the running total - the moment the kitchen said so, which read as
+  /// settled on the one screen that is meant to say otherwise.
   bool get awaitsDriverCash =>
       isCash &&
       status == KitchenOrderStatus.delivered &&
-      !cashGivenToVendor &&
-      !vendorCashConfirmed;
+      !vendorCashConfirmed &&
+      !awaitsCashAnswer;
+
+  /// This kitchen said the cash never arrived, and nobody has settled it.
+  bool get cashDisputed =>
+      isCash && status == KitchenOrderStatus.delivered && vendorCashDisputed;
 
   /// The short form for a ticket header.
   String get reference =>

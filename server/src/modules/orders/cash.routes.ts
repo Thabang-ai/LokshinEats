@@ -4,6 +4,8 @@
  * | Method | Path              | Access             |
  * |--------|-------------------|--------------------|
  * | GET    | /cash/outstanding | driver             |
+ * | GET    | /cash/disputes    | admin              |
+ * | POST   | /cash/disputes/:orderId | admin        |
  * | POST   | /cash/sweep       | admin, or schedule |
  * | GET    | /cash/sweep       | the schedule, which only sends GET |
  *
@@ -16,8 +18,26 @@ import { Router, type Request, type Response } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { allowCronOrAdmin } from '../../middleware/allowCronOrAdmin';
 import { authenticate, requireAuth } from '../../middleware/auth';
-import { requireRole } from '../../middleware/requireRole';
+import { requireAdmin, requireRole } from '../../middleware/requireRole';
+import { sensitiveRateLimit } from '../../middleware/rateLimit';
+import { validate } from '../../middleware/validate';
+import { z } from 'zod';
 import * as cashService from './cash.service';
+
+const orderParamSchema = z.object({
+  orderId: z.string().trim().min(1).max(128),
+});
+
+/**
+ * Upholding says the kitchen was right and the driver owes it again;
+ * dismissing closes it in the driver's favour and moves the money.
+ */
+const resolveDisputeSchema = z
+  .object({
+    outcome: z.enum(['uphold', 'dismiss']),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
 
 export const cashRouter = Router();
 
@@ -38,6 +58,36 @@ cashRouter.get(
         overdueOrderIds: outstanding.overdue.map((order) => order.id),
       },
     });
+  }),
+);
+
+/**
+ * Cash a kitchen says never arrived. Somebody has to decide these.
+ */
+cashRouter.get(
+  '/disputes',
+  authenticate,
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    res.json({ data: await cashService.listDisputed() });
+  }),
+);
+
+/** The decision: the kitchen was right, or the driver was. */
+cashRouter.post(
+  '/disputes/:orderId',
+  authenticate,
+  requireAdmin,
+  sensitiveRateLimit,
+  validate({ params: orderParamSchema, body: resolveDisputeSchema }),
+  asyncHandler(async (req, res) => {
+    const order = await cashService.resolveDispute(
+      requireAuth(req),
+      req.params.orderId as string,
+      req.body.outcome,
+      req.body.note?.trim() || null,
+    );
+    res.json({ data: order });
   }),
 );
 

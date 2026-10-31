@@ -250,8 +250,20 @@ class Delivery {
 
   /// Still on the driver: cash collected from the customer that the kitchen
   /// has not been given yet.
+  ///
+  /// A disputed handover counts. The driver said they paid and the kitchen
+  /// says otherwise, and until somebody settles that the money is treated as
+  /// still owed - it used to drop off this list the moment the dispute was
+  /// raised, so the board told a driver they owed nothing while a kitchen was
+  /// saying the opposite.
   bool get owesKitchenCash =>
-      isCash && status == DeliveryStatus.delivered && !cashGivenToVendor;
+      isCash &&
+      status == DeliveryStatus.delivered &&
+      (!cashGivenToVendor || vendorCashDisputed);
+
+  /// The kitchen says the money they claimed to hand over never arrived.
+  bool get cashDisputed =>
+      isCash && status == DeliveryStatus.delivered && vendorCashDisputed;
 
   /// What the driver hands the kitchen: the food, not the delivery fee.
   double get kitchenCashDue => subtotal;

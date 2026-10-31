@@ -221,8 +221,12 @@ DateTime? nextCashDueOf(DeliveryListState state) {
 
 /// Done or cancelled.
 List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
-    .where((delivery) => !delivery.status.isActive)
+    .where((delivery) => !delivery.status.isActive && !delivery.owesKitchenCash)
     .toList(growable: false);
+
+/// Any of the owed money a kitchen says never reached it.
+bool anyCashDisputed(DeliveryListState state) =>
+    owedOf(state).any((delivery) => delivery.cashDisputed);
 
 // ---------------------------------------------------------------------------
 // One delivery, while the driver is working it

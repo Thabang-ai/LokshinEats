@@ -256,6 +256,31 @@ export async function removeUser(
   return response.data;
 }
 
+/**
+ * Decide a disputed cash handover.
+ *
+ * The driver says they paid the kitchen; the kitchen says it never arrived.
+ * Nothing automatic follows from a dispute - a kitchen that could suspend a
+ * driver by raising one would be a kitchen with a weapon - so it waits here
+ * for a person.
+ *
+ * `uphold` believes the kitchen: the claim is struck off and the driver owes
+ * the money again, under a deadline that has already been running. `dismiss`
+ * believes the driver: the receipt stands, the money moves, and any
+ * suspension over it is lifted.
+ */
+export async function resolveCashDispute(
+  orderId: string,
+  outcome: 'uphold' | 'dismiss',
+  note?: string,
+): Promise<AdminApiOrder> {
+  const response = await apiRequest<AdminApiOrder>(
+    `/api/v1/cash/disputes/${encodeURIComponent(orderId)}`,
+    { method: 'POST', body: { outcome, ...(note ? { note } : {}) } },
+  );
+  return response.data;
+}
+
 // ---------------------------------------------------------------------------
 // Wallets and their ledgers
 // ---------------------------------------------------------------------------

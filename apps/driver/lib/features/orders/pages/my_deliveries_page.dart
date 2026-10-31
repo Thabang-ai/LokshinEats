@@ -59,6 +59,7 @@ class MyDeliveriesPage extends ConsumerWidget {
                         total: owedTotalOf(state),
                         kitchens: owed.length,
                         dueAt: nextCashDueOf(state),
+                        disputed: anyCashDisputed(state),
                       ),
                       const SizedBox(height: 10),
                       for (final delivery in owed)
@@ -154,11 +155,15 @@ class _OwedNotice extends StatelessWidget {
     required this.total,
     required this.kitchens,
     this.dueAt,
+    this.disputed = false,
   });
 
   final double total;
   final int kitchens;
   final DateTime? dueAt;
+
+  /// A kitchen says money the driver handed over never arrived.
+  final bool disputed;
 
   bool get _overdue => dueAt != null && dueAt!.isBefore(DateTime.now());
 
@@ -195,6 +200,18 @@ class _OwedNotice extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (disputed) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'A kitchen says money you handed over never arrived. '
+                    'LokshinEats is looking into it, and it stays on your '
+                    'books until it is settled.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: status.danger,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 if (dueAt != null) ...[
                   const SizedBox(height: 2),
                   Text(

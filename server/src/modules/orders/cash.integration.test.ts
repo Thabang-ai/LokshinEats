@@ -312,6 +312,163 @@ describe('the sweep', () => {
   });
 });
 
+describe('a kitchen that says the money never arrived', () => {
+  /** The driver claims a handover; the kitchen disputes it. */
+  async function disputed() {
+    const orderId = await unsettled({ hoursAgo: 1, subtotal: 55 });
+    await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-handover`)
+      .set(...driver.authHeader);
+    await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-receipt`)
+      .set(...vendor.authHeader)
+      .send({ outcome: 'dispute' });
+    return orderId;
+  }
+
+  it('moves no money while it is in dispute', async () => {
+    const orderId = await disputed();
+
+    const order = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set(...admin.authHeader);
+
+    expect(order.body.data.vendorCashDisputed).toBe(true);
+    expect(order.body.data.vendorCashConfirmed).toBe(false);
+  });
+
+  it('lands in front of an admin rather than nowhere', async () => {
+    // It used to set a flag and stop. Nobody was shown it, nobody could act
+    // on it, and both apps read it as settled.
+    const orderId = await disputed();
+
+    const response = await request(app)
+      .get('/api/v1/cash/disputes')
+      .set(...admin.authHeader);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((o: { id: string }) => o.id)).toEqual([
+      orderId,
+    ]);
+  });
+
+  it('is nobody else business', async () => {
+    await disputed();
+
+    expect(
+      (await request(app).get('/api/v1/cash/disputes').set(...driver.authHeader))
+        .status,
+    ).toBe(403);
+  });
+
+  it('ends when the kitchen says the driver has since paid', async () => {
+    // The ordinary ending, and it needs no admin at all.
+    const orderId = await disputed();
+
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-receipt`)
+      .set(...vendor.authHeader)
+      .send({ outcome: 'confirm' });
+
+    expect(response.status).toBe(200);
+
+    const order = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set(...admin.authHeader);
+
+    expect(order.body.data.vendorCashConfirmed).toBe(true);
+    expect(order.body.data.vendorCashDisputed).toBe(false);
+  });
+
+  it('cannot be disputed twice', async () => {
+    const orderId = await disputed();
+
+    const response = await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-receipt`)
+      .set(...vendor.authHeader)
+      .send({ outcome: 'dispute' });
+
+    expect(response.status).toBe(409);
+  });
+
+  it('upheld, the driver owes it again and is blocked from new work', async () => {
+    const orderId = await disputed();
+
+    const resolved = await request(app)
+      .post(`/api/v1/cash/disputes/${orderId}`)
+      .set(...admin.authHeader)
+      .send({ outcome: 'uphold', note: 'Driver admitted it.' });
+
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.data.cashGivenToVendor).toBe(false);
+    expect(resolved.body.data.vendorCashDisputed).toBe(false);
+
+    // Back under the deadline, measured from a delivery an hour ago - so not
+    // overdue yet, but owed.
+    const outstanding = await request(app)
+      .get('/api/v1/cash/outstanding')
+      .set(...driver.authHeader);
+    expect(outstanding.body.data.total).toBe(55);
+  });
+
+  it('upheld on an old delivery, they cannot take another one', async () => {
+    const orderId = await unsettled({ hoursAgo: 48, subtotal: 55 });
+    await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-handover`)
+      .set(...driver.authHeader);
+    await request(app)
+      .post(`/api/v1/orders/${orderId}/cash-receipt`)
+      .set(...vendor.authHeader)
+      .send({ outcome: 'dispute' });
+    await request(app)
+      .post(`/api/v1/cash/disputes/${orderId}`)
+      .set(...admin.authHeader)
+      .send({ outcome: 'uphold' });
+
+    const next = await claimable();
+    const response = await request(app)
+      .post(`/api/v1/orders/${next}/accept`)
+      .set(...driver.authHeader);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('dismissed, the money moves and the matter is closed', async () => {
+    const orderId = await disputed();
+
+    const resolved = await request(app)
+      .post(`/api/v1/cash/disputes/${orderId}`)
+      .set(...admin.authHeader)
+      .send({ outcome: 'dismiss', note: 'Kitchen found the money.' });
+
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.data.vendorCashConfirmed).toBe(true);
+    expect(resolved.body.data.vendorCashDisputed).toBe(false);
+  });
+
+  it('a dispute nobody raised cannot be resolved', async () => {
+    const orderId = await unsettled({ hoursAgo: 1 });
+
+    const response = await request(app)
+      .post(`/api/v1/cash/disputes/${orderId}`)
+      .set(...admin.authHeader)
+      .send({ outcome: 'uphold' });
+
+    expect(response.status).toBe(409);
+  });
+
+  it('and not by the driver it is about', async () => {
+    const orderId = await disputed();
+
+    const response = await request(app)
+      .post(`/api/v1/cash/disputes/${orderId}`)
+      .set(...driver.authHeader)
+      .send({ outcome: 'dismiss' });
+
+    expect(response.status).toBe(403);
+  });
+});
+
 describe('getting back in', () => {
   it('the kitchen confirming the cash lifts the suspension', async () => {
     const orderId = await unsettled({ hoursAgo: 48 });

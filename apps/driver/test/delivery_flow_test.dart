@@ -410,6 +410,9 @@ void main() {
         find.textContaining('says they did not get the cash'),
         findsOneWidget,
       );
+      // And it is money they are still carrying, not a closed delivery.
+      expect(find.textContaining('stays on your books'), findsOneWidget);
+      expect(find.textContaining('Nice one'), findsNothing);
     });
 
     testWidgets('a delivered card order is done, with nothing left to press', (

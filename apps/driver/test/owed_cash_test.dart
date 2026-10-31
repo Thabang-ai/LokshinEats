@@ -24,6 +24,7 @@ Map<String, Object?> delivery({
   String status = 'delivered',
   String paymentMethod = 'cash',
   bool cashGivenToVendor = false,
+  bool vendorCashDisputed = false,
   double subtotal = 55.17,
   String storeName = "Mini's Mashy Eatery",
   Duration? dueIn,
@@ -42,6 +43,7 @@ Map<String, Object?> delivery({
   'driverPayout': 12.75,
   'cashGivenToVendor': cashGivenToVendor,
   'vendorCashConfirmed': false,
+  'vendorCashDisputed': vendorCashDisputed,
   'deliveryAddress': {'street': '1 Vilakazi Street', 'city': 'Soweto'},
   'createdAt': '2026-10-28T10:00:00.000Z',
   if (dueIn != null)
@@ -81,6 +83,44 @@ Future<void> pump(
 }
 
 void main() {
+  testWidgets('a disputed handover is still money they are carrying', (
+    tester,
+  ) async {
+    // It used to drop off this board the moment the kitchen said the money
+    // never arrived - so the driver was told they owed nothing while a
+    // kitchen was saying the opposite.
+    await pump(tester, [
+      delivery(cashGivenToVendor: true, vendorCashDisputed: true),
+    ]);
+
+    expect(find.textContaining('You still owe'), findsOneWidget);
+    expect(find.textContaining('R55,17'), findsWidgets);
+  });
+
+  testWidgets('and says that is what it is', (tester) async {
+    await pump(tester, [
+      delivery(cashGivenToVendor: true, vendorCashDisputed: true),
+    ]);
+
+    expect(
+      find.textContaining('says money you handed over never arrived'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('money still owed is not filed under Finished', (tester) async {
+    await pump(tester, [delivery()]);
+
+    expect(find.text('Finished'), findsNothing);
+  });
+
+  testWidgets('a settled delivery is', (tester) async {
+    await pump(tester, [delivery(cashGivenToVendor: true)]);
+
+    expect(find.text('Finished'), findsOneWidget);
+    expect(find.textContaining('You still owe'), findsNothing);
+  });
+
   testWidgets('says by when, so nobody learns the rule by being locked out', (
     tester,
   ) async {

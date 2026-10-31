@@ -29,6 +29,9 @@ import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import * as notificationService from '../notifications/notification.service';
 import * as userService from '../users/user.service';
+import * as walletService from '../wallets/wallet.service';
+import * as storeRepository from '../stores/store.repository';
+import type { AuthContext } from '../../middleware/auth';
 import { isCashOverdue, type Order } from './order.model';
 import * as repository from './order.repository';
 
@@ -166,6 +169,90 @@ export async function sweepOverdue(now: Date = new Date()): Promise<SweepResult>
 
   log.info(result, 'Cash sweep finished.');
   return result;
+}
+
+/**
+ * Cash a kitchen says never arrived, waiting on somebody to decide.
+ *
+ * A dispute is two people saying opposite things about money neither of them
+ * can prove, so nothing automatic follows from it: a kitchen that could
+ * suspend a driver by disputing would be a kitchen with a weapon. What it
+ * must not do is disappear, which is what it did until now - the order left
+ * the driver's "you owe" list and the kitchen's "owed to you" total, and read
+ * on both sides as settled.
+ */
+export async function listDisputed(): Promise<Order[]> {
+  return repository.listDisputedCash();
+}
+
+/**
+ * An admin decides a disputed handover.
+ *
+ * Upholding it puts the driver back where they were before they said they had
+ * paid: owing the money, under a deadline that has long since passed, which
+ * is what blocks them from taking more work. Dismissing it closes the matter
+ * in the driver's favour and moves the money, exactly as a confirmation does.
+ */
+export async function resolveDispute(
+  actor: AuthContext,
+  orderId: string,
+  outcome: 'uphold' | 'dismiss',
+  note: string | null,
+): Promise<Order> {
+  const before = await repository.findById(orderId, 'admin');
+  if (!before) throw ApiError.notFound('No such order.');
+  if (!before.vendorCashDisputed) {
+    throw ApiError.conflict('This cash is not in dispute.');
+  }
+
+  // The money moves first, for the same reason a confirmation does: the
+  // transfer is keyed to the order and safe to repeat, while the write below
+  // refuses a second go. The other way round could leave a resolved dispute
+  // whose money never moved, with no way left to retry it.
+  if (outcome === 'dismiss' && before.driverId) {
+    const store = await storeRepository.findById(before.storeId);
+    if (!store) throw ApiError.notFound('No such order.');
+
+    await walletService.recordCashHandover({
+      orderId,
+      vendorId: store.ownerId,
+      driverId: before.driverId,
+      amount: before.cashGivenAmount ?? before.subtotal,
+    });
+  }
+
+  const resolved = await repository.resolveCashDispute(
+    orderId,
+    outcome,
+    actor.uid,
+    note,
+  );
+
+  log.warn(
+    { orderId, outcome, by: actor.uid, driverId: resolved.driverId },
+    'Cash dispute resolved.',
+  );
+
+  if (resolved.driverId) {
+    await notificationService
+      .notifyDrivers({
+        driverIds: [resolved.driverId],
+        orderId,
+        kind: outcome === 'uphold' ? 'cash_due_soon' : 'order_completed',
+        facts: {
+          storeName: resolved.storeName,
+          cashHandedOver: before.cashGivenAmount ?? before.subtotal,
+        },
+      })
+      .catch((error: unknown) =>
+        log.warn({ orderId, err: error }, 'Could not tell the driver.'),
+      );
+
+    // Dismissed: they may have been suspended over this very order.
+    if (outcome === 'dismiss') await reinstateIfSettled(resolved.driverId);
+  }
+
+  return resolved;
 }
 
 /**

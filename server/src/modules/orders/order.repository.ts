@@ -263,6 +263,74 @@ export async function listAll(options: ListOptions): Promise<Page<Order>> {
  * set is small by construction and shrinks as drivers pay: an order leaves it
  * the moment the handover is recorded.
  */
+/**
+ * Delivered cash orders a kitchen says it never received.
+ *
+ * Disputed, so neither side's word settles it and it needs a person. Equality
+ * filters only, so no composite index.
+ */
+export async function listDisputedCash(limit = 200): Promise<Order[]> {
+  const snapshot = await collection()
+    .where('status', '==', 'delivered')
+    .where('paymentMethod', '==', 'cash')
+    .where('vendorCashDisputed', '==', true)
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map((doc) => toOrder(doc, 'admin'));
+}
+
+/**
+ * An admin's decision on a disputed handover.
+ *
+ * `uphold` means the kitchen was right: the claim is struck off and the
+ * driver owes the money again, exactly as if they had never said otherwise -
+ * which puts them back under the deadline, now long past. `dismiss` means the
+ * matter is closed in the driver's favour, and the receipt stands confirmed.
+ *
+ * Both clear the dispute. Leaving it set would keep the order in a queue
+ * somebody has already dealt with.
+ */
+export async function resolveCashDispute(
+  orderId: string,
+  outcome: 'uphold' | 'dismiss',
+  decidedBy: string,
+  note: string | null,
+): Promise<Order> {
+  const ref = collection().doc(orderId);
+
+  await db.runTransaction(async (transaction: Transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw ApiError.notFound('No such order.');
+
+    if (snapshot.get('vendorCashDisputed') !== true) {
+      throw ApiError.conflict('This cash is not in dispute.');
+    }
+
+    transaction.update(ref, {
+      vendorCashDisputed: false,
+      cashDisputeResolvedAt: FieldValue.serverTimestamp(),
+      cashDisputeResolvedBy: decidedBy,
+      cashDisputeOutcome: outcome,
+      cashDisputeNote: note,
+      ...(outcome === 'uphold'
+        ? {
+            // Back to owing it, as though the claim had never been made.
+            cashGivenToVendor: false,
+            cashGivenToVendorAt: null,
+            cashGivenAmount: null,
+          }
+        : {
+            vendorCashConfirmed: true,
+            vendorCashConfirmedAt: FieldValue.serverTimestamp(),
+          }),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return toOrder(await ref.get(), 'admin');
+}
+
 export async function listUnsettledCash(options: {
   driverId?: string;
   limit?: number;
@@ -527,11 +595,16 @@ export async function settleCashReceipt(
     if (snapshot.get('status') !== 'delivered') {
       throw ApiError.conflict('This order has not been delivered yet.');
     }
-    if (
-      snapshot.get('vendorCashConfirmed') === true ||
-      snapshot.get('vendorCashDisputed') === true
-    ) {
+    if (snapshot.get('vendorCashConfirmed') === true) {
       throw ApiError.conflict('This cash receipt has already been settled.');
+    }
+
+    // A kitchen that disputed a handover may still confirm it later, and
+    // that is the ordinary way a dispute ends: the driver turns up with the
+    // money. Confirming clears the dispute with it. What it may not do is
+    // dispute the same handover twice.
+    if (outcome === 'dispute' && snapshot.get('vendorCashDisputed') === true) {
+      throw ApiError.conflict('You have already disputed this handover.');
     }
 
     transaction.update(ref, {
@@ -547,6 +620,9 @@ export async function settleCashReceipt(
         ? {
             vendorCashConfirmed: true,
             vendorCashConfirmedAt: FieldValue.serverTimestamp(),
+            // Settled by the kitchen's own word, so there is nothing left in
+            // dispute and nothing for an admin to decide.
+            vendorCashDisputed: false,
           }
         : {
             vendorCashDisputed: true,

@@ -550,13 +550,10 @@ export async function settleCashReceipt(
   // to retry it.
   //
   // A dispute moves nothing. The driver's wallet goes on showing that they
-  // still owe the kitchen, which is exactly what a dispute claims.
-  if (
-    outcome === 'confirm' &&
-    !order.vendorCashConfirmed &&
-    !order.vendorCashDisputed &&
-    order.driverId
-  ) {
+  // still owe the kitchen, which is exactly what a dispute claims - and a
+  // kitchen that later confirms a handover it once disputed moves the money
+  // then, which is how most disputes should end.
+  if (outcome === 'confirm' && !order.vendorCashConfirmed && order.driverId) {
     const store = await storeRepository.findById(order.storeId);
     if (!store) throw ApiError.notFound('No such order.');
 

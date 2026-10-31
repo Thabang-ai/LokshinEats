@@ -86,6 +86,16 @@ class _WhatNow extends StatelessWidget {
         'Nothing to deliver. It will drop off your list.',
         status.danger,
       ),
+      // Before the plain "you owe" case: both are true of a disputed
+      // handover, and this is the one the driver needs to read.
+      _ when delivery.cashDisputed => (
+        'The kitchen says this is unpaid',
+        '${delivery.storeName} says they did not get the cash you handed '
+            'over. LokshinEats is looking into it, and the '
+            '${formatRands(delivery.kitchenCashDue)} stays on your books '
+            'until it is settled.',
+        status.danger,
+      ),
       _ when delivery.owesKitchenCash => (
         'Pay the kitchen',
         'You are holding ${formatRands(delivery.kitchenCashDue)} that belongs '
@@ -94,11 +104,8 @@ class _WhatNow extends StatelessWidget {
       ),
       _ when delivery.status == DeliveryStatus.delivered => (
         'Delivered',
-        delivery.vendorCashDisputed
-            ? '${delivery.storeName} says they did not get the cash. '
-                  'LokshinEats support will be in touch.'
-            : 'Nice one. This delivery is done.',
-        delivery.vendorCashDisputed ? status.danger : status.success,
+        'Nice one. This delivery is done.',
+        status.success,
       ),
       _ when delivery.status == DeliveryStatus.pickedUp => (
         'Take it to the customer',

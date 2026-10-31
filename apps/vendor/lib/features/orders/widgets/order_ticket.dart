@@ -236,9 +236,16 @@ class _Actions extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Delivered. The driver has not handed over your '
-            '${formatRands(order.cashDueFromDriver)} yet. If they have since '
-            'paid you, say so and this is settled.',
+            order.cashDisputed
+                // Raised by this kitchen, and still open. Saying it never
+                // arrived is not the same as it arriving, so the money stays
+                // on the books until one of the two things below happens.
+                ? 'You said this never arrived. LokshinEats is looking into '
+                      'the ${formatRands(order.cashDueFromDriver)}. If the '
+                      'driver has since paid you, say so and it is settled.'
+                : 'Delivered. The driver has not handed over your '
+                      '${formatRands(order.cashDueFromDriver)} yet. If they '
+                      'have since paid you, say so and this is settled.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -306,9 +313,6 @@ class _Actions extends StatelessWidget {
         // What a kitchen wants to know about a delivered cash order is
         // whether the money arrived. "Delivered." was all it used to say.
         KitchenOrderStatus.delivered => switch (order) {
-          _ when order.vendorCashDisputed =>
-            'You said the cash never arrived. LokshinEats support will be '
-                'in touch.',
           _ when order.vendorCashConfirmed =>
             'Delivered. You confirmed '
                 '${formatRands(order.cashDueFromDriver)} from the driver.',
