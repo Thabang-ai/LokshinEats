@@ -7,6 +7,28 @@ library;
 
 import 'package:lokshineats_core/utils/image_url.dart';
 
+/// Whether LokshinEats has let this kitchen trade.
+///
+/// Separate from [Store.isOpen], which is the owner's own switch. A kitchen
+/// can be approved and closed — shut for the night — but it cannot be open
+/// without being approved.
+enum StoreVerification {
+  pending,
+  approved,
+  rejected;
+
+  static StoreVerification fromWire(Object? value) =>
+      StoreVerification.values.firstWhere(
+        (status) => status.name == value,
+        // A kitchen registered before the review queue existed carries no
+        // status at all, and has been trading for weeks. Reading that as
+        // "pending" would lock its owner out of their own app.
+        orElse: () => StoreVerification.approved,
+      );
+
+  bool get mayTrade => this == StoreVerification.approved;
+}
+
 class Store {
   const Store({
     required this.id,
@@ -24,6 +46,8 @@ class Store {
     this.reviewCount = 0,
     this.banner,
     this.logo,
+    this.verification = StoreVerification.approved,
+    this.verificationReason,
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
@@ -48,6 +72,8 @@ class Store {
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
       banner: _text(json['banner']),
       logo: _text(json['logo']),
+      verification: StoreVerification.fromWire(json['verification']),
+      verificationReason: _text(json['verificationReason']),
     );
   }
 
@@ -66,6 +92,12 @@ class Store {
 
   /// The small round one beside its name.
   final String? logo;
+
+  /// Whether LokshinEats has let this kitchen trade.
+  final StoreVerification verification;
+
+  /// Why it was turned down, in the reviewer's words.
+  final String? verificationReason;
 
   /// Both as URLs a phone can load, or null where there is no photograph.
   String? get bannerUrl => resolveImageUrl(banner);

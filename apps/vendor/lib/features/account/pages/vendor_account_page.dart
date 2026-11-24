@@ -15,6 +15,7 @@ import 'package:lokshineats_core/utils/money.dart';
 import '../../store/pages/edit_store_page.dart';
 
 import '../../store/providers/store_providers.dart';
+import '../../store/widgets/verification_notice.dart';
 
 class VendorAccountPage extends ConsumerWidget {
   const VendorAccountPage({super.key});
@@ -44,15 +45,29 @@ class VendorAccountPage extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          store.isOpen
-              ? 'Open — customers can order from you.'
-              : 'Closed — you are not taking new orders.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: store.isOpen ? status.success : status.danger,
-            fontWeight: FontWeight.w700,
+        // Approval first: "Closed" is a misleading thing to tell a kitchen
+        // that could not open even if it wanted to.
+        if (!store.verification.mayTrade) ...[
+          VerificationNotice(store: store, compact: true),
+          if (store.verificationReason != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              store.verificationReason!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ],
+        ] else
+          Text(
+            store.isOpen
+                ? 'Open — customers can order from you.'
+                : 'Closed — you are not taking new orders.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: store.isOpen ? status.success : status.danger,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
 
         const SizedBox(height: 24),
         _Row(label: 'Where you are', value: '${store.address}, ${store.city}'),

@@ -23,6 +23,7 @@ import '../../menu/pages/menu_page.dart';
 import '../../orders/pages/order_queue_page.dart';
 import '../../store/pages/register_store_page.dart';
 import '../../store/providers/store_providers.dart';
+import '../../store/widgets/verification_notice.dart';
 
 class VendorHomePage extends ConsumerStatefulWidget {
   const VendorHomePage({super.key});
@@ -70,11 +71,17 @@ class _VendorHomePageState extends ConsumerState<VendorHomePage> {
               body: SafeArea(
                 child: IndexedStack(
                   index: _tab,
-                  children: const [
-                    OrderQueuePage(),
-                    MenuPage(),
-                    EarningsPage(),
-                    VendorAccountPage(),
+                  children: [
+                    // No order can reach a kitchen LokshinEats has not
+                    // approved, so an empty queue would be a lie of omission.
+                    // The other tabs stay as they are: a vendor getting ready
+                    // is not a vendor trading.
+                    mine.verification.mayTrade
+                        ? const OrderQueuePage()
+                        : VerificationNotice(store: mine),
+                    const MenuPage(),
+                    const EarningsPage(),
+                    const VendorAccountPage(),
                   ],
                 ),
               ),
@@ -152,6 +159,11 @@ class _OpenSwitchState extends ConsumerState<_OpenSwitch> {
   Widget build(BuildContext context) {
     final store = ref.watch(myStoreProvider).value;
     if (store == null) return const SizedBox.shrink();
+
+    // A kitchen that has not been approved cannot open, and the API refuses
+    // it. Offering the switch anyway only produces a failure nobody can act
+    // on; the Orders tab explains what is actually happening.
+    if (!store.verification.mayTrade) return const SizedBox.shrink();
 
     final status = StatusColors.of(context);
 
