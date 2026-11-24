@@ -348,6 +348,28 @@ export async function listUnsettledCash(options: {
   return snapshot.docs.map((doc) => toOrder(doc, 'admin'));
 }
 
+/**
+ * Every order placed between two moments, for a day's reconciliation.
+ *
+ * Unpaginated and read whole, because a day that does not add up has to be
+ * added up completely before anybody can say so. A single range on
+ * `createdAt` needs no composite index.
+ */
+export async function listPlacedBetween(
+  from: Date,
+  to: Date,
+  limit = 2000,
+): Promise<Order[]> {
+  const snapshot = await collection()
+    .where('createdAt', '>=', from)
+    .where('createdAt', '<', to)
+    .orderBy('createdAt', 'asc')
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map((doc) => toOrder(doc, 'admin'));
+}
+
 /** Orders still owed to somebody: food to cook, carry, pay for or receive. */
 const UNFINISHED_STATUSES: readonly OrderStatus[] = [
   'pending',

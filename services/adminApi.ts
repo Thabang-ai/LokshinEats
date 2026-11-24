@@ -282,6 +282,42 @@ export async function resolveCashDispute(
 }
 
 // ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+/**
+ * A day's money, told apart.
+ *
+ * Four quantities that one figure hides: what customers paid, how much of it
+ * the platform never touched because a driver took it in cash at a door,
+ * what the kitchens and drivers are owed, and what the platform earned.
+ */
+export type DayReconciliation = {
+  date: string;
+  orders: { total: number; cash: number; card: number; cancelled: number };
+  collected: { total: number; card: number; cash: number };
+  distributed: {
+    vendorPayouts: number;
+    driverPay: number;
+    platformRevenue: number;
+  };
+  refunds: { total: number; count: number };
+  cashInDriverHands: { amount: number; orders: number };
+  unbalanced: Array<{ orderId: string; paid: number; distributed: number }>;
+  balances: boolean;
+};
+
+/** One South African calendar day, reconciled. `date` is YYYY-MM-DD. */
+export async function fetchReconciliation(
+  date: string,
+): Promise<DayReconciliation> {
+  const response = await apiRequest<DayReconciliation>(
+    `/api/v1/reports/reconciliation/${encodeURIComponent(date)}`,
+  );
+  return response.data;
+}
+
+// ---------------------------------------------------------------------------
 // Wallets and their ledgers
 // ---------------------------------------------------------------------------
 
