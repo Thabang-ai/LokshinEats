@@ -282,6 +282,68 @@ export async function resolveCashDispute(
 }
 
 // ---------------------------------------------------------------------------
+// Kitchens awaiting a decision
+// ---------------------------------------------------------------------------
+
+export type StoreVerificationStatus = 'pending' | 'approved' | 'rejected';
+
+/** A kitchen as the review queue shows it. */
+export type ReviewStore = {
+  id: string;
+  name: string;
+  description: string;
+  cuisine: string;
+  ownerId: string;
+  address: string;
+  city: string;
+  phone: string | null;
+  email: string | null;
+  openingTime: string | null;
+  closingTime: string | null;
+  categories: string[];
+  logo: string | null;
+  banner: string | null;
+  verification: StoreVerificationStatus;
+  verificationReason: string | null;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  isOpen: boolean;
+  rating: number;
+  reviewCount: number;
+  createdAt: string | null;
+};
+
+/** Every kitchen, or only those in one state. */
+export async function fetchStoresForReview(
+  status?: StoreVerificationStatus,
+): Promise<ReviewStore[]> {
+  const query = status ? `?status=${status}` : '';
+  const response = await apiRequest<ReviewStore[]>(
+    `/api/v1/stores/review${query}`,
+  );
+  return response.data ?? [];
+}
+
+/**
+ * Approve a kitchen, or turn it down.
+ *
+ * A refusal needs a reason: the vendor is shown it when they next try to
+ * open, and one that says nothing is a registration they will send again
+ * unchanged. Turning a kitchen down closes it in the same write.
+ */
+export async function decideStore(
+  storeId: string,
+  decision: 'approve' | 'reject',
+  reason?: string,
+): Promise<ReviewStore> {
+  const response = await apiRequest<ReviewStore>(
+    `/api/v1/stores/${encodeURIComponent(storeId)}/verification`,
+    { method: 'POST', body: { decision, ...(reason ? { reason } : {}) } },
+  );
+  return response.data;
+}
+
+// ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------
 

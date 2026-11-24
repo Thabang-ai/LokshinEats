@@ -33,6 +33,7 @@ import {
   PackageCheck,
   RefreshCw,
   Scale,
+  Store,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -424,6 +425,12 @@ export default function AdminConsole() {
                 className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
               >
                 <Wallet className="w-4 h-4" /> Wallets
+              </Link>
+              <Link
+                href="/admin/kitchens"
+                className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors"
+              >
+                <Store className="w-4 h-4" /> Kitchens
               </Link>
               <Link
                 href="/admin/reconciliation"
