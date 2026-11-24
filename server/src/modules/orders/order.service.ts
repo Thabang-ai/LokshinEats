@@ -66,6 +66,14 @@ async function priceOrder(
 }> {
   const store = await storeRepository.findById(input.storeId);
   if (!store) throw ApiError.notFound('No such store.');
+
+  // A kitchen LokshinEats has not approved is not on the platform, whatever
+  // its own switch says. Reported as missing rather than refused: whether an
+  // unapproved kitchen exists is not a customer's business.
+  if (store.verification !== 'approved') {
+    throw ApiError.notFound('No such store.');
+  }
+
   if (!store.isOpen) {
     throw ApiError.conflict(`${store.name} is not accepting orders right now.`);
   }

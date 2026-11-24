@@ -10,6 +10,7 @@ import {
   type CreateStoreInput,
   type ListStoresQuery,
   type Store,
+  type StoreVerificationStatus,
   type UpdateStoreInput,
 } from './store.model';
 
@@ -48,8 +49,13 @@ export async function create(
     // Derived fields are seeded by the server and never accepted from input.
     rating: 0,
     reviewCount: 0,
-    // A new store stays closed until the vendor opens it from the dashboard.
+    // A new store stays closed until the vendor opens it from the dashboard -
+    // and cannot be opened at all until LokshinEats has approved it.
     isOpen: false,
+    verification: 'pending',
+    verificationReason: null,
+    verifiedAt: null,
+    verifiedBy: null,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -89,6 +95,54 @@ export async function update(
  * stable alphabetical list, and it keeps the cursor meaningful when new
  * stores are added mid-scroll.
  */
+/**
+ * Kitchens awaiting a decision, or already decided.
+ *
+ * Equality on one field and no ordering, so it needs no composite index.
+ */
+export async function listForReview(
+  status?: string,
+  limit = 200,
+): Promise<Store[]> {
+  // Deliberately unfiltered in the query. A kitchen that predates the review
+  // queue carries no `verification` field, and `where('verification','==',
+  // 'approved')` matches a missing field exactly never - so filtering in
+  // Firestore would leave every kitchen trading today out of the one list an
+  // admin uses to see them. Read the lot, apply the same default as
+  // everywhere else, then filter.
+  const snapshot = await collection().limit(limit).get();
+  const stores = snapshot.docs.map(toStore);
+
+  return status
+    ? stores.filter((store) => store.verification === status)
+    : stores;
+}
+
+/** Record an admin's decision on a kitchen. */
+export async function decide(
+  id: string,
+  input: {
+    verification: StoreVerificationStatus;
+    reason: string | null;
+    decidedBy: string;
+  },
+): Promise<Store> {
+  const ref = collection().doc(id);
+
+  await ref.update({
+    verification: input.verification,
+    verificationReason: input.reason,
+    verifiedBy: input.decidedBy,
+    verifiedAt: FieldValue.serverTimestamp(),
+    // A kitchen turned down stops trading at once; one approved still opens
+    // itself when it is ready to cook.
+    ...(input.verification === 'approved' ? {} : { isOpen: false }),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return toStore(await ref.get());
+}
+
 export async function list(query: ListStoresQuery): Promise<Page<Store>> {
   let firestoreQuery = collection().orderBy('name', 'asc');
 

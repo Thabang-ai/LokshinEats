@@ -8,6 +8,8 @@
  * | POST   | /stores             | authenticated   |
  * | PATCH  | /stores/mine        | vendor          |
  * | GET    | /stores/:id         | public          |
+ * | GET    | /stores/review            | admin             |
+ * | POST   | /stores/:id/verification  | admin             |
  * | PATCH  | /stores/:id         | admin           |
  *
  * Browsing is public because customers compare stores before signing in.
@@ -20,12 +22,16 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { authenticate, requireAuth } from '../../middleware/auth';
 import { requireAdmin, requireRole } from '../../middleware/requireRole';
 import { validate } from '../../middleware/validate';
+import { sensitiveRateLimit } from '../../middleware/rateLimit';
 import {
   createStoreSchema,
+  decideStoreSchema,
+  listStoresAdminSchema,
   listStoresQuerySchema,
   storeIdParamSchema,
   updateStoreSchema,
   type ListStoresQuery,
+  type StoreVerificationStatus,
 } from './store.model';
 import {
   IMAGE_CONTENT_TYPES,
@@ -90,11 +96,44 @@ storeRouter.post(
   }),
 );
 
+/**
+ * The kitchens waiting on a decision, or already decided.
+ *
+ * Mounted before `/:id` so the word "review" is not read as a store id.
+ */
+storeRouter.get(
+  '/review',
+  authenticate,
+  requireAdmin,
+  validate({ query: listStoresAdminSchema }),
+  asyncHandler(async (req, res) => {
+    const { status } = req.query as { status?: StoreVerificationStatus };
+    res.json({ data: await service.listForReview(status) });
+  }),
+);
+
 storeRouter.get(
   '/:id',
   validate({ params: storeIdParamSchema }),
   asyncHandler(async (req, res) => {
     res.json({ data: await service.getStore(req.params.id as string) });
+  }),
+);
+
+/** Approve a kitchen, or turn it down with a reason the vendor is shown. */
+storeRouter.post(
+  '/:id/verification',
+  authenticate,
+  requireAdmin,
+  sensitiveRateLimit,
+  validate({ params: storeIdParamSchema, body: decideStoreSchema }),
+  asyncHandler(async (req, res) => {
+    const store = await service.decide(
+      requireAuth(req),
+      req.params.id as string,
+      req.body,
+    );
+    res.json({ data: store });
   }),
 );
 

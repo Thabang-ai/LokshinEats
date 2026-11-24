@@ -16,6 +16,7 @@ import type {
   CreateStoreInput,
   ListStoresQuery,
   Store,
+  StoreVerificationStatus,
   UpdateStoreInput,
 } from './store.model';
 import * as repository from './store.repository';
@@ -30,13 +31,37 @@ import { imageStore, type StoredImage } from '../images/image.store';
 
 const log = moduleLogger('stores');
 
+/**
+ * The kitchens a customer may browse.
+ *
+ * Filtered here rather than in the query because a kitchen that predates the
+ * review queue carries no `verification` field at all, and Firestore cannot
+ * match a field that is not there - a `where` clause would hide every
+ * kitchen trading today. The cost is that a page can come back short of its
+ * limit while any unapproved kitchens exist; with a few hundred kitchens
+ * that is nothing, and once the field is backfilled onto every document the
+ * filter belongs in the query.
+ */
 export async function listStores(query: ListStoresQuery): Promise<Page<Store>> {
-  return repository.list(query);
+  const page = await repository.list(query);
+
+  return {
+    ...page,
+    items: page.items.filter((store) => store.verification === 'approved'),
+  };
 }
 
 export async function getStore(id: string): Promise<Store> {
   const store = await repository.findById(id);
   if (!store) throw ApiError.notFound('No such store.');
+
+  // Not "this kitchen is pending": whether an unapproved kitchen exists is
+  // not a customer's business, and the vendor reads their own status through
+  // /stores/mine.
+  if (store.verification !== 'approved') {
+    throw ApiError.notFound('No such store.');
+  }
+
   return store;
 }
 
@@ -91,7 +116,64 @@ export async function updateOwnStore(
   input: UpdateStoreInput,
 ): Promise<Store> {
   const store = await getOwnStore(caller);
+
+  // A kitchen nobody has approved cannot put itself on the platform. It may
+  // still write its menu and fix its address while it waits - the one thing
+  // it may not do is open.
+  if (input.isOpen === true && store.verification !== 'approved') {
+    throw ApiError.conflict(
+      store.verification === 'rejected'
+        ? store.verificationReason ??
+            'This kitchen was turned down. Update your details and ask us to look again.'
+        : 'LokshinEats is still checking this kitchen. You can open it once that is done.',
+    );
+  }
+
   return repository.update(store.id, input);
+}
+
+/**
+ * Every kitchen awaiting a decision, or already decided.
+ *
+ * Unpaginated like the driver queue, and for the same reason: a platform
+ * with more kitchens than a person can review has outgrown a human queue
+ * first.
+ */
+export async function listForReview(
+  status?: StoreVerificationStatus,
+): Promise<Store[]> {
+  return repository.listForReview(status);
+}
+
+/**
+ * An admin approves or turns down a kitchen.
+ *
+ * Turning one down closes it in the same write, so a kitchen that was open
+ * when the decision came stops taking orders immediately.
+ */
+export async function decide(
+  actor: AuthContext,
+  storeId: string,
+  input: { decision: 'approve' | 'reject'; reason?: string },
+): Promise<Store> {
+  const existing = await repository.findById(storeId);
+  if (!existing) throw ApiError.notFound('No such store.');
+
+  const verification: StoreVerificationStatus =
+    input.decision === 'approve' ? 'approved' : 'rejected';
+
+  const store = await repository.decide(storeId, {
+    verification,
+    reason: input.reason ?? null,
+    decidedBy: actor.uid,
+  });
+
+  log.warn(
+    { storeId, decision: verification, by: actor.uid },
+    'Kitchen decided.',
+  );
+
+  return store;
 }
 
 /**

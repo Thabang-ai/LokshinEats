@@ -21,6 +21,22 @@ import {
 } from '../../lib/serialize';
 import { DELIVERY_FEE } from '../../lib/money';
 
+/**
+ * Whether LokshinEats has let this kitchen trade.
+ *
+ * A kitchen used to be live the moment somebody filled in a form: no
+ * check that the business exists, that the address is real, or that anyone
+ * at all had looked at it. Drivers have been reviewed since October; this is
+ * the same gate on the other side of the order.
+ */
+export const STORE_VERIFICATION_STATUSES = [
+  'pending',
+  'approved',
+  'rejected',
+] as const;
+export type StoreVerificationStatus =
+  (typeof STORE_VERIFICATION_STATUSES)[number];
+
 export type Store = {
   id: string;
   name: string;
@@ -43,6 +59,13 @@ export type Store = {
    * fee set the driver's pay with it.
    */
   deliveryFee: number;
+  /** Whether an admin has let this kitchen trade. */
+  verification: StoreVerificationStatus;
+  /** Why it was turned down, in the reviewer's words. Shown to the vendor. */
+  verificationReason: string | null;
+  verifiedAt: string | null;
+  /** The admin who decided. Not shown to the vendor. */
+  verifiedBy: string | null;
   /** Derived from reviews; never accepted from a client. */
   rating: number;
   reviewCount: number;
@@ -121,6 +144,27 @@ export const updateStoreSchema = z
 
 export type UpdateStoreInput = z.infer<typeof updateStoreSchema>;
 
+/**
+ * An admin's decision on a kitchen.
+ *
+ * A refusal has to say why: the vendor is shown it, and one that says
+ * nothing is a registration they will send again unchanged.
+ */
+export const decideStoreSchema = z
+  .object({
+    decision: z.enum(['approve', 'reject']),
+    reason: z.string().trim().min(5).max(300).optional(),
+  })
+  .strict()
+  .refine((input) => input.decision === 'approve' || input.reason !== undefined, {
+    path: ['reason'],
+    message: 'Tell the kitchen why it was turned down.',
+  });
+
+export const listStoresAdminSchema = z.object({
+  status: z.enum(STORE_VERIFICATION_STATUSES).optional(),
+});
+
 export const storeIdParamSchema = z.object({
   id: z.string().trim().min(1).max(128),
 });
@@ -172,6 +216,24 @@ export function toStore(snapshot: DocumentSnapshot): Store {
     // serving it would have a kitchen's page quote R20 while checkout charges
     // R12.
     deliveryFee: DELIVERY_FEE,
+    // A kitchen with no verification field predates the review queue and has
+    // been trading for weeks. Reading it as 'pending' would close every
+    // kitchen on the platform the moment this deployed, so the absent value
+    // means approved; only documents written from now on say 'pending'.
+    verification: (STORE_VERIFICATION_STATUSES as readonly string[]).includes(
+      data.verification,
+    )
+      ? (data.verification as StoreVerificationStatus)
+      : 'approved',
+    verificationReason:
+      typeof data.verificationReason === 'string' && data.verificationReason
+        ? data.verificationReason
+        : null,
+    verifiedAt: toIso(data.verifiedAt),
+    verifiedBy:
+      typeof data.verifiedBy === 'string' && data.verifiedBy
+        ? data.verifiedBy
+        : null,
     minOrderAmount: toNumber(data.minOrderAmount),
     isOpen: toBoolean(data.isOpen),
     createdAt: toIso(data.createdAt),
