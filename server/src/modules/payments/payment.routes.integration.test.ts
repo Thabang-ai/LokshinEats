@@ -85,7 +85,6 @@ describe('initiating a payment', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const response = await request(app)
@@ -94,7 +93,7 @@ describe('initiating a payment', () => {
       .send({ orderId });
 
     expect(response.status).toBe(201);
-    expect(response.body.data.amount).toBe(120);
+    expect(response.body.data.amount).toBe(112);
     expect(response.body.data.status).toBe('initiated');
     // The sandbox says so plainly, so a UI cannot present it as a real
     // payment screen by accident.
@@ -163,7 +162,6 @@ describe('verifying a payment', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     await payFor(orderId);
@@ -242,7 +240,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
     const paymentId = await payFor(orderId);
 
@@ -265,7 +262,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
     const paymentId = await payFor(orderId);
 
@@ -280,7 +276,7 @@ describe('refunds', () => {
     const wallet = await request(app)
       .get('/api/v1/wallets/me')
       .set(...customer.authHeader);
-    expect(wallet.body.data.availableBalance).toBe(120);
+    expect(wallet.body.data.availableBalance).toBe(112);
   });
 
   it('cancels an order that had not been delivered', async () => {
@@ -288,7 +284,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
     const paymentId = await payFor(orderId);
 
@@ -313,7 +308,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
       status: 'preparing',
     });
     const paymentId = await payFor(orderId);
@@ -337,7 +331,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
       status: 'preparing',
     });
     const paymentId = await payFor(orderId);
@@ -353,7 +346,7 @@ describe('refunds', () => {
     const wallet = await request(app)
       .get('/api/v1/wallets/me')
       .set(...customer.authHeader);
-    expect(wallet.body.data.availableBalance).toBe(120);
+    expect(wallet.body.data.availableBalance).toBe(112);
   });
 
   it('gives a customer who cancels mid-prep a partial refund', async () => {
@@ -361,7 +354,6 @@ describe('refunds', () => {
       customerId: 'cust-1',
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
       status: 'preparing',
     });
     await payFor(orderId);
@@ -374,10 +366,10 @@ describe('refunds', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.status).toBe('cancelled');
     expect(response.body.data.paymentStatus).toBe('partially_refunded');
-    expect(response.body.data.refundedAmount).toBe(28);
+    expect(response.body.data.refundedAmount).toBe(20);
     expect(response.body.data.cancellation).toMatchObject({
       stage: 'in_kitchen',
-      customerRefund: 28,
+      customerRefund: 20,
       vendorPay: 92,
     });
     // The platform's cost figure is not the customer's business.
@@ -386,7 +378,7 @@ describe('refunds', () => {
     const wallet = await request(app)
       .get('/api/v1/wallets/me')
       .set(...customer.authHeader);
-    expect(wallet.body.data.availableBalance).toBe(28);
+    expect(wallet.body.data.availableBalance).toBe(20);
   });
 
   it('requires a reason', async () => {

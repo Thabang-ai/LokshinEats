@@ -6,9 +6,10 @@
  * sandbox provider, so the wallets start from a real settlement rather than a
  * seeded balance.
  *
- * One order throughout: R100 of food and a R20 delivery fee. The vendor's
- * share is R92, the driver's R17, the platform's R11, and the base arrival
- * fee for a dispatched driver is half the driver's pay: R8.50.
+ * One order throughout: R100 of food and the platform's R12 delivery fee.
+ * The vendor's share is R92, the driver's R10, the platform's R10 (8% of the
+ * food plus its R2 of the fee), and the base arrival fee for a dispatched
+ * driver is half the driver's pay: R5.
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -60,7 +61,6 @@ async function order(input: {
     customerId: CUSTOMER,
     storeId,
     subtotal: 100,
-    deliveryFee: 20,
     status: input.status ?? 'pending',
     driverId: input.driverId ?? null,
     paymentMethod: input.paymentMethod ?? 'yoco',
@@ -110,10 +110,10 @@ describe('tier 1: pending or accepted, before prep', () => {
 
     expect(cancelled.status).toBe('cancelled');
     expect(cancelled.paymentStatus).toBe('refunded');
-    expect(cancelled.refundedAmount).toBe(120);
+    expect(cancelled.refundedAmount).toBe(112);
     expect(cancelled.cancellation).toMatchObject({ stage: 'before_prep', initiator: 'customer' });
     expect(await balances()).toEqual({
-      customer: 120,
+      customer: 112,
       vendorPending: 0,
       vendorAvailable: 0,
       driver: 0,
@@ -128,7 +128,7 @@ describe('tier 1: pending or accepted, before prep', () => {
     await orderService.changeStatus(customer, orderId, 'cancelled');
 
     expect((await balances()).driver).toBe(0);
-    expect((await balances()).customer).toBe(120);
+    expect((await balances()).customer).toBe(112);
   });
 
   it('cancels an unpaid cash order without touching any wallet', async () => {
@@ -150,15 +150,15 @@ describe('tier 2: in preparation or ready for pickup', () => {
     const cancelled = await orderService.changeStatus(customer, orderId, 'cancelled');
 
     expect(cancelled.paymentStatus).toBe('partially_refunded');
-    expect(cancelled.refundedAmount).toBe(28);
+    expect(cancelled.refundedAmount).toBe(20);
     expect(cancelled.cancellation).toMatchObject({
       stage: 'in_kitchen',
-      customerRefund: 28,
+      customerRefund: 20,
       vendorPay: 92,
       driverPay: 0,
     });
     expect(await balances()).toEqual({
-      customer: 28,
+      customer: 20,
       // Released straight to available: no delivery is coming to do it.
       vendorPending: 0,
       vendorAvailable: 92,
@@ -167,7 +167,7 @@ describe('tier 2: in preparation or ready for pickup', () => {
     });
     const payment = await paymentRepository.findById(paymentId!);
     expect(payment?.status).toBe('partially_refunded');
-    expect(payment?.refundedAmount).toBe(28);
+    expect(payment?.refundedAmount).toBe(20);
   });
 
   it('pays a dispatched driver the base arrival fee out of the refund', async () => {
@@ -176,10 +176,10 @@ describe('tier 2: in preparation or ready for pickup', () => {
     await orderService.changeStatus(customer, orderId, 'cancelled');
 
     expect(await balances()).toEqual({
-      customer: 19.5,
+      customer: 15,
       vendorPending: 0,
       vendorAvailable: 92,
-      driver: 8.5,
+      driver: 5,
       platform: 0,
     });
   });
@@ -209,8 +209,8 @@ describe('tier 3: picked up or on the way', () => {
       customer: 0,
       vendorPending: 0,
       vendorAvailable: 92,
-      driver: 17,
-      platform: 11,
+      driver: 10,
+      platform: 10,
     });
     expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(0);
     expect((await paymentRepository.findById(paymentId!))?.status).toBe('succeeded');
@@ -224,15 +224,15 @@ describe('vendor cancellations', () => {
     await orderService.changeStatus(vendor, orderId, 'cancelled');
 
     expect(await balances()).toEqual({
-      customer: 120,
+      customer: 112,
       vendorPending: 0,
       vendorAvailable: 0,
-      driver: 8.5,
+      driver: 5,
       // The arrival fee is a platform-covered expense, recorded as goodwill.
-      platform: -8.5,
+      platform: -5,
     });
     const goodwill = (await readLedger(PLATFORM_WALLET_ID)).filter((entry) => entry.type === 'goodwill');
-    expect(goodwill.map((entry) => entry.amount)).toEqual([-8.5]);
+    expect(goodwill.map((entry) => entry.amount)).toEqual([-5]);
   });
 
   it('cannot cancel once the food has left the kitchen', async () => {
@@ -257,8 +257,8 @@ describe('admin cancellations', () => {
       customer: 0,
       vendorPending: 0,
       vendorAvailable: 92,
-      driver: 8.5,
-      platform: -100.5,
+      driver: 5,
+      platform: -97,
     });
   });
 });
@@ -275,10 +275,10 @@ describe('robustness', () => {
     await orderService.changeStatus(customer, orderId, 'cancelled');
 
     expect(await balances()).toEqual({
-      customer: 19.5,
+      customer: 15,
       vendorPending: 0,
       vendorAvailable: 92,
-      driver: 8.5,
+      driver: 5,
       platform: 0,
     });
     expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(1);
@@ -293,7 +293,7 @@ describe('robustness', () => {
     await expect(orderService.changeStatus(customer, orderId, 'cancelled')).rejects.toThrow(
       /already cancelled/i,
     );
-    expect((await balances()).customer).toBe(120);
+    expect((await balances()).customer).toBe(112);
   });
 
   it('refunds a payment completed after the order was cancelled, instead of settling it', async () => {
@@ -307,7 +307,7 @@ describe('robustness', () => {
 
     expect(verified.status).toBe('refunded');
     expect(await balances()).toEqual({
-      customer: 120,
+      customer: 112,
       vendorPending: 0,
       vendorAvailable: 0,
       driver: 0,

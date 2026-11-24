@@ -141,7 +141,10 @@ export default function StoreRegistrationPage() {
         rating: 0,
         reviewCount: 0,
         deliveryTime: '30-45 min',
-        deliveryFee: 15,
+        // No deliveryFee: it is a platform rule now, the same R12 from every
+        // kitchen, and the API serves that figure whatever a store document
+        // happens to hold. Writing one here would only be a number nobody
+        // reads and everybody believes.
         minOrderAmount: 30,
         isOpen: false, // vendor opens manually from the dashboard
         createdAt: serverTimestamp(),

@@ -22,8 +22,22 @@ import { ApiError } from './ApiError';
 /** Fraction of the food subtotal the platform takes from the vendor. */
 export const COMMISSION_RATE = env.COMMISSION_RATE;
 
-/** Fraction of the delivery fee the driver keeps. */
-export const DRIVER_DELIVERY_SHARE = env.DRIVER_DELIVERY_SHARE;
+/**
+ * What the platform takes out of a delivery fee, in rands.
+ *
+ * The driver gets the rest. On the standard R12 fee that is R2 to the
+ * platform and R10 to the driver, which is the rule as stated: "driver
+ * commission R2 per delivery", "driver gets R10".
+ *
+ * A fixed cut rather than a share, deliberately. A share of 10/12 is a number
+ * nobody agreed to, and it silently changes what a driver earns the moment a
+ * fee changes - whereas this keeps the platform's cut where it was agreed and
+ * gives any change in the fee to the driver.
+ */
+export const DRIVER_DELIVERY_COMMISSION = env.DRIVER_DELIVERY_COMMISSION;
+
+/** The one delivery fee, charged on every order. */
+export const DELIVERY_FEE = env.DELIVERY_FEE;
 
 /** Largest order we will price, in rands. Guards against overflow nonsense. */
 const MAX_ORDER_AMOUNT = 1_000_000;
@@ -31,15 +45,16 @@ const MAX_ORDER_AMOUNT = 1_000_000;
 export type OrderEconomics = {
   /** Cash the vendor receives — subtotal minus commission. */
   vendorPayout: number;
-  /** Cash the driver receives — share of the delivery fee. */
+  /** Cash the driver receives — the delivery fee less the platform's cut. */
   driverPayout: number;
-  /** What the platform earns on this order = commission + delivery share. */
+  /** What the platform earns on this order = commission + delivery cut. */
   platformEarnings: number;
   /** Commission amount in rands, broken out for accounting visibility. */
   platformCommission: number;
   /** Rate snapshots, frozen so we know how this order was priced. */
   commissionRate: number;
-  driverDeliveryShare: number;
+  /** The platform's cut of the delivery fee, in rands, frozen with the order. */
+  driverDeliveryCommission: number;
 };
 
 /** Rands -> integer cents, rejecting anything that is not clean money. */
@@ -105,8 +120,15 @@ export function computeOrderEconomics(
   const commissionCents = Math.round(subtotalCents * COMMISSION_RATE);
   const vendorPayoutCents = subtotalCents - commissionCents;
 
-  const driverPayoutCents = Math.round(deliveryFeeCents * DRIVER_DELIVERY_SHARE);
-  const platformDeliveryCents = deliveryFeeCents - driverPayoutCents;
+  // The platform's cut comes off the top; the driver gets what is left. A fee
+  // smaller than the cut would otherwise pay the driver a negative amount, so
+  // on such an order the platform takes the fee and no more.
+  const commissionOnDeliveryCents = Math.min(
+    toCents(DRIVER_DELIVERY_COMMISSION, 'driverDeliveryCommission'),
+    deliveryFeeCents,
+  );
+  const driverPayoutCents = deliveryFeeCents - commissionOnDeliveryCents;
+  const platformDeliveryCents = commissionOnDeliveryCents;
 
   const platformEarningsCents = commissionCents + platformDeliveryCents;
 
@@ -116,7 +138,7 @@ export function computeOrderEconomics(
     platformEarnings: toRands(platformEarningsCents),
     platformCommission: toRands(commissionCents),
     commissionRate: COMMISSION_RATE,
-    driverDeliveryShare: DRIVER_DELIVERY_SHARE,
+    driverDeliveryCommission: toRands(platformDeliveryCents),
   };
 }
 

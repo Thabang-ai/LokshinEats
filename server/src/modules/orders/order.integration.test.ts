@@ -58,7 +58,7 @@ beforeEach(async () => {
 
 describe('placeOrder pricing', () => {
   it('prices the order from the product records, not the request', async () => {
-    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const storeId = await seedStore({ ownerId: VENDOR });
     const productId = await seedProduct({ storeId, price: 45.5 });
 
     const order = await orderService.placeOrder(customer, {
@@ -69,10 +69,11 @@ describe('placeOrder pricing', () => {
       customerPhone: '0821234567',
     });
 
-    // 2 x 45.50 food, plus the store's own delivery fee.
+    // 2 x 45.50 food, plus the platform's delivery fee - the same R12 from
+    // every kitchen, whatever this store's own document happens to say.
     expect(order.subtotal).toBe(91);
-    expect(order.deliveryFee).toBe(20);
-    expect(order.total).toBe(111);
+    expect(order.deliveryFee).toBe(12);
+    expect(order.total).toBe(103);
 
     // Line items snapshot the price so the order still reads correctly after
     // the vendor re-prices the item.
@@ -85,7 +86,7 @@ describe('placeOrder pricing', () => {
   });
 
   it('freezes an economics split that balances to the cent', async () => {
-    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const storeId = await seedStore({ ownerId: VENDOR });
     const productId = await seedProduct({ storeId, price: 100 });
 
     const order = await orderService.placeOrder(customer, {
@@ -96,9 +97,11 @@ describe('placeOrder pricing', () => {
       customerPhone: '0821234567',
     });
 
+    // R100 of food and the R12 fee: 8% commission, R2 of the fee to the
+    // platform, the remaining R10 of it to the driver.
     expect(order.vendorPayout).toBe(92);
-    expect(order.driverPayout).toBe(17);
-    expect(order.platformEarnings).toBe(11);
+    expect(order.driverPayout).toBe(10);
+    expect(order.platformEarnings).toBe(10);
 
     const distributed =
       order.vendorPayout + order.driverPayout + order.platformEarnings;
@@ -180,7 +183,7 @@ describe('placeOrder pricing', () => {
   });
 
   it('records a cash note declaration on a cash order', async () => {
-    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const storeId = await seedStore({ ownerId: VENDOR });
     const productId = await seedProduct({ storeId, price: 100 });
 
     const order = await orderService.placeOrder(customer, {
@@ -194,11 +197,11 @@ describe('placeOrder pricing', () => {
 
     // A logistics hint for the driver's change, never a price.
     expect(order.cashAmount).toBe(200);
-    expect(order.total).toBe(120);
+    expect(order.total).toBe(112);
   });
 
   it('refuses a cash declaration below the total', async () => {
-    const storeId = await seedStore({ ownerId: VENDOR, deliveryFee: 20 });
+    const storeId = await seedStore({ ownerId: VENDOR });
     const productId = await seedProduct({ storeId, price: 100 });
 
     await expect(
@@ -210,7 +213,7 @@ describe('placeOrder pricing', () => {
         customerPhone: '0821234567',
         cashAmount: 50,
       }),
-    ).rejects.toThrow(/at least R120/i);
+    ).rejects.toThrow(/at least R112/i);
   });
 
   it('refuses a cash declaration on a card order', async () => {
@@ -444,7 +447,6 @@ describe('confirming delivery', () => {
       status: 'picked_up',
       deliveryCode: code,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     await paymentService.settleCashOrder(orderId).catch(() => undefined);
@@ -465,7 +467,7 @@ describe('confirming delivery', () => {
     expect(stored?.deliveryOTPVerified).toBe(true);
 
     // Money moves only now, because this is when the handover happened.
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
   });
 
   it('rejects a wrong code and burns an attempt', async () => {
@@ -597,7 +599,7 @@ describe('confirming delivery', () => {
     ).rejects.toThrow(/already delivered/i);
 
     // And the driver was paid once, not twice.
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
   });
 });
 
@@ -659,7 +661,6 @@ describe('cash settlement between driver and vendor', () => {
       status: 'delivered',
       paymentMethod: 'cash',
       subtotal: 100,
-      deliveryFee: 20,
     });
     return { orderId, storeId };
   }

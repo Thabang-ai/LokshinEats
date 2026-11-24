@@ -89,7 +89,6 @@ class StoreRepository {
     String? city,
     String? phone,
     String? deliveryTime,
-    double? deliveryFee,
     double? minOrderAmount,
   }) => _update({
     if (name != null) 'name': name.trim(),
@@ -99,7 +98,6 @@ class StoreRepository {
     if (city != null) 'city': city.trim(),
     if (phone != null) 'phone': phone.replaceAll(' ', ''),
     if (deliveryTime != null) 'deliveryTime': deliveryTime.trim(),
-    'deliveryFee': ?deliveryFee,
     'minOrderAmount': ?minOrderAmount,
   });
 

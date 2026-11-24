@@ -59,7 +59,6 @@ async function collectedCashOrder(): Promise<string> {
     status: 'picked_up',
     paymentMethod: 'cash',
     subtotal: 100,
-    deliveryFee: 20,
     deliveryCode: CODE,
   });
 }
@@ -94,17 +93,17 @@ describe('a delivered cash order', () => {
     const p = await positions();
     // Earnings are exactly a card order's...
     expect(p.kitchen).toBe(92);
-    expect(p.platform).toBe(11);
+    expect(p.platform).toBe(10);
     // ...but the driver collected R120 of other people's money at the door:
     // R17 of it theirs, R103 owed to the kitchen and the platform.
-    expect(p.driver).toBe(-103);
+    expect(p.driver).toBe(-102);
     expect(balanced(p)).toBe(0);
 
     const ledger = await readLedger(DRIVER);
     expect(ledger.map((e) => [e.type, e.amount])).toEqual(
       expect.arrayContaining([
-        ['order_earning', 17],
-        ['cash_collected', -120],
+        ['order_earning', 10],
+        ['cash_collected', -112],
       ]),
     );
   });
@@ -118,10 +117,10 @@ describe('a delivered cash order', () => {
 
     const p = await positions();
     // The kitchen was paid R100 in cash against a R92 share: it owes the R8
-    // commission. The driver kept R20 against R17: it owes R3.
+    // commission. The driver kept the R12 fee against R10 of pay: it owes R2.
     expect(p.kitchen).toBe(-8);
-    expect(p.driver).toBe(-3);
-    expect(p.platform).toBe(11);
+    expect(p.driver).toBe(-2);
+    expect(p.platform).toBe(10);
     expect(balanced(p)).toBe(0);
 
     const kitchenLedger = await readLedger(VENDOR);
@@ -138,7 +137,7 @@ describe('a delivered cash order', () => {
 
     const p = await positions();
     expect(p.kitchen).toBe(92);
-    expect(p.driver).toBe(-103);
+    expect(p.driver).toBe(-102);
     expect(balanced(p)).toBe(0);
   });
 
@@ -154,7 +153,7 @@ describe('a delivered cash order', () => {
 
     const p = await positions();
     expect(p.kitchen).toBe(-8);
-    expect(p.driver).toBe(-3);
+    expect(p.driver).toBe(-2);
   });
 });
 
@@ -168,13 +167,12 @@ describe('a delivered card order', () => {
       status: 'picked_up',
       paymentMethod: 'yoco',
       subtotal: 100,
-      deliveryFee: 20,
       deliveryCode: CODE,
     });
 
     await orderService.confirmDelivery(driver, orderId, CODE);
 
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
     const ledger = await readLedger(DRIVER);
     expect(ledger.some((e) => e.type.startsWith('cash_'))).toBe(false);
   });

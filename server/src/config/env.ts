@@ -55,7 +55,20 @@ const schema = z.object({
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
 
   COMMISSION_RATE: fraction(0.08),
-  DRIVER_DELIVERY_SHARE: fraction(0.85),
+  /**
+   * The one delivery fee every customer pays, in rands.
+   *
+   * Platform-wide rather than per kitchen: a vendor setting their own fee was
+   * how the same delivery cost R15 from one kitchen and R20 from the one next
+   * door, and it put the driver's pay in the vendor's hands.
+   */
+  DELIVERY_FEE: z.coerce.number().positive().max(1000).default(12),
+
+  /**
+   * What the platform keeps from each delivery fee, in rands. The driver gets
+   * the rest - R2 and R10 of the standard R12.
+   */
+  DRIVER_DELIVERY_COMMISSION: z.coerce.number().min(0).max(1000).default(2),
 
   /**
    * Share of a driver's delivery pay they receive as a base arrival fee when

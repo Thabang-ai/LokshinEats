@@ -14,39 +14,59 @@ import {
   sumRands,
   toCents,
   COMMISSION_RATE,
-  DRIVER_DELIVERY_SHARE,
+  DELIVERY_FEE,
+  DRIVER_DELIVERY_COMMISSION,
 } from './money';
 
-/** The original float implementation from services/economics.ts. */
-function legacyEconomics(subtotal: number, deliveryFee: number) {
+/**
+ * The original float implementation from services/economics.ts, for the half
+ * of the split that has not changed.
+ *
+ * The delivery half has: it used to pay the driver a share of the fee and now
+ * pays them the fee less a fixed cut, so there is nothing left to compare
+ * there. The vendor's commission is untouched and still has to reconcile
+ * against every order ever priced.
+ */
+function legacyVendorHalf(subtotal: number) {
   const round = (n: number) => Math.round(n * 100) / 100;
   const platformCommission = round(subtotal * COMMISSION_RATE);
-  const vendorPayout = round(subtotal - platformCommission);
-  const driverPayout = round(deliveryFee * DRIVER_DELIVERY_SHARE);
-  const platformDeliveryShare = round(deliveryFee - driverPayout);
-  return {
-    vendorPayout,
-    driverPayout,
-    platformCommission,
-    platformEarnings: round(platformCommission + platformDeliveryShare),
-  };
+  return { platformCommission, vendorPayout: round(subtotal - platformCommission) };
 }
 
 describe('computeOrderEconomics', () => {
-  it('splits a typical order the way the rates describe', () => {
-    const result = computeOrderEconomics(100, 20);
+  it('splits a typical order the way the rules describe', () => {
+    // R100 of food, the standard R12 delivery: 8% of the food to the
+    // platform, R2 of the fee to the platform, R10 of it to the driver.
+    const result = computeOrderEconomics(100, DELIVERY_FEE);
 
     expect(result.platformCommission).toBe(8);
     expect(result.vendorPayout).toBe(92);
-    expect(result.driverPayout).toBe(17);
-    // 8 commission + 3 kept from the delivery fee.
-    expect(result.platformEarnings).toBe(11);
+    expect(result.driverPayout).toBe(10);
+    expect(result.platformEarnings).toBe(10);
+  });
+
+  it('gives the driver every rand a larger fee adds', () => {
+    // The platform's cut is the fixed part. A share would have quietly
+    // raised the platform's take with the fee instead.
+    const result = computeOrderEconomics(100, 20);
+
+    expect(result.driverPayout).toBe(18);
+    expect(result.platformEarnings).toBe(10);
+  });
+
+  it('never pays a driver a negative amount', () => {
+    // A fee below the platform's cut would otherwise do exactly that.
+    const result = computeOrderEconomics(100, 1);
+
+    expect(result.driverPayout).toBe(0);
+    expect(result.platformEarnings).toBe(9);
+    expect(() => assertSplitBalances(100, 1, result)).not.toThrow();
   });
 
   it('freezes the rates onto the result', () => {
     const result = computeOrderEconomics(50, 15);
     expect(result.commissionRate).toBe(COMMISSION_RATE);
-    expect(result.driverDeliveryShare).toBe(DRIVER_DELIVERY_SHARE);
+    expect(result.driverDeliveryCommission).toBe(DRIVER_DELIVERY_COMMISSION);
   });
 
   it('handles a zero-value order without producing NaN', () => {
@@ -73,9 +93,9 @@ describe('computeOrderEconomics', () => {
     }
   });
 
-  it('matches the browser implementation it replaced', () => {
-    // Historical orders were priced by the float version; new orders must
-    // reconcile against them rather than drift by a cent.
+  it("still pays the vendor what every order before it was paid", () => {
+    // The commission did not change, so historical orders must reconcile
+    // against new ones rather than drift by a cent.
     for (const [subtotal, deliveryFee] of [
       [12.75, 19.99],
       [149.5, 25],
@@ -84,12 +104,10 @@ describe('computeOrderEconomics', () => {
       [37.37, 12.5],
     ] as const) {
       const actual = computeOrderEconomics(subtotal, deliveryFee);
-      const legacy = legacyEconomics(subtotal, deliveryFee);
+      const legacy = legacyVendorHalf(subtotal);
 
       expect(actual.vendorPayout).toBe(legacy.vendorPayout);
-      expect(actual.driverPayout).toBe(legacy.driverPayout);
       expect(actual.platformCommission).toBe(legacy.platformCommission);
-      expect(actual.platformEarnings).toBe(legacy.platformEarnings);
     }
   });
 

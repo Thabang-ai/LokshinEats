@@ -20,7 +20,7 @@ import {
   resetFirestore,
   seedOrder,
 } from '../../test/support';
-import { computeOrderEconomics } from '../../lib/money';
+import { computeOrderEconomics, DELIVERY_FEE } from '../../lib/money';
 import * as walletService from './wallet.service';
 import { PLATFORM_WALLET_ID } from './wallet.service';
 
@@ -28,8 +28,8 @@ const VENDOR = 'vendor-uid';
 const DRIVER = 'driver-uid';
 const CUSTOMER = 'customer-uid';
 
-/** The split for a R100 basket with a R20 delivery fee. */
-const economics = computeOrderEconomics(100, 20);
+/** The split for a R100 basket at the platform's delivery fee. */
+const economics = computeOrderEconomics(100, DELIVERY_FEE);
 
 beforeAll(() => {
   assertEmulator();
@@ -58,7 +58,7 @@ describe('settleOrderPayment', () => {
     expect(vendor.available).toBe(0);
 
     // The platform's commission plus its share of the delivery fee.
-    expect(platform.available).toBe(11);
+    expect(platform.available).toBe(10);
   });
 
   it('does not pay the driver at payment time', async () => {
@@ -96,7 +96,7 @@ describe('settleOrderPayment', () => {
     expect(third.applied).toBe(false);
 
     expect((await readWallet(VENDOR)).pending).toBe(92);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(11);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(10);
 
     // And the ledger records the movement once, not three times.
     expect(await readLedger(VENDOR)).toHaveLength(1);
@@ -169,8 +169,8 @@ describe('settleDelivery', () => {
     expect(vendor.pending).toBe(0);
     expect(vendor.available).toBe(92);
 
-    // The driver keeps 85% of the R20 delivery fee.
-    expect(driver.available).toBe(17);
+    // The driver keeps the R12 fee less the platform's R2.
+    expect(driver.available).toBe(10);
   });
 
   it('records the clearing as two entries, not a silent balance edit', async () => {
@@ -222,7 +222,7 @@ describe('settleDelivery', () => {
     await walletService.settleDelivery(delivery);
 
     // A driver whose app retried the confirmation is not paid three times.
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
     expect((await readWallet(VENDOR)).available).toBe(92);
     expect((await readWallet(VENDOR)).pending).toBe(0);
   });

@@ -158,7 +158,13 @@ export type Order = {
   platformEarnings: number;
   platformCommission: number;
   commissionRate: number;
-  driverDeliveryShare: number;
+  /**
+   * The platform's cut of this order's delivery fee, in rands, as it stood
+   * when the order was placed. Orders priced before 22 November 2026 carry a
+   * share of the fee instead; their `driverPayout` is the figure that was
+   * actually paid either way, and is what reconciles.
+   */
+  driverDeliveryCommission: number;
   createdAt: string | null;
   updatedAt: string | null;
   deliveredAt: string | null;
@@ -444,7 +450,7 @@ export function toOrder(snapshot: DocumentSnapshot, audience: Audience): Order {
     platformEarnings: toNumber(data.platformEarnings),
     platformCommission: toNumber(data.platformCommission),
     commissionRate: toNumber(data.commissionRate),
-    driverDeliveryShare: toNumber(data.driverDeliveryShare),
+    driverDeliveryCommission: toNumber(data.driverDeliveryCommission),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
     deliveredAt: toIso(data.deliveredAt),

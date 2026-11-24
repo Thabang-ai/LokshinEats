@@ -68,7 +68,6 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
     String? city,
     String? phone,
     String? deliveryTime,
-    double? deliveryFee,
     double? minOrderAmount,
   }) async {
     final updated = await ref
@@ -81,7 +80,6 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
           city: city,
           phone: phone,
           deliveryTime: deliveryTime,
-          deliveryFee: deliveryFee,
           minOrderAmount: minOrderAmount,
         );
 

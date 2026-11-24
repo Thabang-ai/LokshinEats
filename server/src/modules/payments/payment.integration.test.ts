@@ -66,13 +66,12 @@ describe('initiatePayment', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const result = await paymentService.initiatePayment(customer, { orderId });
 
     // The amount is read from the order the server priced.
-    expect(result.payment.amount).toBe(120);
+    expect(result.payment.amount).toBe(112);
     expect(result.payment.status).toBe('initiated');
     expect(result.payment.provider).toBe('sandbox');
   });
@@ -149,7 +148,6 @@ describe('verifyPayment', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const { payment } = await paymentService.initiatePayment(customer, {
@@ -168,7 +166,7 @@ describe('verifyPayment', () => {
 
     // Vendor share is pending until delivery; the platform takes its cut now.
     expect((await readWallet(VENDOR)).pending).toBe(92);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(11);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(10);
   });
 
   it('records a failed charge without paying anyone', async () => {
@@ -194,7 +192,6 @@ describe('verifyPayment', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const { payment } = await paymentService.initiatePayment(customer, {
@@ -228,7 +225,6 @@ describe('verifyPayment', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const { payment } = await paymentService.initiatePayment(customer, {
@@ -242,7 +238,7 @@ describe('verifyPayment', () => {
     await paymentService.verifyPayment(customer, payment.id);
 
     expect((await readWallet(VENDOR)).pending).toBe(92);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(11);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(10);
   });
 
   it('refuses to verify someone else’s payment', async () => {
@@ -267,7 +263,6 @@ describe('settleCashOrder', () => {
       storeId,
       paymentMethod: 'cash',
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     await paymentService.settleCashOrder(orderId);
@@ -275,7 +270,7 @@ describe('settleCashOrder', () => {
     // Reporting should not have to care how an order was paid for.
     expect((await readOrder(orderId))?.paymentStatus).toBe('paid');
     expect((await readWallet(VENDOR)).pending).toBe(92);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(11);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(10);
   });
 
   it('does nothing for a card order', async () => {
@@ -301,7 +296,6 @@ describe('settleDelivery', () => {
       storeId,
       driverId: DRIVER,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const { payment } = await paymentService.initiatePayment(customer, {
@@ -312,7 +306,7 @@ describe('settleDelivery', () => {
 
     await paymentService.settleDelivery(orderId);
 
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
     expect((await readWallet(VENDOR)).available).toBe(92);
     expect((await readWallet(VENDOR)).pending).toBe(0);
   });
@@ -325,7 +319,6 @@ describe('settleDelivery', () => {
       driverId: DRIVER,
       paymentMethod: 'cash',
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     // Cash is only actually paid when the driver hands the food over.
@@ -336,7 +329,7 @@ describe('settleDelivery', () => {
     // holding the R120 the customer paid, so is R103 down until they hand the
     // kitchen its share (see cash-settlement.integration.test.ts).
     expect((await readWallet(VENDOR)).available).toBe(92);
-    expect((await readWallet(DRIVER)).available).toBe(-103);
+    expect((await readWallet(DRIVER)).available).toBe(-102);
   });
 
   it('still settles a card order for a kitchen already owing from cash orders', async () => {
@@ -358,7 +351,6 @@ describe('settleDelivery', () => {
       driverId: DRIVER,
       paymentMethod: 'yoco',
       subtotal: 100,
-      deliveryFee: 20,
     });
     await walletService.settleOrderPayment({
       orderId,
@@ -395,7 +387,6 @@ describe('refundPayment', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const { payment } = await paymentService.initiatePayment(customer, {
@@ -415,7 +406,7 @@ describe('refundPayment', () => {
     // Vendor and platform give the money back; the customer receives it.
     expect((await readWallet(VENDOR)).pending).toBe(0);
     expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(0);
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
     expect((await readOrder(orderId))?.paymentStatus).toBe('refunded');
   });
 
@@ -447,7 +438,6 @@ describe('admin refunds under the cancellation tiers', () => {
       customerId: CUSTOMER,
       storeId,
       subtotal: 100,
-      deliveryFee: 20,
       status: input.status,
       driverId: input.driverId ?? null,
       deliveryCode: input.deliveryCode,
@@ -470,7 +460,7 @@ describe('admin refunds under the cancellation tiers', () => {
 
     expect(refunded.status).toBe('refunded');
     expect((await readOrder(orderId))?.status).toBe('cancelled');
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
     expect((await readWallet(VENDOR)).pending).toBe(0);
     expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(0);
 
@@ -501,14 +491,14 @@ describe('admin refunds under the cancellation tiers', () => {
 
     expect(refunded.status).toBe('refunded');
     expect((await readOrder(orderId))?.status).toBe('cancelled');
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
     expect((await readWallet(VENDOR)).available).toBe(92);
     expect((await readWallet(VENDOR)).pending).toBe(0);
-    expect((await readWallet(DRIVER)).available).toBe(8.5);
-    // R19.50 came from the order under the policy; R100.50 is the platform's.
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-100.5);
+    expect((await readWallet(DRIVER)).available).toBe(5);
+    // R15 came from the order under the policy; R97 is the platform's.
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-97);
     const goodwill = (await readLedger(PLATFORM_WALLET_ID)).filter((entry) => entry.type === 'goodwill');
-    expect(goodwill.map((entry) => entry.amount)).toEqual([-100.5]);
+    expect(goodwill.map((entry) => entry.amount)).toEqual([-97]);
   });
 
   it('blocks a refund on the way unless it is goodwill, and then keeps the driver from completing it', async () => {
@@ -528,10 +518,10 @@ describe('admin refunds under the cancellation tiers', () => {
     });
 
     expect((await readOrder(orderId))?.status).toBe('cancelled');
-    expect((await readWallet(DRIVER)).available).toBe(17);
+    expect((await readWallet(DRIVER)).available).toBe(10);
     expect((await readWallet(VENDOR)).available).toBe(92);
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-109);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-102);
     await expect(
       orderRepository.completeDelivery(orderId, DRIVER, '123456'),
     ).rejects.toThrow(/collect the order/i);
@@ -550,15 +540,15 @@ describe('admin refunds under the cancellation tiers', () => {
     expect((await readOrder(orderId))?.status).toBe('delivered');
     expect((await readWallet(VENDOR)).available).toBe(92);
     expect((await readWallet(VENDOR)).pending).toBe(0);
-    expect((await readWallet(DRIVER)).available).toBe(17);
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
-    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-109);
+    expect((await readWallet(DRIVER)).available).toBe(10);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
+    expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-102);
   });
 
   it('tops up an order the customer cancelled mid-prep only as goodwill', async () => {
     const { orderId, paymentId } = await paidOrder({ status: 'preparing' });
     await orderService.changeStatus(customer, orderId, 'cancelled');
-    expect((await readWallet(CUSTOMER)).available).toBe(28);
+    expect((await readWallet(CUSTOMER)).available).toBe(20);
 
     await expect(
       paymentService.refundPayment(admin, paymentId, 'Customer complained'),
@@ -566,7 +556,7 @@ describe('admin refunds under the cancellation tiers', () => {
 
     await paymentService.refundPayment(admin, paymentId, 'Customer complained', { goodwill: true });
 
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
     expect((await readWallet(VENDOR)).available).toBe(92);
   });
 
@@ -577,15 +567,15 @@ describe('admin refunds under the cancellation tiers', () => {
 
     // Reproduce a goodwill refund whose last writes never landed: the money
     // has moved, but neither the order nor the payment recorded it.
-    await db.collection(Collections.orders).doc(orderId).update({ refundedAmount: 28 });
-    await paymentRepository.updateStatus(paymentId, 'partially_refunded', { refundedAmount: 28 });
+    await db.collection(Collections.orders).doc(orderId).update({ refundedAmount: 20 });
+    await paymentRepository.updateStatus(paymentId, 'partially_refunded', { refundedAmount: 20 });
 
     const retried = await paymentService.refundPayment(admin, paymentId, 'Kitchen fire', {
       goodwill: true,
     });
 
     expect(retried.status).toBe('refunded');
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
     expect((await readLedger(CUSTOMER)).filter((entry) => entry.type === 'refund')).toHaveLength(2);
     expect((await readWallet(PLATFORM_WALLET_ID)).available).toBe(-92);
   });
@@ -597,6 +587,6 @@ describe('admin refunds under the cancellation tiers', () => {
     await expect(
       paymentService.refundPayment(admin, paymentId, 'Duplicate order', { goodwill: true }),
     ).rejects.toThrow(/already been refunded/i);
-    expect((await readWallet(CUSTOMER)).available).toBe(120);
+    expect((await readWallet(CUSTOMER)).available).toBe(112);
   });
 });

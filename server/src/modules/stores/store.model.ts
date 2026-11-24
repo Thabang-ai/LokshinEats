@@ -19,6 +19,7 @@ import {
   toNumber,
   toStringOr,
 } from '../../lib/serialize';
+import { DELIVERY_FEE } from '../../lib/money';
 
 export type Store = {
   id: string;
@@ -36,11 +37,16 @@ export type Store = {
   image: string | null;
   logo: string | null;
   banner: string | null;
+  /**
+   * What delivery costs from this kitchen. A platform rule, the same
+   * everywhere, and never accepted from a client: a vendor setting their own
+   * fee set the driver's pay with it.
+   */
+  deliveryFee: number;
   /** Derived from reviews; never accepted from a client. */
   rating: number;
   reviewCount: number;
   deliveryTime: string;
-  deliveryFee: number;
   minOrderAmount: number;
   isOpen: boolean;
   createdAt: string | null;
@@ -84,7 +90,6 @@ const baseStoreFields = {
   logo: z.string().trim().url().max(500).optional(),
   banner: z.string().trim().url().max(500).optional(),
   deliveryTime: z.string().trim().min(3).max(40).default('30-45 min'),
-  deliveryFee: feeSchema.default(15),
   minOrderAmount: feeSchema.default(30),
 };
 
@@ -105,7 +110,6 @@ export const updateStoreSchema = z
     city: baseStoreFields.city.optional(),
     categories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
     deliveryTime: z.string().trim().min(3).max(40).optional(),
-    deliveryFee: feeSchema.optional(),
     minOrderAmount: feeSchema.optional(),
     /** Vendors toggle this from the dashboard to stop taking orders. */
     isOpen: z.boolean().optional(),
@@ -163,7 +167,11 @@ export function toStore(snapshot: DocumentSnapshot): Store {
     rating: toNumber(data.rating),
     reviewCount: toNumber(data.reviewCount),
     deliveryTime: toStringOr(data.deliveryTime, '30-45 min'),
-    deliveryFee: toNumber(data.deliveryFee),
+    // The platform's fee, not whatever this document happens to hold. Stores
+    // registered before 22 November 2026 still carry their own figure, and
+    // serving it would have a kitchen's page quote R20 while checkout charges
+    // R12.
+    deliveryFee: DELIVERY_FEE,
     minOrderAmount: toNumber(data.minOrderAmount),
     isOpen: toBoolean(data.isOpen),
     createdAt: toIso(data.createdAt),

@@ -44,9 +44,6 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
   late final _deliveryTime = TextEditingController(
     text: widget.store.deliveryTime,
   );
-  late final _deliveryFee = TextEditingController(
-    text: widget.store.deliveryFee.toStringAsFixed(2),
-  );
   late final _minOrder = TextEditingController(
     text: widget.store.minOrderAmount.toStringAsFixed(2),
   );
@@ -63,7 +60,6 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
       _city,
       _phone,
       _deliveryTime,
-      _deliveryFee,
       _minOrder,
     ]) {
       controller.dispose();
@@ -101,7 +97,6 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
             city: _changed(_city, widget.store.city),
             phone: _changed(_phone, widget.store.phone ?? ''),
             deliveryTime: _changed(_deliveryTime, widget.store.deliveryTime),
-            deliveryFee: _changedAmount(_deliveryFee, widget.store.deliveryFee),
             minOrderAmount: _changedAmount(
               _minOrder,
               widget.store.minOrderAmount,
@@ -250,48 +245,30 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                     : null,
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _deliveryFee,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Delivery fee',
-                        prefixText: 'R ',
-                      ),
-                      validator: _amount,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _minOrder,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Minimum order',
-                        prefixText: 'R ',
-                      ),
-                      validator: _amount,
-                    ),
-                  ),
+              TextFormField(
+                controller: _minOrder,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                 ],
+                decoration: const InputDecoration(
+                  labelText: 'Minimum order',
+                  prefixText: 'R ',
+                ),
+                validator: _amount,
               ),
               const SizedBox(height: 8),
+              // No longer a field. The fee is the same from every kitchen on
+              // LokshinEats, and a kitchen that could set it was setting the
+              // driver's pay with it.
               Text(
-                'Most of the delivery fee goes to the driver who brings the '
-                'food. Orders already placed keep the fee they were placed '
-                'at: ${formatRands(widget.store.deliveryFee)} today.',
+                'Delivery costs customers '
+                '${formatRands(widget.store.deliveryFee)} from every kitchen '
+                'on LokshinEats, and most of it goes to the driver who brings '
+                'the food. Orders already placed keep the fee they were '
+                'placed at.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

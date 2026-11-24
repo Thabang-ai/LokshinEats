@@ -152,7 +152,6 @@ describe('the moments a customer hears about', () => {
       status: 'preparing',
       paymentStatus: 'paid',
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     await orderService.changeStatus(admin, orderId, 'cancelled');
@@ -160,7 +159,7 @@ describe('the moments a customer hears about', () => {
     const notes = await inbox(CUSTOMER);
     expect(notes.map((n) => n.kind)).toEqual(['order_cancelled']);
     // Mid-prep: the food (R92 to the kitchen) is paid for, the rest comes back.
-    expect(notes[0]!.body).toBe('R28.00 is back in your LokshinEats wallet.');
+    expect(notes[0]!.body).toBe('R20.00 is back in your LokshinEats wallet.');
   });
 
   it('nothing for a wrong delivery code', async () => {

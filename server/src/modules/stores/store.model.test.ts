@@ -19,7 +19,6 @@ const validStore = {
 describe('createStoreSchema', () => {
   it('accepts a minimal registration and applies sensible defaults', () => {
     const parsed = createStoreSchema.parse(validStore);
-    expect(parsed.deliveryFee).toBe(15);
     expect(parsed.minOrderAmount).toBe(30);
     expect(parsed.deliveryTime).toBe('30-45 min');
     expect(parsed.categories).toEqual([]);
@@ -40,15 +39,12 @@ describe('createStoreSchema', () => {
     ).toThrow();
   });
 
-  it('refuses an unrealistic or sub-cent delivery fee', () => {
+  it('refuses to let a vendor set the delivery fee at all', () => {
+    // It is a platform rule now - the same R12 from every kitchen. A vendor
+    // who could set it could set the driver's pay with it, and the same
+    // delivery cost R15 from one kitchen and R20 from the one next door.
     expect(() =>
-      createStoreSchema.parse({ ...validStore, deliveryFee: -5 }),
-    ).toThrow();
-    expect(() =>
-      createStoreSchema.parse({ ...validStore, deliveryFee: 50_000 }),
-    ).toThrow();
-    expect(() =>
-      createStoreSchema.parse({ ...validStore, deliveryFee: 15.999 }),
+      createStoreSchema.parse({ ...validStore, deliveryFee: 5 }),
     ).toThrow();
   });
 

@@ -86,7 +86,7 @@ beforeEach(async () => {
     seedApprovedDriver('drv-2'),
   ]);
 
-  storeId = await seedStore({ ownerId: 'vend-1', deliveryFee: 20 });
+  storeId = await seedStore({ ownerId: 'vend-1' });
   productId = await seedProduct({ storeId, price: 45.5 });
 });
 
@@ -100,8 +100,7 @@ describe('placing an order', () => {
     expect(response.status).toBe(201);
     expect(response.body.data).toMatchObject({
       subtotal: 91,
-      deliveryFee: 20,
-      total: 111,
+      total: 103,
       status: 'pending',
       paymentStatus: 'pending',
     });
@@ -571,7 +570,6 @@ describe('cancellation preview', () => {
       status: 'preparing',
       paymentStatus: 'paid',
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const response = await request(app)
@@ -582,7 +580,7 @@ describe('cancellation preview', () => {
     expect(response.body.data).toMatchObject({
       allowed: true,
       stage: 'in_kitchen',
-      customerRefund: 28,
+      customerRefund: 20,
       vendorPay: 92,
       driverPay: 0,
     });
@@ -603,14 +601,13 @@ describe('cancellation preview', () => {
       paymentStatus: 'paid',
       driverId: 'drv-1',
       subtotal: 100,
-      deliveryFee: 20,
     });
 
     const response = await request(app)
       .get(`/api/v1/orders/${orderId}/cancellation-preview`)
       .set(...customer.authHeader);
 
-    expect(response.body.data).toMatchObject({ customerRefund: 19.5, driverPay: 8.5 });
+    expect(response.body.data).toMatchObject({ customerRefund: 15, driverPay: 5 });
   });
 
   it('explains why an unpaid order cannot be cancelled by the customer mid-prep', async () => {

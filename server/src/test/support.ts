@@ -13,7 +13,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { Collections, db } from '../config/firebase';
-import { computeOrderEconomics } from '../lib/money';
+import { computeOrderEconomics, DELIVERY_FEE } from '../lib/money';
 import type { AuthContext, Role } from '../middleware/auth';
 
 /** Guard against ever pointing these helpers at a real database. */
@@ -103,7 +103,6 @@ export async function seedStore(input: {
   ownerId: string;
   name?: string;
   isOpen?: boolean;
-  deliveryFee?: number;
   minOrderAmount?: number;
 }): Promise<string> {
   const ref = input.id
@@ -121,7 +120,9 @@ export async function seedStore(input: {
     rating: 0,
     reviewCount: 0,
     deliveryTime: '30-45 min',
-    deliveryFee: input.deliveryFee ?? 20,
+    // Deliberately not the platform fee: a store document may still carry
+    // whatever it was registered with, and the API must serve R12 regardless.
+    deliveryFee: 20,
     minOrderAmount: input.minOrderAmount ?? 0,
     isOpen: input.isOpen ?? true,
     createdAt: FieldValue.serverTimestamp(),
@@ -188,7 +189,7 @@ export async function seedOrder(input: {
   legacyCodeOnDocument?: boolean;
 }): Promise<string> {
   const subtotal = input.subtotal ?? 100;
-  const deliveryFee = input.deliveryFee ?? 20;
+  const deliveryFee = input.deliveryFee ?? DELIVERY_FEE;
   const economics = computeOrderEconomics(subtotal, deliveryFee);
 
   const ref = input.id

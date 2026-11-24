@@ -73,7 +73,7 @@ export type NewOrderDocument = {
   platformEarnings: number;
   platformCommission: number;
   commissionRate: number;
-  driverDeliveryShare: number;
+  driverDeliveryCommission: number;
 };
 
 const secrets = () => db.collection(Collections.orderSecrets);
