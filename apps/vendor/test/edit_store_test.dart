@@ -203,13 +203,17 @@ void main() {
     expect(find.textContaining('Send us the picture'), findsNothing);
   });
 
-  testWidgets('a changed delivery fee is sent as a number', (tester) async {
-    final a = api();
-    await pump(tester, a.client);
+  testWidgets("the delivery fee is not a kitchen's to set", (tester) async {
+    // It is a platform rule - the same R12 everywhere - and a vendor who
+    // could edit it was setting the driver's pay. The API refuses the field
+    // outright, so offering the box would only produce a save that fails.
+    await pump(tester, api().client);
 
-    await tester.enterText(find.widgetWithText(TextFormField, '15.00'), '20');
-    await tapSave(tester);
-
-    expect(a.patches.single, {'deliveryFee': 20.0});
+    expect(find.widgetWithText(TextFormField, '15.00'), findsNothing);
+    expect(
+      find.textContaining('from every kitchen on LokshinEats'),
+      findsOneWidget,
+    );
   });
+
 }
