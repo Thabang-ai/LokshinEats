@@ -47,7 +47,14 @@ export async function listStores(query: ListStoresQuery): Promise<Page<Store>> {
 
   return {
     ...page,
-    items: page.items.filter((store) => store.verification === 'approved'),
+    items: page.items.filter(
+      (store) =>
+        store.verification === 'approved' &&
+        // Firestore filtered on the switch; the clock is applied here, so a
+        // kitchen on scheduled hours drops out of "open now" when it closes
+        // rather than being listed and then refusing the order.
+        (!query.openOnly || store.isOpen),
+    ),
   };
 }
 

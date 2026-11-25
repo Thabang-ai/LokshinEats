@@ -359,6 +359,16 @@ export default function StoreRegistrationPage() {
                 Operating Hours
               </h2>
 
+              {/* These are shown to customers. Whether they also open and
+                  close the kitchen by themselves is the vendor's choice,
+                  made in the vendor app - every kitchen registered before
+                  that existed kept trading on its own switch. */}
+              <p className="text-sm text-gray-600 mb-4">
+                Customers see these times. Your kitchen stays open or closed by
+                your own switch until you turn automatic hours on in the
+                vendor app.
+              </p>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold mb-2">Opening Time</label>

@@ -69,6 +69,9 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
     String? phone,
     String? deliveryTime,
     double? minOrderAmount,
+    String? openingTime,
+    String? closingTime,
+    String? hoursMode,
   }) async {
     final updated = await ref
         .read(storeRepositoryProvider)
@@ -81,6 +84,9 @@ class MyStoreNotifier extends AsyncNotifier<Store?> {
           phone: phone,
           deliveryTime: deliveryTime,
           minOrderAmount: minOrderAmount,
+          openingTime: openingTime,
+          closingTime: closingTime,
+          hoursMode: hoursMode,
         );
 
     if (ref.mounted) state = AsyncData(updated);

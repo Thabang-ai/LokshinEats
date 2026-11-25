@@ -37,6 +37,87 @@ export const STORE_VERIFICATION_STATUSES = [
 export type StoreVerificationStatus =
   (typeof STORE_VERIFICATION_STATUSES)[number];
 
+/**
+ * How a kitchen decides whether it is open.
+ *
+ * `manual` is the switch on the vendor's own dashboard and nothing else -
+ * what every kitchen has done until now. `scheduled` adds the hours: the
+ * kitchen is open when the clock agrees, and the switch still closes it
+ * early when the pots run out.
+ *
+ * Existing kitchens stay `manual`. Their opening hours were collected at
+ * registration and have never meant anything, so enforcing them now would
+ * close a kitchen at 18:00 on the strength of a number somebody typed months
+ * ago and has never thought about since.
+ */
+export const STORE_HOURS_MODES = ['manual', 'scheduled'] as const;
+export type StoreHoursMode = (typeof STORE_HOURS_MODES)[number];
+
+/** Anything we have not been told reads as the way kitchens worked before. */
+function hoursMode(value: unknown): StoreHoursMode {
+  return (STORE_HOURS_MODES as readonly string[]).includes(value as string)
+    ? (value as StoreHoursMode)
+    : 'manual';
+}
+
+/** Minutes past midnight for "HH:MM", or null if it is not a time. */
+function minutesInto(time: string | null): number | null {
+  if (!time) return null;
+  const match = /^([01][0-9]|2[0-3]):([0-5][0-9])$/.exec(time);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/** Minutes past midnight in Johannesburg, which is where the kitchens are. */
+function nowInSast(at: Date): number {
+  const sast = new Date(at.getTime() + 2 * 60 * 60 * 1000);
+  return sast.getUTCHours() * 60 + sast.getUTCMinutes();
+}
+
+/**
+ * Whether the clock says this kitchen is open.
+ *
+ * A closing time earlier than the opening time means the kitchen trades past
+ * midnight - 18:00 to 02:00 is an ordinary night for a kota place, and
+ * reading it as a fourteen-hour closure would shut exactly the kitchens that
+ * are busiest.
+ */
+export function withinHours(
+  openingTime: string | null,
+  closingTime: string | null,
+  at: Date = new Date(),
+): boolean {
+  const opens = minutesInto(openingTime);
+  const closes = minutesInto(closingTime);
+
+  // Hours nobody has given cannot close anybody.
+  if (opens === null || closes === null) return true;
+  if (opens === closes) return true;
+
+  const now = nowInSast(at);
+  return opens < closes
+    ? now >= opens && now < closes
+    : now >= opens || now < closes;
+}
+
+/**
+ * Whether a kitchen is taking orders: its own switch, and the clock when it
+ * has asked the clock to decide.
+ */
+export function isTakingOrders(
+  store: {
+    switchedOn: boolean;
+    hoursMode: StoreHoursMode;
+    openingTime: string | null;
+    closingTime: string | null;
+  },
+  at: Date = new Date(),
+): boolean {
+  if (!store.switchedOn) return false;
+  if (store.hoursMode !== 'scheduled') return true;
+  return withinHours(store.openingTime, store.closingTime, at);
+}
+
 export type Store = {
   id: string;
   name: string;
@@ -71,7 +152,17 @@ export type Store = {
   reviewCount: number;
   deliveryTime: string;
   minOrderAmount: number;
+  /**
+   * Whether this kitchen is taking orders right now.
+   *
+   * The answer, not the switch: on `scheduled` hours a kitchen whose switch
+   * is on but whose clock says closed reads false here. Every customer-facing
+   * surface already asks this question, so they all get the hours for free.
+   */
   isOpen: boolean;
+  /** The vendor's own switch, for the vendor's own dashboard. */
+  switchedOn: boolean;
+  hoursMode: StoreHoursMode;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -134,6 +225,8 @@ export const updateStoreSchema = z
     categories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
     deliveryTime: z.string().trim().min(3).max(40).optional(),
     minOrderAmount: feeSchema.optional(),
+    /** Let the hours decide, or keep the switch in charge. */
+    hoursMode: z.enum(STORE_HOURS_MODES).optional(),
     /** Vendors toggle this from the dashboard to stop taking orders. */
     isOpen: z.boolean().optional(),
   })
@@ -235,7 +328,14 @@ export function toStore(snapshot: DocumentSnapshot): Store {
         ? data.verifiedBy
         : null,
     minOrderAmount: toNumber(data.minOrderAmount),
-    isOpen: toBoolean(data.isOpen),
+    isOpen: isTakingOrders({
+      switchedOn: toBoolean(data.isOpen),
+      hoursMode: hoursMode(data.hoursMode),
+      openingTime: optional(data.openingTime),
+      closingTime: optional(data.closingTime),
+    }),
+    switchedOn: toBoolean(data.isOpen),
+    hoursMode: hoursMode(data.hoursMode),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };

@@ -167,16 +167,29 @@ class _OpenSwitchState extends ConsumerState<_OpenSwitch> {
 
     final status = StatusColors.of(context);
 
+    // The switch shows the vendor's own setting; the word beside it shows
+    // what customers actually see. On scheduled hours those differ, and a
+    // switch that flicked itself off at closing time would look broken.
+    final label = store.closedByHours
+        ? 'Shut for now'
+        : store.isOpen
+        ? 'Open'
+        : 'Closed';
+
     return Row(
       children: [
         Text(
-          store.isOpen ? 'Open' : 'Closed',
+          label,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
-            color: store.isOpen ? status.success : status.danger,
+            color: store.isOpen
+                ? status.success
+                : store.closedByHours
+                ? status.warning
+                : status.danger,
           ),
         ),
-        Switch(value: store.isOpen, onChanged: _busy ? null : _toggle),
+        Switch(value: store.switchedOn, onChanged: _busy ? null : _toggle),
         const SizedBox(width: 4),
       ],
     );

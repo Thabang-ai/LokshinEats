@@ -47,7 +47,14 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
   late final _minOrder = TextEditingController(
     text: widget.store.minOrderAmount.toStringAsFixed(2),
   );
+  late final _opening = TextEditingController(
+    text: widget.store.openingTime ?? '',
+  );
+  late final _closing = TextEditingController(
+    text: widget.store.closingTime ?? '',
+  );
 
+  late bool _scheduled = widget.store.hoursMode == StoreHoursMode.scheduled;
   bool _busy = false;
 
   @override
@@ -61,6 +68,8 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
       _phone,
       _deliveryTime,
       _minOrder,
+      _opening,
+      _closing,
     ]) {
       controller.dispose();
     }
@@ -101,6 +110,13 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
               _minOrder,
               widget.store.minOrderAmount,
             ),
+            openingTime: _changed(_opening, widget.store.openingTime ?? ''),
+            closingTime: _changed(_closing, widget.store.closingTime ?? ''),
+            hoursMode:
+                _scheduled ==
+                    (widget.store.hoursMode == StoreHoursMode.scheduled)
+                ? null
+                : (_scheduled ? 'scheduled' : 'manual'),
           );
 
       messenger.showSnackBar(
@@ -259,7 +275,61 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                 ),
                 validator: _amount,
               ),
+              const SizedBox(height: 20),
+
+              // Hours that do something. They have been collected since the
+              // first registration form and have never closed a kitchen, so
+              // turning them on is the vendor's choice rather than a change
+              // made to them.
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _scheduled,
+                onChanged: (value) => setState(() => _scheduled = value),
+                title: const Text('Open and close automatically'),
+                subtitle: Text(
+                  _scheduled
+                      ? 'Customers can order between these times. You can '
+                            'still close early whenever you need to.'
+                      : 'Your open switch decides, and these times are only '
+                            'shown to customers.',
+                ),
+              ),
               const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _opening,
+                      decoration: const InputDecoration(
+                        labelText: 'Opens',
+                        hintText: '08:00',
+                      ),
+                      validator: _time,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _closing,
+                      decoration: const InputDecoration(
+                        labelText: 'Closes',
+                        hintText: '20:00',
+                      ),
+                      validator: _time,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'A closing time earlier than the opening one means you trade '
+                'past midnight — 18:00 to 02:00 is a normal Friday.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+
+              const SizedBox(height: 20),
               // No longer a field. The fee is the same from every kitchen on
               // LokshinEats, and a kitchen that could set it was setting the
               // driver's pay with it.
@@ -297,5 +367,20 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
     if (parsed == null) return 'Enter an amount.';
     if (parsed < 0) return 'That cannot be less than nothing.';
     return null;
+  }
+
+  /// A 24-hour time, or nothing at all.
+  ///
+  /// Blank is allowed while the switch is in charge: plenty of kitchens have
+  /// never filled these in. It stops being allowed the moment the hours are
+  /// what decides, because then a blank one would mean "never closed".
+  String? _time(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) {
+      return _scheduled ? 'Give a time, or turn this off.' : null;
+    }
+    return RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9]$').hasMatch(text)
+        ? null
+        : 'Use 24-hour time, like 08:00.';
   }
 }

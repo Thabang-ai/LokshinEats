@@ -29,6 +29,22 @@ enum StoreVerification {
   bool get mayTrade => this == StoreVerification.approved;
 }
 
+/// How this kitchen decides whether it is open.
+///
+/// `manual` is the switch and nothing else, which is how every kitchen
+/// worked until now. `scheduled` hands the decision to the opening hours,
+/// with the switch still able to close early when the pots run out.
+enum StoreHoursMode {
+  manual,
+  scheduled;
+
+  static StoreHoursMode fromWire(Object? value) =>
+      StoreHoursMode.values.firstWhere(
+        (mode) => mode.name == value,
+        orElse: () => StoreHoursMode.manual,
+      );
+}
+
 class Store {
   const Store({
     required this.id,
@@ -48,6 +64,10 @@ class Store {
     this.logo,
     this.verification = StoreVerification.approved,
     this.verificationReason,
+    this.switchedOn = false,
+    this.hoursMode = StoreHoursMode.manual,
+    this.openingTime,
+    this.closingTime,
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
@@ -74,6 +94,15 @@ class Store {
       logo: _text(json['logo']),
       verification: StoreVerification.fromWire(json['verification']),
       verificationReason: _text(json['verificationReason']),
+      // The vendor's own switch. Absent on an older API, where `isOpen` was
+      // the switch and nothing else could close a kitchen.
+      switchedOn: switch (json['switchedOn']) {
+        final bool value => value,
+        _ => json['isOpen'] == true,
+      },
+      hoursMode: StoreHoursMode.fromWire(json['hoursMode']),
+      openingTime: _text(json['openingTime']),
+      closingTime: _text(json['closingTime']),
     );
   }
 
@@ -98,6 +127,19 @@ class Store {
 
   /// Why it was turned down, in the reviewer's words.
   final String? verificationReason;
+
+  /// The vendor's own switch, which [isOpen] alone cannot tell you about:
+  /// a kitchen on scheduled hours can be switched on and still closed.
+  final bool switchedOn;
+
+  /// Whether the hours decide, or only the switch.
+  final StoreHoursMode hoursMode;
+
+  final String? openingTime;
+  final String? closingTime;
+
+  /// Switched on, but the clock has closed it.
+  bool get closedByHours => switchedOn && !isOpen;
 
   /// Both as URLs a phone can load, or null where there is no photograph.
   String? get bannerUrl => resolveImageUrl(banner);

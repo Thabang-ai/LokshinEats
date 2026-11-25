@@ -90,6 +90,9 @@ class StoreRepository {
     String? phone,
     String? deliveryTime,
     double? minOrderAmount,
+    String? openingTime,
+    String? closingTime,
+    String? hoursMode,
   }) => _update({
     if (name != null) 'name': name.trim(),
     if (cuisine != null) 'cuisine': cuisine.trim(),
@@ -99,6 +102,11 @@ class StoreRepository {
     if (phone != null) 'phone': phone.replaceAll(' ', ''),
     if (deliveryTime != null) 'deliveryTime': deliveryTime.trim(),
     'minOrderAmount': ?minOrderAmount,
+    if (openingTime != null && openingTime.trim().isNotEmpty)
+      'openingTime': openingTime.trim(),
+    if (closingTime != null && closingTime.trim().isNotEmpty)
+      'closingTime': closingTime.trim(),
+    'hoursMode': ?hoursMode,
   });
 
   /// Open or close the kitchen to new orders.
