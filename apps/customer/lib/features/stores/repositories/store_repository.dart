@@ -18,9 +18,15 @@ class StoreRepository {
   ///
   /// [openOnly] is the common case for a hungry customer, but the full list
   /// stays reachable so a closed favourite is still findable.
+  ///
+  /// [deliversTo] asks a different question from [city]: not where the
+  /// kitchen stands, but where it will drive. A customer wants the kitchen
+  /// one township over that will come to them, and does not want the one
+  /// next door that will not.
   Future<List<Store>> fetchStores({
     String? city,
     String? cuisine,
+    String? deliversTo,
     bool openOnly = false,
     int limit = 20,
     String? cursor,
@@ -31,6 +37,8 @@ class StoreRepository {
         'limit': '$limit',
         if (city != null && city.isNotEmpty) 'city': city,
         if (cuisine != null && cuisine.isNotEmpty) 'cuisine': cuisine,
+        if (deliversTo != null && deliversTo.isNotEmpty)
+          'deliversTo': deliversTo,
         if (openOnly) 'openOnly': 'true',
         'cursor': ?cursor,
       },

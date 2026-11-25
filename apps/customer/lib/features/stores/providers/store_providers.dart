@@ -43,6 +43,29 @@ final storeSearchQueryProvider = NotifierProvider<StoreSearchQuery, String>(
   StoreSearchQuery.new,
 );
 
+/// Whether the list is narrowed to kitchens that deliver to this customer.
+///
+/// On by default, and only ever visible to a customer whose address the app
+/// knows. A kitchen that will not drive to you is not a kitchen you can
+/// order from, and listing it is a tease - but the switch exists because a
+/// saved address can be out of date, or somebody can be shopping for a
+/// delivery somewhere else.
+class NearMeFilter extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void set(bool value) => state = value;
+}
+
+final nearMeFilterProvider = NotifierProvider<NearMeFilter, bool>(
+  NearMeFilter.new,
+);
+
+/// The area the list is narrowed to, or null when it is not narrowed.
+final deliversToFilterProvider = Provider<String?>((ref) {
+  return ref.watch(nearMeFilterProvider) ? ref.watch(homeAreaProvider) : null;
+});
+
 /// Kitchens to show, honouring the open-now filter.
 ///
 /// Search is applied client-side in [visibleStoresProvider] rather than here,
@@ -52,7 +75,10 @@ final storesProvider = FutureProvider<List<Store>>((ref) async {
   final repository = ref.watch(storeRepositoryProvider);
   final openOnly = ref.watch(openOnlyFilterProvider);
 
-  return repository.fetchStores(openOnly: openOnly);
+  return repository.fetchStores(
+    openOnly: openOnly,
+    deliversTo: ref.watch(deliversToFilterProvider),
+  );
 });
 
 /// [storesProvider] narrowed by the current search text.

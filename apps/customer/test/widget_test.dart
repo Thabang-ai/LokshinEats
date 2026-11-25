@@ -58,6 +58,7 @@ class FakeStoreRepository implements StoreRepository {
   Future<List<Store>> fetchStores({
     String? city,
     String? cuisine,
+    String? deliversTo,
     bool openOnly = false,
     int limit = 20,
     String? cursor,

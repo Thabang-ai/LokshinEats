@@ -23,6 +23,13 @@ class StoresPage extends ConsumerWidget {
     final stores = ref.watch(visibleStoresProvider);
     final openOnly = ref.watch(openOnlyFilterProvider);
 
+    // The area this customer's food goes to, if the app knows it. The list
+    // is narrowed to kitchens that will drive there: one that will not is
+    // not a kitchen they can order from.
+    final home = ref.watch(homeAreaProvider);
+    final nearMe = ref.watch(nearMeFilterProvider);
+    final narrowed = home != null && nearMe;
+
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
@@ -35,6 +42,10 @@ class StoresPage extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _Filters(
                   openOnly: openOnly,
+                  homeArea: home,
+                  nearMe: nearMe,
+                  onNearMeChanged: (value) =>
+                      ref.read(nearMeFilterProvider.notifier).set(value),
                   onOpenOnlyChanged: (value) =>
                       ref.read(openOnlyFilterProvider.notifier).set(value),
                   onSearchChanged: (value) =>
@@ -54,10 +65,15 @@ class StoresPage extends ConsumerWidget {
                     ? SliverFillRemaining(
                         hasScrollBody: false,
                         child: EmptyState(
-                          title: openOnly
+                          title: narrowed
+                              ? 'Nobody delivers to $home yet'
+                              : openOnly
                               ? 'No kitchens are open right now'
                               : 'No kitchens found',
-                          subtitle: openOnly
+                          subtitle: narrowed
+                              ? 'Turn off "Delivers to $home" to see every '
+                                    'kitchen on LokshinEats.'
+                              : openOnly
                               ? 'Turn off "Open now" to see everyone.'
                               : 'Try a different search.',
                         ),
@@ -81,11 +97,19 @@ class StoresPage extends ConsumerWidget {
 class _Filters extends ConsumerStatefulWidget {
   const _Filters({
     required this.openOnly,
+    required this.homeArea,
+    required this.nearMe,
+    required this.onNearMeChanged,
     required this.onOpenOnlyChanged,
     required this.onSearchChanged,
   });
 
   final bool openOnly;
+
+  /// Where this customer's address is, or null when the app does not know.
+  final String? homeArea;
+  final bool nearMe;
+  final ValueChanged<bool> onNearMeChanged;
   final ValueChanged<bool> onOpenOnlyChanged;
   final ValueChanged<String> onSearchChanged;
 
@@ -136,7 +160,11 @@ class _FiltersState extends ConsumerState<_Filters> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          // Wrapped, not a Row: an area name can be long ("Dobsonville Ext
+          // 2") and two chips side by side overflow a 360dp phone.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               FilterChip(
                 selected: widget.openOnly,
@@ -146,6 +174,19 @@ class _FiltersState extends ConsumerState<_Filters> {
                     : const Icon(Icons.schedule_rounded, size: 18),
                 label: const Text('Open now'),
               ),
+              // Shown only to a customer whose area the app knows, and only
+              // because a saved address can be wrong or somebody can be
+              // ordering for an address elsewhere. Otherwise this would be a
+              // switch for seeing kitchens you cannot order from.
+              if (widget.homeArea != null)
+                FilterChip(
+                  selected: widget.nearMe,
+                  onSelected: widget.onNearMeChanged,
+                  avatar: widget.nearMe
+                      ? null
+                      : const Icon(Icons.place_outlined, size: 18),
+                  label: Text('Delivers to ${widget.homeArea}'),
+                ),
             ],
           ),
         ],
