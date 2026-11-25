@@ -308,6 +308,8 @@ export type ReviewStore = {
   verifiedAt: string | null;
   verifiedBy: string | null;
   isOpen: boolean;
+  /** Where it delivers. Empty means anywhere, which is where kitchens start. */
+  deliveryAreas: string[];
   rating: number;
   reviewCount: number;
   createdAt: string | null;

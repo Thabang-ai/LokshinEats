@@ -292,6 +292,16 @@ export default function AdminKitchensPage() {
                           : 'Not given'}
                       </dd>
                     </div>
+                    <div>
+                      <dt className="text-sm text-gray-600 flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5" /> Delivers to
+                      </dt>
+                      <dd className="font-semibold">
+                        {store.deliveryAreas.length > 0
+                          ? store.deliveryAreas.join(', ')
+                          : 'Anywhere — no areas set'}
+                      </dd>
+                    </div>
                   </dl>
 
                   <p className="mt-4 text-sm text-gray-500">

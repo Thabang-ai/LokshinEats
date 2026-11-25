@@ -21,7 +21,11 @@ import 'package:lokshineats_core/theme/app_theme.dart';
 import '../models/store.dart';
 
 class VerificationNotice extends StatelessWidget {
-  const VerificationNotice({super.key, required this.store, this.compact = false});
+  const VerificationNotice({
+    super.key,
+    required this.store,
+    this.compact = false,
+  });
 
   final Store store;
 

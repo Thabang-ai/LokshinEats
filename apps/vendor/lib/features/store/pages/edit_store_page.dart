@@ -55,6 +55,16 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
   );
 
   late bool _scheduled = widget.store.hoursMode == StoreHoursMode.scheduled;
+
+  /// Where the kitchen delivers, and whether it limits that at all.
+  ///
+  /// An empty list on the kitchen means no limit, so the switch starts off
+  /// and the list starts as whatever the kitchen already serves.
+  late final List<String> _areas = [...widget.store.deliveryAreas];
+  late bool _limitAreas = widget.store.hasDeliveryAreas;
+  final _area = TextEditingController();
+  String? _areaError;
+
   bool _busy = false;
 
   @override
@@ -70,6 +80,7 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
       _minOrder,
       _opening,
       _closing,
+      _area,
     ]) {
       controller.dispose();
     }
@@ -88,8 +99,41 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
     return (value - current).abs() < 0.005 ? null : value;
   }
 
+  /// Case and spacing are noise; the letters are the name. Matches the API.
+  String _areaKey(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// The kitchen's own township, which it always delivers to.
+  bool _isOwnCity(String area) => _areaKey(area) == _areaKey(widget.store.city);
+
+  void _addArea() {
+    final name = _area.text.trim();
+    if (name.length < 2) return;
+
+    setState(() {
+      if (!_areas.any((existing) => _areaKey(existing) == _areaKey(name))) {
+        _areas.add(name);
+      }
+      _area.clear();
+      _limitAreas = true;
+    });
+  }
+
+  /// The areas to send, or null when nothing about them changed.
+  List<String>? _changedAreas() {
+    final wanted = _limitAreas ? _areas : const <String>[];
+    return wanted.join('\u0000') == widget.store.deliveryAreas.join('\u0000')
+        ? null
+        : List.of(wanted);
+  }
+
   Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    // A limit with nothing in it would mean "deliver nowhere", which is not
+    // what anybody switching this on means.
+    final emptyLimit = _limitAreas && _areas.isEmpty;
+    setState(() => _areaError = emptyLimit ? 'Name at least one area.' : null);
+
+    if (!(_formKey.currentState?.validate() ?? false) || emptyLimit) return;
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -117,6 +161,7 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                     (widget.store.hoursMode == StoreHoursMode.scheduled)
                 ? null
                 : (_scheduled ? 'scheduled' : 'manual'),
+            deliveryAreas: _changedAreas(),
           );
 
       messenger.showSnackBar(
@@ -328,6 +373,100 @@ class _EditStorePageState extends ConsumerState<EditStorePage> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+
+              const SizedBox(height: 24),
+              Text(
+                'Where you deliver',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // Until this existed a kitchen in Meadowlands could be ordered
+              // from in Tembisa, 40km away: the order went through, the food
+              // was cooked, and somebody had to phone the customer.
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _limitAreas,
+                onChanged: (value) => setState(() {
+                  _limitAreas = value;
+                  _areaError = null;
+                  // Their own township first, so the list starts out true
+                  // rather than empty. The API adds it back anyway.
+                  if (value && _areas.isEmpty && widget.store.city.isNotEmpty) {
+                    _areas.add(widget.store.city);
+                  }
+                }),
+                title: const Text('Only deliver to certain areas'),
+                subtitle: Text(
+                  _limitAreas
+                      ? 'Customers outside these areas cannot order from you.'
+                      : 'Anyone can order from you, however far away they are.',
+                ),
+              ),
+
+              if (_limitAreas) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final area in _areas)
+                      _isOwnCity(area)
+                          // The kitchen's own township. The API puts it back
+                          // if it is removed, so it is not offered as a
+                          // choice here either.
+                          ? Chip(
+                              label: Text(area),
+                              avatar: const Icon(Icons.home_outlined, size: 18),
+                            )
+                          : InputChip(
+                              label: Text(area),
+                              deleteButtonTooltipMessage:
+                                  'Stop delivering to $area',
+                              onDeleted: () =>
+                                  setState(() => _areas.remove(area)),
+                            ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _area,
+                        textCapitalization: TextCapitalization.words,
+                        onSubmitted: (_) => _addArea(),
+                        decoration: InputDecoration(
+                          labelText: 'Add an area',
+                          hintText: 'Dobsonville',
+                          errorText: _areaError,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: IconButton.filledTonal(
+                        onPressed: _addArea,
+                        icon: const Icon(Icons.add),
+                        tooltip: 'Add this area',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Name the townships and suburbs a driver can reach from '
+                  'you. A customer whose address is somewhere else is told '
+                  'before they order, not after you have cooked.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 20),
               // No longer a field. The fee is the same from every kitchen on

@@ -81,7 +81,8 @@ class _RateOrderCardState extends ConsumerState<RateOrderCard> {
     // no way for anybody to tell whether the feature was there at all. If
     // the answer cannot be fetched, the form is shown: the worst case is
     // being offered it twice, and the API refuses the second one by name.
-    final reviews = already.value ?? (already.hasError ? const OrderReviews() : null);
+    final reviews =
+        already.value ?? (already.hasError ? const OrderReviews() : null);
     if (reviews == null) return const SizedBox.shrink();
 
     final storeGiven = reviews.storeRating;

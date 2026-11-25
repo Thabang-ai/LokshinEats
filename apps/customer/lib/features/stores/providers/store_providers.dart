@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/providers.dart';
 import '../models/product.dart';
 import '../models/store.dart';
@@ -70,6 +71,22 @@ final visibleStoresProvider = Provider<AsyncValue<List<Store>>>((ref) {
         })
         .toList(growable: false);
   });
+});
+
+/// The township this customer's saved address is in, or null.
+///
+/// Read by anything that has to say "they do not deliver to you". Null means
+/// the app does not know where they are - signed out, or no address saved -
+/// and nothing may be inferred from it: a customer who has not said where
+/// they live is not warned off a kitchen on a guess.
+///
+/// Gated on being signed in so that browsing never reaches for a profile
+/// there is nobody to fetch.
+final homeAreaProvider = Provider<String?>((ref) {
+  if (!ref.watch(isSignedInProvider)) return null;
+
+  final city = ref.watch(profileProvider).value?.address?.city.trim();
+  return city == null || city.isEmpty ? null : city;
 });
 
 /// One kitchen, for its detail page.

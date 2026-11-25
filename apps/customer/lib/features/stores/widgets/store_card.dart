@@ -2,11 +2,13 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lokshineats_core/theme/app_theme.dart';
 import '../../favourites/widgets/favourite_button.dart';
 import 'package:lokshineats_core/utils/money.dart';
 import '../models/store.dart';
+import '../providers/store_providers.dart';
 
 class StoreCard extends StatelessWidget {
   const StoreCard({super.key, required this.store, required this.onTap});
@@ -109,14 +111,20 @@ class StoreCard extends StatelessWidget {
   }
 }
 
-class _Banner extends StatelessWidget {
+class _Banner extends ConsumerWidget {
   const _Banner({required this.store});
 
   final Store store;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+
+    // A kitchen that will not drive to this customer says so on the card,
+    // before they open it and build a basket. Said nowhere else, this would
+    // only surface at the payment screen.
+    final home = ref.watch(homeAreaProvider);
+    final outOfRange = store.hasDeliveryAreas && !store.deliversTo(home);
 
     return SizedBox(
       height: 192,
@@ -154,6 +162,31 @@ class _Banner extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                   letterSpacing: 0.5,
+                ),
+              ),
+            ),
+
+          if (outOfRange)
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  child: Text(
+                    'Does not deliver to you',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),

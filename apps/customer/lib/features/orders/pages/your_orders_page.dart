@@ -199,11 +199,7 @@ class _OrderRow extends ConsumerWidget {
                 // is on it.
                 Row(
                   children: [
-                    Icon(
-                      Icons.star_rounded,
-                      size: 18,
-                      color: AppColors.brand,
-                    ),
+                    Icon(Icons.star_rounded, size: 18, color: AppColors.brand),
                     const SizedBox(width: 4),
                     Text(
                       'Rate the kitchen and your driver',

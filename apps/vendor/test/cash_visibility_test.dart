@@ -113,21 +113,27 @@ void main() {
     // The ticket used to leave this list - and the running total - the
     // moment the kitchen said the cash never arrived, which read as settled
     // on the one screen meant to say otherwise.
-    await pump(tester, [order(cashGivenToVendor: true, vendorCashDisputed: true)]);
+    await pump(tester, [
+      order(cashGivenToVendor: true, vendorCashDisputed: true),
+    ]);
 
     expect(find.text('Driver owes you'), findsOneWidget);
     expect(find.textContaining('A driver owes you R55,17'), findsOneWidget);
   });
 
   testWidgets('and says it is being looked into', (tester) async {
-    await pump(tester, [order(cashGivenToVendor: true, vendorCashDisputed: true)]);
+    await pump(tester, [
+      order(cashGivenToVendor: true, vendorCashDisputed: true),
+    ]);
 
     expect(find.textContaining('You said this never arrived'), findsOneWidget);
   });
 
   testWidgets('a kitchen can settle a dispute it raised', (tester) async {
     // The ordinary way one ends: the driver turns up with the money.
-    await pump(tester, [order(cashGivenToVendor: true, vendorCashDisputed: true)]);
+    await pump(tester, [
+      order(cashGivenToVendor: true, vendorCashDisputed: true),
+    ]);
 
     expect(find.text('I got the cash'), findsOneWidget);
   });

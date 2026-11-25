@@ -158,10 +158,7 @@ void main() {
     await tester.tap(find.byType(FilledButton));
     await tester.pumpAndSettle();
 
-    expect(
-      (sent.first['store']! as Map)['comment'],
-      'The kota was enormous.',
-    );
+    expect((sent.first['store']! as Map)['comment'], 'The kota was enormous.');
   });
 
   testWidgets('asks once: an order already rated shows what was said', (
@@ -183,9 +180,12 @@ void main() {
   testWidgets('a half-rated order still asks about the other one', (
     tester,
   ) async {
-    await pump(tester, existing: [
-      {'target': 'store', 'rating': 4},
-    ]);
+    await pump(
+      tester,
+      existing: [
+        {'target': 'store', 'rating': 4},
+      ],
+    );
 
     expect(find.text('How was it?'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);

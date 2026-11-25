@@ -53,6 +53,64 @@ export type StoreVerificationStatus =
 export const STORE_HOURS_MODES = ['manual', 'scheduled'] as const;
 export type StoreHoursMode = (typeof STORE_HOURS_MODES)[number];
 
+/** As many areas as a kitchen can plausibly cover with one driver. */
+export const MAX_DELIVERY_AREAS = 20;
+
+/**
+ * One area name reduced to what distinguishes it.
+ *
+ * Nobody types a township the same way twice - "Meadowlands ", "meadowlands",
+ * "Meadow lands" - and a customer whose address says one of them must not be
+ * turned away by a kitchen that typed another. Case and spacing are noise;
+ * the letters are the name.
+ */
+export function areaKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * The areas a kitchen delivers to, including the ground it stands on.
+ *
+ * A kitchen that lists areas and forgets its own township has not decided to
+ * stop serving its neighbours; it has forgotten. Adding it here rather than
+ * at the point of the check means every surface - the vendor's own list, the
+ * customer's kitchen page, the refusal message - shows exactly what is
+ * enforced.
+ */
+export function withOwnCity(areas: string[], city: string): string[] {
+  const named = areas.filter((area) => area.trim().length > 0);
+  if (named.length === 0) return [];
+
+  const own = city.trim();
+  const keys = new Set(named.map(areaKey));
+
+  return own.length > 0 && !keys.has(areaKey(own)) ? [own, ...named] : named;
+}
+
+/**
+ * Whether this kitchen will send a driver to `area`.
+ *
+ * An empty list means no limit, not "nowhere". Every kitchen trading today
+ * was registered before delivery areas existed and carries no list at all,
+ * and reading that absence as "nowhere" would refuse every order on the
+ * platform.
+ */
+export function deliversTo(
+  store: { deliveryAreas: string[] },
+  area: string,
+): boolean {
+  if (store.deliveryAreas.length === 0) return true;
+
+  const key = areaKey(area);
+  return store.deliveryAreas.some((listed) => areaKey(listed) === key);
+}
+
+/** "Meadowlands, Dobsonville and Soweto" - for telling somebody why. */
+export function listAreas(areas: string[]): string {
+  if (areas.length <= 1) return areas.join('');
+  return `${areas.slice(0, -1).join(', ')} and ${areas[areas.length - 1]}`;
+}
+
 /** Anything we have not been told reads as the way kitchens worked before. */
 function hoursMode(value: unknown): StoreHoursMode {
   return (STORE_HOURS_MODES as readonly string[]).includes(value as string)
@@ -163,6 +221,13 @@ export type Store = {
   /** The vendor's own switch, for the vendor's own dashboard. */
   switchedOn: boolean;
   hoursMode: StoreHoursMode;
+  /**
+   * The areas this kitchen delivers to, its own city included.
+   *
+   * Empty means no limit: it will go wherever a driver will take it. That is
+   * every kitchen registered before this field existed.
+   */
+  deliveryAreas: string[];
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -190,6 +255,33 @@ const feeSchema = z
   .max(1000, 'Fee is unrealistically high.')
   .multipleOf(0.01, 'Fee may not be finer than one cent.');
 
+/**
+ * The areas a kitchen says it delivers to.
+ *
+ * Free text rather than a fixed list of townships: LokshinEats does not know
+ * every area it will ever operate in, and a vendor who cannot name their own
+ * neighbourhood would be stuck. Duplicates are dropped here so a vendor who
+ * types "Soweto" twice gets one entry rather than an error.
+ */
+const deliveryAreasSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .min(2, 'An area needs a name.')
+      .max(80, 'That area name is too long.'),
+  )
+  .max(MAX_DELIVERY_AREAS, 'That is more areas than one kitchen can cover.')
+  .transform((areas) => {
+    const seen = new Set<string>();
+    return areas.filter((area) => {
+      const key = areaKey(area);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
+
 const baseStoreFields = {
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(500).default(''),
@@ -205,6 +297,8 @@ const baseStoreFields = {
   banner: z.string().trim().url().max(500).optional(),
   deliveryTime: z.string().trim().min(3).max(40).default('30-45 min'),
   minOrderAmount: feeSchema.default(30),
+  /** Empty means no limit, which is where every kitchen starts. */
+  deliveryAreas: deliveryAreasSchema.default([]),
 };
 
 export const createStoreSchema = z.object(baseStoreFields).strict();
@@ -227,6 +321,11 @@ export const updateStoreSchema = z
     minOrderAmount: feeSchema.optional(),
     /** Let the hours decide, or keep the switch in charge. */
     hoursMode: z.enum(STORE_HOURS_MODES).optional(),
+    /**
+     * Where the kitchen delivers. Sending `[]` lifts the limit rather than
+     * refusing everybody, which is what an empty list has always meant.
+     */
+    deliveryAreas: deliveryAreasSchema.optional(),
     /** Vendors toggle this from the dashboard to stop taking orders. */
     isOpen: z.boolean().optional(),
   })
@@ -267,6 +366,14 @@ export const listStoresQuerySchema = z.object({
   cursor: z.string().min(1).max(200).optional(),
   city: z.string().trim().min(1).max(80).optional(),
   cuisine: z.string().trim().min(1).max(60).optional(),
+  /**
+   * Restrict to kitchens that deliver to this area.
+   *
+   * Not the same question as `city`, which asks where the kitchen stands. A
+   * customer in Dobsonville wants the kitchen one township over that will
+   * drive to them, and does not want the one next door that will not.
+   */
+  deliversTo: z.string().trim().min(1).max(80).optional(),
   /** Restrict to stores currently accepting orders. */
   openOnly: z
     .enum(['true', 'false'])
@@ -336,6 +443,16 @@ export function toStore(snapshot: DocumentSnapshot): Store {
     }),
     switchedOn: toBoolean(data.isOpen),
     hoursMode: hoursMode(data.hoursMode),
+    // Served with the kitchen's own city folded in, so the list every
+    // surface shows is the list the API enforces.
+    deliveryAreas: withOwnCity(
+      Array.isArray(data.deliveryAreas)
+        ? data.deliveryAreas.filter(
+            (area: unknown): area is string => typeof area === 'string',
+          )
+        : [],
+      toStringOr(data.city),
+    ),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
   };

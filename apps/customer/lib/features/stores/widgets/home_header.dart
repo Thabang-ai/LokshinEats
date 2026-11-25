@@ -72,7 +72,9 @@ class HomeHeader extends ConsumerWidget {
                 // so account state is legible without opening the page.
                 IconButton(
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const AccountPage()),
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AccountPage(),
+                    ),
                   ),
                   icon: Icon(
                     signedIn

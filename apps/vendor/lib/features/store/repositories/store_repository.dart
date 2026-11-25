@@ -93,6 +93,7 @@ class StoreRepository {
     String? openingTime,
     String? closingTime,
     String? hoursMode,
+    List<String>? deliveryAreas,
   }) => _update({
     if (name != null) 'name': name.trim(),
     if (cuisine != null) 'cuisine': cuisine.trim(),
@@ -107,6 +108,9 @@ class StoreRepository {
     if (closingTime != null && closingTime.trim().isNotEmpty)
       'closingTime': closingTime.trim(),
     'hoursMode': ?hoursMode,
+    // An empty list is a real instruction here - "deliver anywhere" - so it
+    // is sent when the vendor asks for it, unlike a blank text field.
+    'deliveryAreas': ?deliveryAreas,
   });
 
   /// Open or close the kitchen to new orders.

@@ -68,6 +68,7 @@ class Store {
     this.hoursMode = StoreHoursMode.manual,
     this.openingTime,
     this.closingTime,
+    this.deliveryAreas = const [],
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
@@ -103,6 +104,10 @@ class Store {
       hoursMode: StoreHoursMode.fromWire(json['hoursMode']),
       openingTime: _text(json['openingTime']),
       closingTime: _text(json['closingTime']),
+      deliveryAreas: switch (json['deliveryAreas']) {
+        final List<Object?> areas => areas.whereType<String>().toList(),
+        _ => const [],
+      },
     );
   }
 
@@ -137,6 +142,15 @@ class Store {
 
   final String? openingTime;
   final String? closingTime;
+
+  /// The areas this kitchen delivers to, its own city among them.
+  ///
+  /// Empty means no limit: the kitchen will go wherever a driver will take
+  /// it, which is where every kitchen starts.
+  final List<String> deliveryAreas;
+
+  /// Whether the kitchen has drawn a line around where it delivers.
+  bool get hasDeliveryAreas => deliveryAreas.isNotEmpty;
 
   /// Switched on, but the clock has closed it.
   bool get closedByHours => switchedOn && !isOpen;

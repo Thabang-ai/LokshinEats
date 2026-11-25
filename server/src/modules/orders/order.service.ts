@@ -22,6 +22,7 @@ import * as paymentService from '../payments/payment.service';
 import { cardPaymentsEnabled } from '../payments/payment.provider';
 import * as productRepository from '../products/product.repository';
 import * as storeRepository from '../stores/store.repository';
+import { deliversTo, listAreas } from '../stores/store.model';
 import * as userRepository from '../users/user.repository';
 import * as walletService from '../wallets/wallet.service';
 import * as notificationService from '../notifications/notification.service';
@@ -76,6 +77,16 @@ async function priceOrder(
 
   if (!store.isOpen) {
     throw ApiError.conflict(`${store.name} is not accepting orders right now.`);
+  }
+
+  // Where the food is going, checked before anything is charged for it. A
+  // kitchen with no areas listed delivers anywhere, which is where every
+  // kitchen on the platform started.
+  if (!deliversTo(store, input.deliveryAddress.city)) {
+    throw ApiError.unprocessable(
+      `${store.name} delivers to ${listAreas(store.deliveryAreas)}, not ` +
+        `${input.deliveryAddress.city.trim()}.`,
+    );
   }
 
   // Reject duplicate product ids rather than merging them: a client that

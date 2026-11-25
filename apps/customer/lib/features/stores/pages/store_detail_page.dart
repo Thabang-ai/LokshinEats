@@ -185,14 +185,21 @@ class _Gradient extends StatelessWidget {
   }
 }
 
-class _StoreSummary extends StatelessWidget {
+class _StoreSummary extends ConsumerWidget {
   const _StoreSummary({required this.store});
 
   final Store store;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+
+    // Where this customer's food goes, if they have told us. A kitchen that
+    // will not come here has to say so now, while they are still reading the
+    // menu - being told at the payment screen, after building a basket, is
+    // how the closed-kitchen message used to work and it was no good.
+    final home = ref.watch(homeAreaProvider);
+    final outOfRange = store.hasDeliveryAreas && !store.deliversTo(home);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
@@ -219,6 +226,36 @@ class _StoreSummary extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Closed right now — you can look, but not order yet.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (outOfRange)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_off_outlined,
+                    size: 18,
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'They do not deliver to $home. They deliver to '
+                      '${store.areasSentence}.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onErrorContainer,
                       ),

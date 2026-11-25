@@ -281,12 +281,26 @@ class _Form extends ConsumerWidget {
                       textCapitalization: TextCapitalization.words,
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.addressCity],
-                      validator: (value) => (value?.trim().length ?? 0) < 2
-                          ? 'Enter your town or city.'
-                          : null,
+                      // The kitchen's own areas are checked here, so a
+                      // customer out of range is told while the address is
+                      // in front of them rather than by a refusal after
+                      // they press the button. The API refuses it too; this
+                      // is the kinder half of the same rule.
+                      validator: (value) {
+                        final town = (value ?? '').trim();
+                        if (town.length < 2) return 'Enter your town or city.';
+                        if (store != null &&
+                            store.hasDeliveryAreas &&
+                            !store.deliversTo(town)) {
+                          return '${store.name} does not deliver to $town. '
+                              'They deliver to ${store.areasSentence}.';
+                        }
+                        return null;
+                      },
                       decoration: const InputDecoration(
                         labelText: 'Town or city',
                         hintText: 'Soweto',
+                        errorMaxLines: 4,
                       ),
                     ),
                   ),

@@ -24,6 +24,7 @@ class Store {
     required this.deliveryFee,
     required this.minOrderAmount,
     required this.isOpen,
+    this.deliveryAreas = const [],
   });
 
   factory Store.fromJson(Map<String, dynamic> json) {
@@ -44,6 +45,9 @@ class Store {
       deliveryFee: _double(json['deliveryFee']),
       minOrderAmount: _double(json['minOrderAmount']),
       isOpen: json['isOpen'] == true,
+      deliveryAreas:
+          (json['deliveryAreas'] as List?)?.whereType<String>().toList() ??
+          const [],
     );
   }
 
@@ -65,6 +69,38 @@ class Store {
   final double deliveryFee;
   final double minOrderAmount;
   final bool isOpen;
+
+  /// The areas this kitchen delivers to, its own township included.
+  ///
+  /// Empty means no limit — it will go wherever a driver will take it, which
+  /// is where every kitchen on LokshinEats started.
+  final List<String> deliveryAreas;
+
+  /// Whether this kitchen has drawn a line around where it delivers.
+  bool get hasDeliveryAreas => deliveryAreas.isNotEmpty;
+
+  /// Whether a driver from this kitchen will come to [area].
+  ///
+  /// An area nobody has told us about reads as yes. A customer who has not
+  /// said where they live should be asked for an address, not warned off a
+  /// kitchen on a guess.
+  bool deliversTo(String? area) {
+    if (deliveryAreas.isEmpty) return true;
+
+    final key = _areaKey(area ?? '');
+    if (key.isEmpty) return true;
+
+    return deliveryAreas.any((listed) => _areaKey(listed) == key);
+  }
+
+  /// "Meadowlands, Dobsonville and Soweto" — for telling somebody why.
+  String get areasSentence => switch (deliveryAreas.length) {
+    0 => '',
+    1 => deliveryAreas.first,
+    _ =>
+      '${deliveryAreas.sublist(0, deliveryAreas.length - 1).join(', ')} '
+          'and ${deliveryAreas.last}',
+  };
 
   /// The kitchen's photo, ready to load, or null when there is none.
   ///
@@ -89,6 +125,14 @@ class Store {
 
   bool get hasRating => reviewCount > 0;
 }
+
+/// An area name reduced to what distinguishes it, exactly as the API does.
+///
+/// Nobody types a township the same way twice — "Meadowlands ",
+/// "meadowlands" — and a customer must not be warned off a kitchen over
+/// spacing.
+String _areaKey(String value) =>
+    value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
 String _string(Object? value, {String fallback = ''}) =>
     value is String && value.isNotEmpty ? value : fallback;

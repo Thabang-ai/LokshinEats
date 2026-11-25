@@ -92,10 +92,7 @@ void main() {
       'would be', (tester) async {
     await pump(tester, storeJson(verification: 'pending'));
 
-    expect(
-      find.text('LokshinEats is checking your kitchen'),
-      findsOneWidget,
-    );
+    expect(find.text('LokshinEats is checking your kitchen'), findsOneWidget);
     expect(find.textContaining('Nobody can order from you'), findsOneWidget);
   });
 
@@ -134,10 +131,7 @@ void main() {
     await pump(tester, storeJson(verification: 'approved', isOpen: true));
 
     expect(find.byType(Switch), findsOneWidget);
-    expect(
-      find.text('LokshinEats is checking your kitchen'),
-      findsNothing,
-    );
+    expect(find.text('LokshinEats is checking your kitchen'), findsNothing);
   });
 
   testWidgets('a kitchen from before the queue is not locked out of its own '

@@ -173,7 +173,14 @@ void main() {
       await pumpEditor(tester, storeJson());
 
       expect(
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        tester
+            .widget<SwitchListTile>(
+              find.widgetWithText(
+                SwitchListTile,
+                'Open and close automatically',
+              ),
+            )
+            .value,
         isFalse,
       );
     });
@@ -183,10 +190,18 @@ void main() {
     ) async {
       await pumpEditor(tester, storeJson());
 
-      await tester.tap(find.byType(SwitchListTile));
+      await tester.tap(
+        find.widgetWithText(SwitchListTile, 'Open and close automatically'),
+      );
       await tester.pump();
-      await tester.enterText(find.widgetWithText(TextFormField, '08:00'), '09:00');
-      await tester.enterText(find.widgetWithText(TextFormField, '20:00'), '21:30');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, '08:00'),
+        '09:00',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, '20:00'),
+        '21:30',
+      );
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
@@ -202,7 +217,9 @@ void main() {
       // not what anybody ticking that box means.
       await pumpEditor(tester, storeJson());
 
-      await tester.tap(find.byType(SwitchListTile));
+      await tester.tap(
+        find.widgetWithText(SwitchListTile, 'Open and close automatically'),
+      );
       await tester.pump();
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
