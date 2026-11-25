@@ -103,3 +103,43 @@ describe('toStore', () => {
     expect(store.categories).toEqual(['Kota', 'Braai']);
   });
 });
+
+describe('a kitchen with no verification field', () => {
+  const kitchen = (createdAt?: string) =>
+    toStore({
+      id: 'store-1',
+      data: () => ({
+        name: 'Mama Ntuli',
+        ...(createdAt === undefined ? {} : { createdAt }),
+      }),
+    } as never);
+
+  it('is approved when it predates the review queue', () => {
+    // The whole platform. Reading these as pending would close every kitchen
+    // trading today.
+    expect(kitchen('2026-10-01T09:00:00.000Z').verification).toBe('approved');
+  });
+
+  it('is approved when it is so old it has no createdAt', () => {
+    expect(kitchen().verification).toBe('approved');
+  });
+
+  it('is waiting when it was created after client writes were closed', () => {
+    // There is no longer a path that produces one: the website registers
+    // through the API, which writes 'pending', and firestore.rules refuses
+    // client writes. One that turns up anyway is not quietly approved.
+    expect(kitchen('2027-01-05T09:00:00.000Z').verification).toBe('pending');
+  });
+
+  it('still prefers what the document actually says', () => {
+    const store = toStore({
+      id: 'store-1',
+      data: () => ({
+        verification: 'rejected',
+        createdAt: '2026-10-01T09:00:00.000Z',
+      }),
+    } as never);
+
+    expect(store.verification).toBe('rejected');
+  });
+});

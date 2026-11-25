@@ -4,18 +4,12 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { Star, Clock, Motorbike, Heart, Plus, Minus, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { ApiError } from '../../../services/apiClient';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  Timestamp,
-  where,
-} from 'firebase/firestore';
-import { db } from '../../../firebase/config';
+  fetchStore,
+  fetchStoreMenu,
+  fetchStoreReviews,
+} from '../../../services/storeApi';
 import { useCart } from '../../../context/CartContext';
 import { useFavorites } from '../../../hooks/useFavorites';
 import { isImageUrl } from '../../../utils/isImageUrl';
@@ -36,6 +30,8 @@ type StoreView = {
   image: string;
   address: string;
   city: string;
+  /** Where it delivers, its own city included. Empty means anywhere. */
+  deliveryAreas: string[];
 };
 
 type MenuItem = Product & { image: string };
@@ -48,11 +44,10 @@ type ReviewView = {
   createdAt: Date;
 };
 
-function tsToDate(v: any): Date {
-  if (!v) return new Date();
-  if (v instanceof Timestamp) return v.toDate();
-  if (typeof v.toDate === 'function') return v.toDate();
-  return new Date();
+function tsToDate(value: string | null): Date {
+  if (!value) return new Date();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 function relativeDate(d: Date): string {
@@ -93,81 +88,74 @@ export default function RestaurantDetailPage({
 
     (async () => {
       try {
-        const [storeSnap, productsSnap, reviewsSnap] = await Promise.all([
-          getDoc(doc(db, 'stores', id)),
-          getDocs(query(collection(db, 'products'), where('storeId', '==', id))),
-          getDocs(
-            query(
-              collection(db, 'reviews'),
-              where('storeId', '==', id),
-              orderBy('createdAt', 'desc'),
-              limit(5),
-            ),
-          ),
+        // All three through the API. Reading the documents directly is how
+        // this page came to quote the store's own delivery fee instead of
+        // the platform's R12, show a kitchen as open outside its hours, and
+        // open a kitchen no admin had approved.
+        const [store, menuItems, reviewRows] = await Promise.all([
+          fetchStore(id),
+          fetchStoreMenu(id),
+          fetchStoreReviews(id),
         ]);
 
         if (cancelled) return;
 
-        if (!storeSnap.exists()) {
-          setStore(null);
-          setMenu([]);
-          setIsLoading(false);
-          return;
-        }
-
-        const s = storeSnap.data();
         setStore({
-          id: storeSnap.id,
-          name: s.name ?? 'Unnamed',
-          cuisine: s.cuisine ?? '',
-          description: s.description ?? '',
-          rating: typeof s.rating === 'number' ? s.rating : 0,
-          reviewCount: typeof s.reviewCount === 'number' ? s.reviewCount : 0,
-          deliveryTime: s.deliveryTime ?? '—',
-          deliveryFee: typeof s.deliveryFee === 'number' ? s.deliveryFee : 0,
-          minOrderAmount: typeof s.minOrderAmount === 'number' ? s.minOrderAmount : 0,
-          isOpen: s.isOpen !== false,
-          image: s.image ?? '🍽️',
-          address: s.address ?? '',
-          city: s.city ?? '',
+          id: store.id,
+          name: store.name || 'Unnamed',
+          cuisine: store.cuisine,
+          description: store.description,
+          rating: store.rating,
+          reviewCount: store.reviewCount,
+          deliveryTime: store.deliveryTime || '—',
+          deliveryFee: store.deliveryFee,
+          minOrderAmount: store.minOrderAmount,
+          isOpen: store.isOpen,
+          image: store.image ?? '🍽️',
+          address: store.address,
+          city: store.city,
+          deliveryAreas: store.deliveryAreas,
         });
 
-        const items: MenuItem[] = productsSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            storeId: data.storeId,
-            name: data.name ?? 'Unnamed',
-            description: data.description ?? '',
-            price: typeof data.price === 'number' ? data.price : 0,
-            category: data.category ?? 'Other',
-            available: data.available !== false,
-            isVegetarian: data.isVegetarian === true,
-            isSpicy: data.isSpicy === true,
-            preparationTime: typeof data.preparationTime === 'number' ? data.preparationTime : 20,
-            image: data.image ?? '🍽️',
-          };
-        });
-        setMenu(items);
+        setMenu(
+          menuItems.map((item) => ({
+            id: item.id,
+            storeId: item.storeId,
+            name: item.name || 'Unnamed',
+            description: item.description,
+            price: item.price,
+            category: item.category || 'Other',
+            available: item.available,
+            isVegetarian: item.isVegetarian,
+            isSpicy: item.isSpicy,
+            preparationTime: item.preparationTime,
+            image: item.image ?? '🍽️',
+          })),
+        );
 
-        const reviewRows: ReviewView[] = reviewsSnap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            customerName: data.customerName ?? 'Customer',
-            rating: typeof data.rating === 'number' ? data.rating : 0,
-            comment: typeof data.comment === 'string' ? data.comment : '',
-            createdAt: tsToDate(data.createdAt),
-          };
-        });
-        setReviews(reviewRows);
+        setReviews(
+          reviewRows.map((review) => ({
+            id: review.id,
+            customerName: review.customerName || 'Customer',
+            rating: review.rating,
+            comment: review.comment ?? '',
+            createdAt: tsToDate(review.createdAt),
+          })),
+        );
 
         setIsLoading(false);
       } catch (err) {
-        if (!cancelled) {
+        if (cancelled) return;
+
+        // A kitchen that is not approved is served as missing, on purpose:
+        // whether an unapproved kitchen exists is not a customer's business.
+        if (err instanceof ApiError && err.status === 404) {
+          setStore(null);
+          setMenu([]);
+        } else {
           setErrorMessage(err instanceof Error ? err.message : String(err));
-          setIsLoading(false);
         }
+        setIsLoading(false);
       }
     })();
 

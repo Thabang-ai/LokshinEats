@@ -46,7 +46,13 @@ const validStore = {
 
 /** A kitchen as the review queue will find it. */
 async function kitchen(verification?: string): Promise<string> {
-  const storeId = await seedStore({ ownerId: 'vend-1' });
+  // A kitchen with no status is only grandfathered in if it predates the day
+  // client writes were closed, so a legacy document has to look legacy.
+  const storeId = await seedStore({
+    ownerId: 'vend-1',
+    createdAt: new Date('2026-10-01T09:00:00.000Z'),
+  });
+
   if (verification !== undefined) {
     await db
       .collection(Collections.stores)

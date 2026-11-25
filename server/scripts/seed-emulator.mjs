@@ -100,6 +100,10 @@ await db.collection('stores').doc(storeId).set({
   minOrderAmount: 30,
   // Open, so checkout is not blocked by a closed store.
   isOpen: true,
+  // Explicit, as the API writes it. A kitchen with no status created today
+  // reads as waiting for review, which would leave the local stack with a
+  // store nothing can order from.
+  verification: 'approved',
   createdAt: FieldValue.serverTimestamp(),
   updatedAt: FieldValue.serverTimestamp(),
 });

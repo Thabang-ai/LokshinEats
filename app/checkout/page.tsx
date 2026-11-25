@@ -165,6 +165,22 @@ export default function CheckoutPage() {
     });
   };
 
+  // Where this kitchen will drive, against the address being typed. An empty
+  // list means no limit, which is every kitchen that has not drawn a line.
+  const areaKey = (value: string) =>
+    value.trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const deliversToAddress =
+    !storeMeta ||
+    storeMeta.deliveryAreas.length === 0 ||
+    areaKey(formData.city) === '' ||
+    storeMeta.deliveryAreas.some((area) => areaKey(area) === areaKey(formData.city));
+
+  const listAreas = (areas: string[]) =>
+    areas.length <= 1
+      ? areas.join('')
+      : `${areas.slice(0, -1).join(', ')} and ${areas[areas.length - 1]}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -183,6 +199,15 @@ export default function CheckoutPage() {
     }
     if (cart.subtotal < storeMeta.minOrderAmount) {
       toast.error(`Minimum order is R${storeMeta.minOrderAmount}`);
+      return;
+    }
+    // Where the kitchen will actually drive. The API refuses this too; said
+    // here, the customer can fix the address instead of being bounced.
+    if (!deliversToAddress) {
+      toast.error(
+        `${storeMeta.name} does not deliver to ${formData.city.trim()}. ` +
+          `They deliver to ${listAreas(storeMeta.deliveryAreas)}.`,
+      );
       return;
     }
 
@@ -317,7 +342,8 @@ export default function CheckoutPage() {
 
   const storeClosed = storeMeta ? !storeMeta.isOpen : false;
   const belowMin = storeMeta ? cart.subtotal < storeMeta.minOrderAmount : false;
-  const canSubmit = !!storeMeta && !storeClosed && !belowMin && !isProcessing;
+  const canSubmit =
+    !!storeMeta && !storeClosed && !belowMin && deliversToAddress && !isProcessing;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -348,6 +374,21 @@ export default function CheckoutPage() {
               </p>
               <p className="text-sm text-amber-700">
                 Minimum order at {storeMeta.name} is R{storeMeta.minOrderAmount}.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!deliversToAddress && storeMeta && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-800">
+                {storeMeta.name} does not deliver to {formData.city.trim()}
+              </p>
+              <p className="text-sm text-red-700">
+                They deliver to {listAreas(storeMeta.deliveryAreas)}. Change the
+                town or city below, or order from a kitchen that comes to you.
               </p>
             </div>
           </div>
@@ -694,6 +735,8 @@ export default function CheckoutPage() {
                   ? 'Restaurant closed'
                   : belowMin && storeMeta
                   ? `Add R${(storeMeta.minOrderAmount - cart.subtotal).toFixed(2)} more`
+                  : !deliversToAddress
+                  ? 'Outside their delivery area'
                   : `Place order · R${cart.total.toFixed(2)}`}
               </button>
 

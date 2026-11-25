@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { Search, MapPin, Star, Clock, Motorbike } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { fetchStores } from '../services/storeApi';
 import { isImageUrl } from '../utils/isImageUrl';
 import { imageSrc } from '../services/imageUrl';
 
@@ -38,22 +37,24 @@ export default function Home() {
 
     (async () => {
       try {
-        const snapshot = await getDocs(
-          query(collection(db, 'stores'), orderBy('rating', 'desc'), limit(3)),
-        );
-        const items: FeaturedRestaurant[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            name: data.name ?? 'Unnamed',
-            cuisine: data.cuisine ?? '',
-            rating: typeof data.rating === 'number' ? data.rating : 0,
-            deliveryTime: data.deliveryTime ?? '—',
-            deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
-            image: data.image ?? '🍽️',
-            isOpen: data.isOpen !== false,
-          };
-        });
+        // Through the API, which is what keeps an unapproved kitchen off the
+        // front page and quotes the platform's delivery fee rather than
+        // whatever the store document was registered with. The API has no
+        // "order by rating", so the top three are picked here.
+        const stores = await fetchStores();
+        const items: FeaturedRestaurant[] = [...stores]
+          .sort((a, b) => b.rating - a.rating)
+          .slice(0, 3)
+          .map((store) => ({
+            id: store.id,
+            name: store.name || 'Unnamed',
+            cuisine: store.cuisine,
+            rating: store.rating,
+            deliveryTime: store.deliveryTime || '—',
+            deliveryFee: store.deliveryFee,
+            image: store.image ?? '🍽️',
+            isOpen: store.isOpen,
+          }));
         if (!cancelled) {
           setFeatured(items);
           setIsLoadingFeatured(false);

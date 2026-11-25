@@ -360,27 +360,30 @@ describe('users cannot make themselves admin', () => {
 
 describe('stores', () => {
   it('lets anyone browse without signing in', async () => {
+    // The apps and the site read kitchens through the API, but a kitchen's
+    // page is public and nothing here is secret.
     const db = anonymous();
     await assertSucceeds(getDoc(doc(db, 'stores', 'store-1')));
   });
 
-  it('lets a user create a store they will own', async () => {
+  it('stops a user creating a kitchen, even their own', async () => {
+    // This is how registering through the website skipped the review queue:
+    // the document arrived with no `verification` field, which the API reads
+    // as "approved, from before the queue existed". Registration goes
+    // through POST /api/v1/stores now, which writes `pending`.
     const db = as(CUSTOMER);
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, 'stores', 'new-store'), { ownerId: CUSTOMER, name: 'Mine' }),
     );
   });
 
-  it('stops a user creating a store owned by someone else', async () => {
-    const db = as(CUSTOMER);
-    await assertFails(
-      setDoc(doc(db, 'stores', 'new-store'), { ownerId: VENDOR, name: 'Theirs' }),
-    );
-  });
-
-  it('lets the owner edit their store', async () => {
+  it('stops the owner editing their own kitchen', async () => {
+    // Every rule about a kitchen - the R12 fee, the hours, the delivery
+    // areas, whether an admin approved it - lives in the API. An owner who
+    // could write this document could open a kitchen LokshinEats had turned
+    // down. PATCH /api/v1/stores/mine is the way in.
     const db = as(VENDOR);
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(db, 'stores', 'store-1'), { name: 'Renamed' }),
     );
   });
@@ -392,27 +395,24 @@ describe('stores', () => {
     );
   });
 
-  it('stops another vendor deleting it', async () => {
-    const db = as(OTHER_VENDOR);
-    await assertFails(deleteDoc(doc(db, 'stores', 'store-1')));
+  it('stops the owner opening their own kitchen', async () => {
+    // The API refuses this for a kitchen it has not approved; the rule is
+    // what stops the browser going round it.
+    const db = as(VENDOR);
+    await assertFails(updateDoc(doc(db, 'stores', 'store-1'), { isOpen: true }));
   });
 
-  it('rejects a rating outside the allowed range', async () => {
-    const db = as(CUSTOMER);
-    await assertFails(
-      updateDoc(doc(db, 'stores', 'store-1'), { rating: 9, reviewCount: 1 }),
-    );
+  it('stops anybody deleting a kitchen', async () => {
+    await assertFails(deleteDoc(doc(as(OTHER_VENDOR), 'stores', 'store-1')));
+    await assertFails(deleteDoc(doc(as(VENDOR), 'stores', 'store-1')));
   });
 
-  it('rejects smuggling another field alongside a rating update', async () => {
-    // The aggregate exception is bounded to exactly two fields.
+  it('stops a customer writing a rating onto a kitchen', async () => {
+    // Ratings are derived from reviews by the API, which checks that the
+    // caller ordered the food and that it arrived.
     const db = as(CUSTOMER);
     await assertFails(
-      updateDoc(doc(db, 'stores', 'store-1'), {
-        rating: 5,
-        reviewCount: 1,
-        ownerId: CUSTOMER,
-      }),
+      updateDoc(doc(db, 'stores', 'store-1'), { rating: 5, reviewCount: 1 }),
     );
   });
 });

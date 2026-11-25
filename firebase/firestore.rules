@@ -98,29 +98,30 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Stores collection
-    // Reads: public (customers browse openly).
-    // Create/delete: only by the future owner / current owner.
-    // Update: the owner can update anything; ANY authenticated user can
-    // update ONLY rating + reviewCount (the aggregate fields the review
-    // transaction touches). Permissive but bounded — production would
-    // enforce via Cloud Function instead.
+    // A kitchen is read by anyone (customers browse without signing in) and
+    // written by nobody but the API.
+    //
+    // Every rule the platform has about a kitchen lives in the API's
+    // serialiser and service: the R12 delivery fee, the opening hours, the
+    // delivery areas, and whether an admin has approved the kitchen at all.
+    // A browser that could write this document could skip all of them - and
+    // did. `create` with no `verification` field produced a kitchen the API
+    // reads as approved, so registering through the website bypassed the
+    // review queue entirely; `update` let a kitchen LokshinEats had turned
+    // down open itself for business.
+    //
+    // The website and all three apps now go through POST /api/v1/stores and
+    // PATCH /api/v1/stores/mine, which own those rules. Note that the API
+    // uses the Admin SDK and is not subject to these rules at all, so taking
+    // writes away here costs it nothing.
+    //
+    // Reads stay open deliberately: the apps and the site read kitchens
+    // through the API, but nothing here is secret - a kitchen's page is
+    // public - and closing reads would break any older client still pointed
+    // at Firestore without protecting anything.
     match /stores/{storeId} {
       allow read: if true;
-      allow create: if request.auth != null &&
-        request.resource.data.ownerId == request.auth.uid;
-      // Only the owner, and only through their own pages. The second branch
-      // here used to let ANY signed-in account write `rating` and
-      // `reviewCount` on ANY kitchen - the hole the browser's old review
-      // transaction needed, and a hole big enough to give yourself five stars
-      // and your neighbour one. Reviews go through POST
-      // /api/v1/reviews/orders/:orderId now, which checks that the caller
-      // ordered the food and that it arrived, and moves the average itself
-      // with the Admin SDK.
-      allow update: if request.auth != null &&
-        request.auth.uid == resource.data.ownerId;
-      allow delete: if request.auth != null &&
-        request.auth.uid == resource.data.ownerId;
+      allow write: if false;
     }
 
     // Products collection - anyone can read, only store owners can write

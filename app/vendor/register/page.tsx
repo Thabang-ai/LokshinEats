@@ -9,9 +9,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { auth, db } from '../../../firebase/config';
-import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { ImageValidationError } from '../../../services/storageService';
 import { ApiError, apiUpload } from '../../../services/apiClient';
+import { registerStore } from '../../../services/storeApi';
 
 export default function StoreRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -89,17 +90,19 @@ export default function StoreRegistrationPage() {
     const ownerId = auth.currentUser.uid;
 
     try {
-      // Mark the user as a vendor (merge so we don't clobber existing fields).
-      // Banking details live here, on the private users/{uid} doc, NOT on the
-      // public stores/{storeId} doc below — firestore.rules makes `stores`
-      // world-readable (customers browse without auth), so a bank account
-      // number written there would be exposed to anyone. `users/{uid}` is
-      // readable only by its owner or an admin, which is where payout info
-      // belongs.
+      // Banking details live here, on the private users/{uid} doc, never on
+      // the kitchen — firestore.rules makes `stores` world-readable
+      // (customers browse without auth), so a bank account number written
+      // there would be exposed to anyone. `users/{uid}` is readable only by
+      // its owner or an admin, which is where payout info belongs.
+      //
+      // No `role: 'vendor'` here any more. Registering the kitchen is what
+      // promotes the account, and POST /api/v1/stores is what does it — as a
+      // Firebase custom claim the browser cannot write. A page that set its
+      // own role was one line of devtools away from being a vendor.
       await setDoc(
         doc(db, 'users', ownerId),
         {
-          role: 'vendor',
           email: formData.email,
           phone: formData.phone,
           storeName: formData.storeName,
@@ -112,43 +115,32 @@ export default function StoreRegistrationPage() {
         { merge: true },
       );
 
-      // Pre-allocate the store's id so logo/banner can upload to
-      // products/{storeId}-style paths BEFORE the store doc itself exists —
-      // avoids a create-then-patch round trip.
-      const storeRef = doc(collection(db, 'stores'));
-
+      // The kitchen itself goes through the API. Written straight to
+      // Firestore, as it was until now, it arrived with no `verification`
+      // field — which the API reads as "approved, from before the review
+      // queue existed" — so registering through this page skipped the whole
+      // approval queue. The API writes `verification: 'pending'`.
+      //
       // Business registration document / proof of address remain stubbed —
       // those are private compliance docs, not public photos, and need a
       // different (non-public-read) storage rule than logo/banner get.
-
-      // The photographs are sent after the kitchen exists, not before. They
-      // used to go first, to a Firebase Storage bucket that does not exist
-      // on this plan, and the failure threw before setDoc ran — so choosing
-      // a logo cost the vendor their whole registration.
-      await setDoc(storeRef, {
+      await registerStore({
         name: formData.storeName,
         cuisine: formData.cuisine,
-        description: formData.description,
-        ownerId,
         address: formData.address,
         city: formData.city,
-        phone: formData.phone,
-        email: formData.email,
+        ...(formData.description ? { description: formData.description } : {}),
+        ...(formData.phone ? { phone: formData.phone.replace(/\s/g, '') } : {}),
+        ...(formData.email ? { email: formData.email } : {}),
         openingTime: formData.openingTime,
         closingTime: formData.closingTime,
         categories: formData.categories,
-        image: '🍽️',
-        rating: 0,
-        reviewCount: 0,
-        deliveryTime: '30-45 min',
-        // No deliveryFee: it is a platform rule now, the same R12 from every
-        // kitchen, and the API serves that figure whatever a store document
-        // happens to hold. Writing one here would only be a number nobody
-        // reads and everybody believes.
-        minOrderAmount: 30,
-        isOpen: false, // vendor opens manually from the dashboard
-        createdAt: serverTimestamp(),
       });
+
+      // The vendor role arrives as a custom claim, so the token in hand still
+      // says `customer` and every vendor route — the image uploads below
+      // included — is refused until it is refreshed.
+      await auth.currentUser.getIdToken(true);
 
       if (logoFile || bannerFile) {
         setIsUploadingImages(true);
@@ -186,9 +178,13 @@ export default function StoreRegistrationPage() {
       window.location.href = '/vendor/dashboard';
     } catch (error) {
       console.error('Registration error:', error);
+      // The API says which field it refused and why; passing that on is the
+      // difference between a fixable form and a dead end.
       const msg =
         error instanceof ImageValidationError
           ? error.message
+          : error instanceof ApiError
+          ? error.firstFieldError ?? error.message
           : error instanceof Error
           ? error.message
           : 'Failed to register store';

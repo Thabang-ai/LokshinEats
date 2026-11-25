@@ -104,6 +104,9 @@ export async function seedStore(input: {
   name?: string;
   isOpen?: boolean;
   minOrderAmount?: number;
+  verification?: 'pending' | 'approved' | 'rejected';
+  /** For legacy documents: a kitchen that was trading before the queue. */
+  createdAt?: Date;
 }): Promise<string> {
   const ref = input.id
     ? db.collection(Collections.stores).doc(input.id)
@@ -125,7 +128,12 @@ export async function seedStore(input: {
     deliveryFee: 20,
     minOrderAmount: input.minOrderAmount ?? 0,
     isOpen: input.isOpen ?? true,
-    createdAt: FieldValue.serverTimestamp(),
+    // Written explicitly, as the API writes it. A kitchen with no field and
+    // a `createdAt` of now is a kitchen that should not exist - the
+    // grandfathering is gated on the date client writes were closed - so a
+    // test that wants a legacy document has to seed an old one.
+    verification: input.verification ?? 'approved',
+    createdAt: input.createdAt ?? FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

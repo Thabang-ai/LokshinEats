@@ -1,14 +1,18 @@
 'use client';
 
 // Cart Context - manages shopping cart state across the app.
-// Fetches store metadata (deliveryFee, isOpen, minOrderAmount) whenever the
-// cart's storeId changes, so cart + checkout always show the real values
-// instead of a flat R15 placeholder.
+// Fetches the kitchen's details (deliveryFee, isOpen, minOrderAmount, where
+// it delivers) whenever the cart's storeId changes, so cart + checkout always
+// show the real values instead of a flat R15 placeholder.
+//
+// Read from the API, not from the store document. The document still carries
+// whatever delivery fee the kitchen registered with - R20 on the older ones -
+// while the platform charges R12 and the API serves that. Reading the
+// document put the wrong fee in the basket and a different one on the order.
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
 import { Cart, CartItem, Product } from '../types';
-import { db } from '../firebase/config';
+import { fetchStore } from '../services/storeApi';
 import toast from 'react-hot-toast';
 
 export type StoreMeta = {
@@ -19,6 +23,8 @@ export type StoreMeta = {
   minOrderAmount: number;
   /** Vendor's registered city/area — used to estimate delivery distance at checkout. */
   city: string;
+  /** Where it delivers, its own city included. Empty means anywhere. */
+  deliveryAreas: string[];
 };
 
 interface CartContextType {
@@ -59,8 +65,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('lokshineats-cart', JSON.stringify(cart));
   }, [cart]);
 
-  // Fetch store metadata whenever the cart's storeId changes.
-  // Stores are publicly readable per Firestore rules, so no auth needed.
+  // Fetch the kitchen whenever the cart's storeId changes. Browsing is
+  // public, so this needs no sign-in.
   useEffect(() => {
     if (!cart.storeId) {
       setStoreMeta(null);
@@ -70,22 +76,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'stores', cart.storeId!));
+        const store = await fetchStore(cart.storeId!);
         if (cancelled) return;
-        if (!snap.exists()) {
-          setStoreMeta(null);
-          return;
-        }
-        const data = snap.data();
+
         setStoreMeta({
-          id: snap.id,
-          name: data.name ?? 'Unnamed',
-          isOpen: data.isOpen !== false,
-          deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 15,
-          minOrderAmount: typeof data.minOrderAmount === 'number' ? data.minOrderAmount : 0,
-          city: typeof data.city === 'string' ? data.city : '',
+          id: store.id,
+          name: store.name || 'Unnamed',
+          // The answer, not the switch: a kitchen on scheduled hours is
+          // closed when its clock says so.
+          isOpen: store.isOpen,
+          deliveryFee: store.deliveryFee,
+          minOrderAmount: store.minOrderAmount,
+          city: store.city,
+          deliveryAreas: store.deliveryAreas,
         });
       } catch {
+        // Including a kitchen the API will not serve: turned down, or gone.
         if (!cancelled) setStoreMeta(null);
       }
     })();

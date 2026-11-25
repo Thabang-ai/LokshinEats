@@ -9,8 +9,7 @@ import { useEffect, useState } from 'react';
 import { Heart, Star, Clock, Motorbike, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { fetchStore } from '../../services/storeApi';
 import { useFavorites } from '../../hooks/useFavorites';
 import { isImageUrl } from '../../utils/isImageUrl';
 import { imageSrc } from '../../services/imageUrl';
@@ -47,25 +46,27 @@ export default function FavoritesPage() {
 
     (async () => {
       try {
-        const snaps = await Promise.all(
-          favorites.map((id) => getDoc(doc(db, 'stores', id))),
+        // One API call per favourite, and a favourite the API will not serve
+        // - turned down, or removed - simply drops off the list rather than
+        // taking the page down with it.
+        const results = await Promise.all(
+          favorites.map((id) =>
+            fetchStore(id).catch(() => null),
+          ),
         );
-        const rows: RestaurantCard[] = snaps
-          .filter((s) => s.exists())
-          .map((s) => {
-            const data = s.data()!;
-            return {
-              id: s.id,
-              name: data.name ?? 'Unnamed',
-              cuisine: data.cuisine ?? '',
-              rating: typeof data.rating === 'number' ? data.rating : 0,
-              reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : 0,
-              deliveryTime: data.deliveryTime ?? '—',
-              deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
-              image: data.image ?? '🍽️',
-              isOpen: data.isOpen !== false,
-            };
-          });
+        const rows: RestaurantCard[] = results
+          .filter((store): store is NonNullable<typeof store> => store !== null)
+          .map((store) => ({
+            id: store.id,
+            name: store.name || 'Unnamed',
+            cuisine: store.cuisine,
+            rating: store.rating,
+            reviewCount: store.reviewCount,
+            deliveryTime: store.deliveryTime || '—',
+            deliveryFee: store.deliveryFee,
+            image: store.image ?? '🍽️',
+            isOpen: store.isOpen,
+          }));
         if (!cancelled) {
           setStores(rows);
           setIsStoresLoading(false);

@@ -26,9 +26,10 @@ import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 // `updateDoc` here is only for the store open/closed toggle; every order
 // write on this page goes through the API.
-import { collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, Timestamp, where } from 'firebase/firestore';
 import { auth, db } from '../../../firebase/config';
 import { settleCashReceipt } from '../../../services/ordersApi';
+import { setMyStoreOpen } from '../../../services/storeApi';
 import { useVendorStore } from '../../../hooks/useVendorStore';
 import { readVendorPayout } from '../../../services/economics';
 import { readOrderItems } from '../../../services/orderItems';
@@ -106,8 +107,11 @@ export default function VendorDashboard() {
   const [isOpen, setIsOpen] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
 
+  // The vendor's own switch, not the answer: on scheduled hours a kitchen
+  // can be switched on and still closed by the clock, and a toggle that
+  // flicked itself off at closing time would look broken.
   useEffect(() => {
-    if (store) setIsOpen(store.isOpen);
+    if (store) setIsOpen(store.switchedOn);
   }, [store]);
 
   const handleToggleOpen = async () => {
@@ -116,7 +120,10 @@ export default function VendorDashboard() {
     setIsToggling(true);
     setIsOpen(next); // optimistic
     try {
-      await updateDoc(doc(db, 'stores', store.id), { isOpen: next });
+      // Through the API, which refuses to open a kitchen LokshinEats has not
+      // approved. Writing the document straight from the browser let a
+      // pending or rejected kitchen open itself.
+      await setMyStoreOpen(next);
       toast.success(next ? 'Store opened — accepting orders' : 'Store closed');
     } catch (err) {
       setIsOpen(!next); // rollback

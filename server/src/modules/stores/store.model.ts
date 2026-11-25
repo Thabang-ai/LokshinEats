@@ -111,6 +111,46 @@ export function listAreas(areas: string[]): string {
   return `${areas.slice(0, -1).join(', ')} and ${areas[areas.length - 1]}`;
 }
 
+/**
+ * The day the browser stopped being able to create a kitchen.
+ *
+ * Until 25 November 2026 the website wrote the store document itself, with no
+ * `verification` field, and a missing field reads as approved - so
+ * registering through the website skipped the review queue. Registration goes
+ * through the API now and `firestore.rules` refuses client writes, but the
+ * grandfathering is gated on this date as well: a kitchen with no status
+ * created after it did not come from a path that is allowed to exist, and is
+ * treated as waiting rather than approved.
+ *
+ * Deliberately not earlier. Kitchens registered through the old page before
+ * this date have been trading for weeks, and moving the date back would close
+ * them on deploy - the exact mistake the grandfathering exists to avoid.
+ */
+const CLIENT_WRITES_CLOSED = Date.parse('2026-11-25T00:00:00+02:00');
+
+/**
+ * Whether LokshinEats has let this kitchen trade.
+ *
+ * A kitchen with no field at all predates the review queue (see
+ * [CLIENT_WRITES_CLOSED]); a kitchen with no field and no `createdAt` is
+ * older still. Both read as approved: closing a kitchen that is already
+ * trading is worse than reviewing one late.
+ */
+function verificationOf(data: Record<string, unknown>): StoreVerificationStatus {
+  if ((STORE_VERIFICATION_STATUSES as readonly string[]).includes(
+    data.verification as string,
+  )) {
+    return data.verification as StoreVerificationStatus;
+  }
+
+  const created = toIso(data.createdAt);
+  const createdAt = created === null ? Number.NaN : Date.parse(created);
+
+  return Number.isNaN(createdAt) || createdAt < CLIENT_WRITES_CLOSED
+    ? 'approved'
+    : 'pending';
+}
+
 /** Anything we have not been told reads as the way kitchens worked before. */
 function hoursMode(value: unknown): StoreHoursMode {
   return (STORE_HOURS_MODES as readonly string[]).includes(value as string)
@@ -416,15 +456,7 @@ export function toStore(snapshot: DocumentSnapshot): Store {
     // serving it would have a kitchen's page quote R20 while checkout charges
     // R12.
     deliveryFee: DELIVERY_FEE,
-    // A kitchen with no verification field predates the review queue and has
-    // been trading for weeks. Reading it as 'pending' would close every
-    // kitchen on the platform the moment this deployed, so the absent value
-    // means approved; only documents written from now on say 'pending'.
-    verification: (STORE_VERIFICATION_STATUSES as readonly string[]).includes(
-      data.verification,
-    )
-      ? (data.verification as StoreVerificationStatus)
-      : 'approved',
+    verification: verificationOf(data),
     verificationReason:
       typeof data.verificationReason === 'string' && data.verificationReason
         ? data.verificationReason

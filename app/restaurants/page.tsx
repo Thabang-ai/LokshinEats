@@ -5,9 +5,9 @@ import { Search, Star, Clock, Motorbike, Filter, ArrowUpDown, Heart } from 'luci
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { fetchStores } from '../../services/storeApi';
 import { useFavorites } from '../../hooks/useFavorites';
+import { useHomeArea } from '../../hooks/useHomeArea';
 import { isImageUrl } from '../../utils/isImageUrl';
 import { imageSrc } from '../../services/imageUrl';
 
@@ -57,6 +57,13 @@ function RestaurantsContent() {
 
   const { isFavorite, toggleFavorite, isSignedIn } = useFavorites();
 
+  // Where this customer's food goes, if the site knows. The list is narrowed
+  // to kitchens that will drive there: one that will not is not a kitchen
+  // they can order from, and listing it is a tease.
+  const { homeArea, ready: homeAreaReady } = useHomeArea();
+  const [onlyNearMe, setOnlyNearMe] = useState(true);
+  const narrowed = homeArea !== null && onlyNearMe;
+
   const [restaurants, setRestaurants] = useState<RestaurantCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -73,27 +80,35 @@ function RestaurantsContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    // Wait for the saved address, so the first request is already the right
+    // one rather than a full list that blinks down to a narrowed one.
+    if (!homeAreaReady) return;
+
     let cancelled = false;
+    setIsLoading(true);
 
     (async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'stores'));
-        const items: RestaurantCard[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            name: data.name ?? 'Unnamed',
-            cuisine: data.cuisine ?? '',
-            rating: typeof data.rating === 'number' ? data.rating : 0,
-            reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : 0,
-            deliveryTime: data.deliveryTime ?? '—',
-            deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
-            minOrderAmount: typeof data.minOrderAmount === 'number' ? data.minOrderAmount : 0,
-            isOpen: data.isOpen !== false,
-            categories: Array.isArray(data.categories) ? data.categories : [],
-            image: data.image ?? '🍽️',
-          };
-        });
+        // The API, not Firestore. It is what applies the platform delivery
+        // fee, the opening hours and the review queue — read the documents
+        // directly and this page shows kitchens nobody approved, at fees
+        // nobody charges.
+        const stores = await fetchStores(
+          narrowed ? { deliversTo: homeArea } : {},
+        );
+        const items: RestaurantCard[] = stores.map((store) => ({
+          id: store.id,
+          name: store.name || 'Unnamed',
+          cuisine: store.cuisine,
+          rating: store.rating,
+          reviewCount: store.reviewCount,
+          deliveryTime: store.deliveryTime || '—',
+          deliveryFee: store.deliveryFee,
+          minOrderAmount: store.minOrderAmount,
+          isOpen: store.isOpen,
+          categories: store.categories,
+          image: store.image ?? '🍽️',
+        }));
         if (!cancelled) {
           setRestaurants(items);
           setIsLoading(false);
@@ -109,7 +124,7 @@ function RestaurantsContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [homeArea, homeAreaReady, narrowed]);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(restaurants.flatMap((r) => r.categories)))],
@@ -210,6 +225,24 @@ function RestaurantsContent() {
 
       {/* Restaurant List */}
       <div className="container mx-auto px-4 py-8">
+        {homeArea && (
+          <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-gray-600">
+              {narrowed
+                ? `Showing kitchens that deliver to ${homeArea}.`
+                : 'Showing every kitchen on LokshinEats, including ones that will not deliver to you.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOnlyNearMe((previous) => !previous)}
+              className="font-semibold text-primary underline"
+            >
+              {narrowed ? 'Show all' : `Only ${homeArea}`}
+            </button>
+          </div>
+        )}
+
+
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -230,9 +263,13 @@ function RestaurantsContent() {
           </div>
         ) : restaurants.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-700 text-lg font-semibold mb-2">No restaurants yet</p>
+            <p className="text-gray-700 text-lg font-semibold mb-2">
+              {narrowed ? `Nobody delivers to ${homeArea} yet` : 'No restaurants yet'}
+            </p>
             <p className="text-gray-500 mb-4">
-              No restaurants are open in your area right now. Check back soon, or{' '}
+              {narrowed
+                ? 'Use "Show all" above to see every kitchen on LokshinEats, or'
+                : 'No restaurants are open in your area right now. Check back soon, or'}{' '}
               <Link href="/auth/signup" className="text-primary underline">
                 register your own
               </Link>
