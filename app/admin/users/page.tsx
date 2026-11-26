@@ -29,7 +29,6 @@ import toast from 'react-hot-toast';
 import AccountControls, {
   AccountStatusChip,
 } from '../../../components/AccountControls';
-import RoleGuard from '../../../components/RoleGuard';
 import { auth } from '../../../firebase/config';
 import { ApiError } from '../../../services/apiClient';
 import {
@@ -229,186 +228,184 @@ export default function AdminUsersPage() {
   }, [users, search]);
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white">
-          <div className="container mx-auto px-4 py-6">
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white mb-2"
-            >
-              <ArrowLeft className="w-4 h-4" /> Operator console
-            </Link>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Users className="w-7 h-7" />
-              People
-            </h1>
-            <p className="text-white/70">
-              Everyone with an account, and what they are allowed to do
-            </p>
-          </div>
-        </div>
-
-        <div className="container mx-auto px-4 py-8">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800 mb-6">
-              <p className="font-semibold mb-1">Could not load people</p>
-              <p>{error}</p>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <div className="flex items-center gap-2 overflow-x-auto">
-              {(['all', ...ROLES] as RoleFilter[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setFilter(r)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    filter === r
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  {r === 'all' ? 'Everyone' : `${roleStyle[r].label}s`}
-                </button>
-              ))}
-            </div>
-
-            <label className="relative flex-1 min-w-[220px]">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, email or phone"
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </label>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            {isLoading ? (
-              <div className="p-8 text-center text-gray-400">Loading people…</div>
-            ) : shown.length === 0 ? (
-              <div className="text-center py-16 px-4">
-                <UserCog className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 font-medium">Nobody here</p>
-                <p className="text-sm text-gray-400">
-                  {search
-                    ? 'Nobody loaded matches that search.'
-                    : 'No accounts hold this role yet.'}
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {shown.map((u) => {
-                  const style = roleStyle[u.role];
-                  const isMe = u.id === myUid;
-
-                  return (
-                    <li
-                      key={u.id}
-                      className="px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold truncate">
-                          {u.displayName || 'No name'}
-                          {isMe && (
-                            <span className="ml-2 text-xs font-normal text-gray-400">
-                              (you)
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {u.email}
-                          {u.phone ? ` · ${u.phone}` : ''} · joined{' '}
-                          {joined(u.createdAt)}
-                        </p>
-                        {u.status !== 'active' && u.statusReason && (
-                          <p className="text-xs text-amber-700 mt-0.5">
-                            {STATUS_LABEL[u.status]}{' '}
-                            {joined(u.statusChangedAt)}: &ldquo;{u.statusReason}
-                            &rdquo;
-                          </p>
-                        )}
-                      </div>
-
-                      <Link
-                        href={`/admin/wallets?owner=${encodeURIComponent(u.id)}`}
-                        className="text-xs font-semibold text-primary hover:underline"
-                      >
-                        Wallet
-                      </Link>
-
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${style.color}`}
-                      >
-                        {u.role === 'admin' && <Shield className="w-3 h-3" />}
-                        {style.label}
-                      </span>
-
-                      <AccountStatusChip status={u.status} />
-
-                      {isMe ? (
-                        <span className="text-xs text-gray-400 w-36 text-right">
-                          Another admin can change this
-                        </span>
-                      ) : (
-                        <select
-                          aria-label={`Change role for ${u.displayName || u.email}`}
-                          value={u.role}
-                          disabled={busyId === u.id || u.status === 'removed'}
-                          onChange={(e) =>
-                            handleRoleChange(u, e.target.value as UserRole)
-                          }
-                          className="w-36 px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {roleStyle[r].label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-
-                      <AccountControls
-                        account={u}
-                        isSelf={isMe}
-                        onChanged={(status, reason) =>
-                          noteStatus(u.id, status, reason)
-                        }
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {nextCursor && !isLoading && (
-              <div className="px-5 py-4 border-t border-gray-100 text-center">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={isLoadingMore}
-                  className="text-sm font-semibold text-primary hover:underline disabled:opacity-50"
-                >
-                  {isLoadingMore ? 'Loading…' : 'Load more'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-gray-400 mt-4">
-            Changing a role signs the person out and applies at once. Vendors
-            usually get their role by registering a kitchen in the vendor app,
-            not from here. Suspending ends their session immediately and closes
-            a vendor&rsquo;s kitchen; removing deletes their sign-in and is
-            refused while they are part of an unfinished order. To shut out
-            another admin, make them a customer first.
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white">
+        <div className="container mx-auto px-4 py-6">
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white mb-2"
+          >
+            <ArrowLeft className="w-4 h-4" /> Operator console
+          </Link>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Users className="w-7 h-7" />
+            People
+          </h1>
+          <p className="text-white/70">
+            Everyone with an account, and what they are allowed to do
           </p>
         </div>
       </div>
-    </RoleGuard>
+
+      <div className="container mx-auto px-4 py-8">
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800 mb-6">
+            <p className="font-semibold mb-1">Could not load people</p>
+            <p>{error}</p>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(['all', ...ROLES] as RoleFilter[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setFilter(r)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                  filter === r
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {r === 'all' ? 'Everyone' : `${roleStyle[r].label}s`}
+              </button>
+            ))}
+          </div>
+
+          <label className="relative flex-1 min-w-[220px]">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, email or phone"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </label>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          {isLoading ? (
+            <div className="p-8 text-center text-gray-400">Loading people…</div>
+          ) : shown.length === 0 ? (
+            <div className="text-center py-16 px-4">
+              <UserCog className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium">Nobody here</p>
+              <p className="text-sm text-gray-400">
+                {search
+                  ? 'Nobody loaded matches that search.'
+                  : 'No accounts hold this role yet.'}
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {shown.map((u) => {
+                const style = roleStyle[u.role];
+                const isMe = u.id === myUid;
+
+                return (
+                  <li
+                    key={u.id}
+                    className="px-5 py-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">
+                        {u.displayName || 'No name'}
+                        {isMe && (
+                          <span className="ml-2 text-xs font-normal text-gray-400">
+                            (you)
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {u.email}
+                        {u.phone ? ` · ${u.phone}` : ''} · joined{' '}
+                        {joined(u.createdAt)}
+                      </p>
+                      {u.status !== 'active' && u.statusReason && (
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          {STATUS_LABEL[u.status]}{' '}
+                          {joined(u.statusChangedAt)}: &ldquo;{u.statusReason}
+                          &rdquo;
+                        </p>
+                      )}
+                    </div>
+
+                    <Link
+                      href={`/admin/wallets?owner=${encodeURIComponent(u.id)}`}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      Wallet
+                    </Link>
+
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${style.color}`}
+                    >
+                      {u.role === 'admin' && <Shield className="w-3 h-3" />}
+                      {style.label}
+                    </span>
+
+                    <AccountStatusChip status={u.status} />
+
+                    {isMe ? (
+                      <span className="text-xs text-gray-400 w-36 text-right">
+                        Another admin can change this
+                      </span>
+                    ) : (
+                      <select
+                        aria-label={`Change role for ${u.displayName || u.email}`}
+                        value={u.role}
+                        disabled={busyId === u.id || u.status === 'removed'}
+                        onChange={(e) =>
+                          handleRoleChange(u, e.target.value as UserRole)
+                        }
+                        className="w-36 px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {roleStyle[r].label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <AccountControls
+                      account={u}
+                      isSelf={isMe}
+                      onChanged={(status, reason) =>
+                        noteStatus(u.id, status, reason)
+                      }
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {nextCursor && !isLoading && (
+            <div className="px-5 py-4 border-t border-gray-100 text-center">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={isLoadingMore}
+                className="text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+              >
+                {isLoadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-400 mt-4">
+          Changing a role signs the person out and applies at once. Vendors
+          usually get their role by registering a kitchen in the vendor app,
+          not from here. Suspending ends their session immediately and closes
+          a vendor&rsquo;s kitchen; removing deletes their sign-in and is
+          refused while they are part of an unfinished order. To shut out
+          another admin, make them a customer first.
+        </p>
+      </div>
+    </div>
   );
 }

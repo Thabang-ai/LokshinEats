@@ -27,7 +27,6 @@ import {
   Wallet,
 } from 'lucide-react';
 
-import RoleGuard from '../../../components/RoleGuard';
 import { ApiError } from '../../../services/apiClient';
 import {
   PLATFORM_WALLET,
@@ -476,15 +475,13 @@ function BalanceCard({
 }
 
 export default function AdminWalletsPage() {
+  // useSearchParams needs a Suspense boundary, or a production build of this
+  // page fails outright — the dev server never shows that.
   return (
-    <RoleGuard allowedRoles={['admin']}>
-      {/* useSearchParams needs a Suspense boundary, or a production build of
-          this page fails outright — the dev server never shows that. */}
-      <Suspense
-        fallback={<div className="p-8 text-center text-gray-400">Loading wallet…</div>}
-      >
-        <WalletsView />
-      </Suspense>
-    </RoleGuard>
+    <Suspense
+      fallback={<div className="p-8 text-center text-gray-400">Loading wallet…</div>}
+    >
+      <WalletsView />
+    </Suspense>
   );
 }

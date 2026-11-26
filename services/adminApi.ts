@@ -530,3 +530,107 @@ export async function decideDriverApplication(
   );
   return response.data;
 }
+
+/* ------------------------------------------------------------------ *
+ * The dashboard, and the record of what admins have done.
+ * ------------------------------------------------------------------ */
+
+export type PlatformMetrics = {
+  /** The South African calendar day the "today" figures cover. */
+  date: string;
+  today: {
+    orders: number;
+    delivered: number;
+    cancelled: number;
+    takings: number;
+    platformShare: number;
+  };
+  live: {
+    pending: number;
+    preparing: number;
+    ready: number;
+    onTheWay: number;
+    unclaimed: number;
+  };
+  waiting: {
+    kitchens: number;
+    drivers: number;
+    cashDisputes: number;
+  };
+  totals: {
+    kitchens: number;
+    drivers: number;
+    customers: number;
+  };
+};
+
+/** Today's numbers, or a given South African day's. */
+export async function fetchMetrics(date?: string): Promise<PlatformMetrics> {
+  const response = await apiRequest<PlatformMetrics>(
+    `/api/v1/reports/metrics${date ? `?date=${date}` : ''}`,
+  );
+  return response.data;
+}
+
+export const AUDIT_ACTIONS = [
+  'store.approved',
+  'store.rejected',
+  'driver.approved',
+  'driver.rejected',
+  'user.role_changed',
+  'user.suspended',
+  'user.reinstated',
+  'user.removed',
+  'order.cancelled',
+  'cash.dispute_resolved',
+  'wallet.credited',
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export type AuditEntry = {
+  id: string;
+  action: AuditAction;
+  actorId: string;
+  actorName: string;
+  subjectType: 'store' | 'driver' | 'user' | 'order';
+  subjectId: string;
+  subjectName: string;
+  reason: string | null;
+  amount: number | null;
+  facts: Record<string, string>;
+  createdAt: string | null;
+};
+
+export type AuditPage = {
+  entries: AuditEntry[];
+  nextCursor: string | null;
+};
+
+/**
+ * What admins have done, newest first.
+ *
+ * Read-only by design: there is no endpoint that writes one of these by
+ * hand, and none that edits or deletes one.
+ */
+export async function fetchAuditLog(options: {
+  action?: AuditAction;
+  actorId?: string;
+  subjectId?: string;
+  limit?: number;
+  cursor?: string;
+} = {}): Promise<AuditPage> {
+  const query = new URLSearchParams({ limit: String(options.limit ?? 50) });
+  if (options.action) query.set('action', options.action);
+  if (options.actorId) query.set('actorId', options.actorId);
+  if (options.subjectId) query.set('subjectId', options.subjectId);
+
+  const response = await apiRequest<AuditEntry[]>(
+    `/api/v1/audit?${query.toString()}`,
+  );
+
+  return {
+    entries: response.data ?? [],
+    nextCursor: (response as { nextCursor?: string | null }).nextCursor ?? null,
+  };
+}
