@@ -105,6 +105,7 @@ orderRouter.get(
   validate({ query: listOrdersQuerySchema }),
   asyncHandler(async (req, res) => {
     const page = await service.listAvailableOrders(
+      requireAuth(req),
       req.query as unknown as ListOrdersQuery,
     );
     res.json({ data: page.items, nextCursor: page.nextCursor });

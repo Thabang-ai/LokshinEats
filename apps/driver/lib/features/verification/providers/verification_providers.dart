@@ -46,6 +46,20 @@ class VerificationRepository {
     );
   }
 
+  /// Go on or off the road.
+  ///
+  /// The API answers with the whole application, so the switch and whatever
+  /// else changed since arrive together.
+  Future<DriverVerification> setAvailability({required bool online}) async {
+    final response = await _client.patch<DriverVerification>(
+      '/api/v1/drivers/me/availability',
+      body: {'online': online},
+      decode: (json) =>
+          DriverVerification.fromJson(json! as Map<String, dynamic>),
+    );
+    return response.data;
+  }
+
   /// Submit, or resubmit. Either way it goes back into the queue.
   Future<DriverVerification> submit({
     required VehicleType vehicleType,
@@ -124,6 +138,15 @@ class VerificationNotifier extends AsyncNotifier<DriverVerification?> {
         );
 
     state = AsyncData(submitted);
+  }
+
+  /// Go on or off the road, and show it at once.
+  Future<void> setAvailability({required bool online}) async {
+    final updated = await ref
+        .read(verificationRepositoryProvider)
+        .setAvailability(online: online);
+
+    if (ref.mounted) state = AsyncData(updated);
   }
 
   Future<void> refresh() async {

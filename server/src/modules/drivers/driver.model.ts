@@ -54,6 +54,18 @@ export type DriverProfile = {
    */
   rating: number;
   ratingCount: number;
+  /**
+   * Whether they are taking deliveries at the moment.
+   *
+   * Their own switch, not a judgement: an approved driver who is asleep, at
+   * school, or out of airtime is not a driver to send a delivery to. A
+   * driver with no record of ever having touched it reads as on - every
+   * driver on the platform predates this switch, and reading the absence as
+   * "off" would have taken every one of them off the road on deploy.
+   */
+  isOnline: boolean;
+  /** When they last changed it, so a stale "online" is at least visible. */
+  onlineChangedAt: string | null;
   /** Why an application was turned down, shown to the driver. */
   decisionReason: string | null;
   decidedAt: string | null;
@@ -151,6 +163,11 @@ export type SubmitDriverDetailsInput = z.infer<
   typeof submitDriverDetailsSchema
 >;
 
+/** A driver going on or off the road. */
+export const setAvailabilitySchema = z
+  .object({ online: z.boolean() })
+  .strict();
+
 export const decideDriverSchema = z
   .object({
     decision: z.enum(['approve', 'reject']),
@@ -196,6 +213,9 @@ export function toDriverProfile(snapshot: DocumentSnapshot): DriverProfile {
       : 'pending',
     rating: toNumber(data.rating),
     ratingCount: toNumber(data.ratingCount),
+    // Absent means on. See the field's own note: every driver predates this.
+    isOnline: data.isOnline !== false,
+    onlineChangedAt: toIso(data.onlineChangedAt),
     decisionReason: data.decisionReason
       ? toStringOr(data.decisionReason)
       : null,

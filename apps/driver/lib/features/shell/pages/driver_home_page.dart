@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lokshineats_core/auth/auth_form_fields.dart';
 import 'package:lokshineats_core/auth/auth_providers.dart';
 import 'package:lokshineats_core/auth/sign_in_page.dart';
+import 'package:lokshineats_core/theme/app_theme.dart';
 
 import '../../account/pages/driver_account_page.dart';
 import '../../verification/providers/verification_providers.dart';
@@ -66,7 +67,7 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[_tab]),
-        actions: const [NotificationBell()],
+        actions: const [_OnTheRoadSwitch(), NotificationBell()],
       ),
       body: SafeArea(
         child: IndexedStack(
@@ -105,6 +106,73 @@ class _DriverHomePageState extends ConsumerState<DriverHomePage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// On the road, or not.
+///
+/// Beside the board, because that is where a driver is standing when they
+/// decide they have finished for the night. Off the road the board empties
+/// and the phone stops buzzing; a delivery already in hand is untouched -
+/// somebody carrying a customer's dinner finishes it.
+class _OnTheRoadSwitch extends ConsumerStatefulWidget {
+  const _OnTheRoadSwitch();
+
+  @override
+  ConsumerState<_OnTheRoadSwitch> createState() => _OnTheRoadSwitchState();
+}
+
+class _OnTheRoadSwitchState extends ConsumerState<_OnTheRoadSwitch> {
+  bool _busy = false;
+
+  Future<void> _toggle(bool value) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await ref
+          .read(verificationProvider.notifier)
+          .setAvailability(online: value);
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'On the road. Deliveries will come to you again.'
+                : 'Off the road. Nothing new will be sent to you.',
+          ),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not change that. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final verification = ref.watch(verificationProvider).value;
+    if (verification == null) return const SizedBox.shrink();
+
+    final status = StatusColors.of(context);
+    final online = verification.isOnline;
+
+    return Row(
+      children: [
+        Text(
+          online ? 'On the road' : 'Off',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: online ? status.success : status.danger,
+          ),
+        ),
+        Switch(value: online, onChanged: _busy ? null : _toggle),
+        const SizedBox(width: 4),
+      ],
     );
   }
 }

@@ -283,6 +283,31 @@ export async function listEntries(
   return buildPage(snapshot.docs.map(toLedgerEntry), options.limit);
 }
 
+/**
+ * Every entry in one wallet between two instants, oldest first.
+ *
+ * Unpaginated on purpose: the caller is summing a period, and a page of a
+ * month's earnings is a wrong total rather than a partial one. The cap is
+ * high enough for a month of deliveries and low enough that a runaway query
+ * is still bounded.
+ */
+export async function listEntriesBetween(
+  walletId: string,
+  from: Date,
+  to: Date,
+  limit = 2000,
+): Promise<LedgerEntry[]> {
+  const snapshot = await ledger()
+    .where('walletId', '==', walletId)
+    .where('createdAt', '>=', from)
+    .where('createdAt', '<', to)
+    .orderBy('createdAt', 'asc')
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map(toLedgerEntry);
+}
+
 export type TransferInput = {
   /** Paid from. */
   from: { walletId: string; type: LedgerEntryType; description: string };

@@ -131,15 +131,7 @@ String _when(DateTime due) {
   if (days == 0) return '$clock today';
   if (days == 1) return '$clock tomorrow';
 
-  const names = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
+  const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   return '$clock on ${names[due.weekday - 1]}';
 }
 

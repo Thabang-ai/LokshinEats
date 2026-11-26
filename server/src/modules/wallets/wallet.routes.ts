@@ -27,7 +27,13 @@ import {
   walletQuerySchema,
   type WalletQuery,
 } from './wallet.model';
+import { EARNINGS_PERIODS, type EarningsPeriod } from './earnings.service';
+import * as earnings from './earnings.service';
 import * as service from './wallet.service';
+
+const earningsQuerySchema = z.object({
+  period: z.enum(EARNINGS_PERIODS).default('week'),
+});
 
 export const walletRouter = Router();
 
@@ -50,6 +56,24 @@ walletRouter.get(
       cursor,
     });
     res.json({ data: page.items, nextCursor: page.nextCursor });
+  }),
+);
+
+/**
+ * What the caller earned over a day, a week or a month.
+ *
+ * Summed by the API rather than by the app, which could only add up the
+ * page of ledger it happened to have - right for a week, quietly short for
+ * a month, and impossible to tell apart by looking.
+ */
+walletRouter.get(
+  '/me/earnings',
+  validate({ query: earningsQuerySchema }),
+  asyncHandler(async (req, res) => {
+    const { period } = req.query as unknown as { period: EarningsPeriod };
+    res.json({
+      data: await earnings.summarise(requireAuth(req).uid, period),
+    });
   }),
 );
 

@@ -6,6 +6,7 @@
  * | GET    | /drivers/me                 | signed in         |
  * | POST   | /drivers/me                 | signed in         |
  * | GET    | /drivers                    | admin             |
+ * | PATCH  | /drivers/me/availability    | driver            |
  * | PATCH  | /drivers/:id/verification   | admin             |
  *
  * Every route that writes resolves the driver from the caller's own uid,
@@ -25,6 +26,7 @@ import {
   listDriversQuerySchema,
   submitDriverDetailsSchema,
   type VerificationStatus,
+  setAvailabilitySchema,
 } from './driver.model';
 import * as service from './driver.service';
 
@@ -58,6 +60,24 @@ driverRouter.post(
   asyncHandler(async (req, res) => {
     const profile = await service.submitOwnDetails(requireAuth(req), req.body);
     res.status(201).json({ data: profile });
+  }),
+);
+
+/**
+ * Go on or off the road.
+ *
+ * PATCH rather than two verbs, because it is one field with two values and
+ * the app's switch sends whichever way it was flipped.
+ */
+driverRouter.patch(
+  '/me/availability',
+  validate({ body: setAvailabilitySchema }),
+  asyncHandler(async (req, res) => {
+    const profile = await service.setAvailability(
+      requireAuth(req),
+      req.body.online,
+    );
+    res.json({ data: profile });
   }),
 );
 

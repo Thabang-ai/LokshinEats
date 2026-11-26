@@ -98,6 +98,44 @@ export async function assertApproved(uid: string): Promise<void> {
 }
 
 /**
+ * Go on or off the road.
+ *
+ * Only an approved driver has a road to be on, and the same check guards
+ * claiming a delivery - so a driver who is suspended mid-shift cannot flip
+ * themselves back on and carry on working.
+ *
+ * Going offline does not touch a delivery already in hand. Somebody carrying
+ * a customer's dinner finishes it; the switch is about what they are offered
+ * next, not what they have already taken on.
+ */
+export async function setAvailability(
+  caller: AuthContext,
+  online: boolean,
+): Promise<DriverProfile> {
+  await assertApproved(caller.uid);
+
+  const profile = await repository.setAvailability(caller.uid, online);
+
+  log.info({ driverId: caller.uid, online }, 'Driver availability changed.');
+
+  return profile;
+}
+
+/** Approved drivers who are on the road right now. */
+export async function listOnline(): Promise<DriverProfile[]> {
+  return repository.listOnline();
+}
+
+/**
+ * Whether this driver is taking deliveries, for the routes that must refuse
+ * one if they are not.
+ */
+export async function isOnline(uid: string): Promise<boolean> {
+  const profile = await repository.findById(uid);
+  return profile?.isOnline ?? false;
+}
+
+/**
  * The review queue, with a person attached to each application.
  *
  * One batch read for the lot rather than one per row: the queue is small, but

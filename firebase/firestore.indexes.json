@@ -496,6 +496,21 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "comment": "listEntriesBetween: one wallet's ledger over a period, for the earnings summary.",
+      "collectionGroup": "walletTransactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "walletId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

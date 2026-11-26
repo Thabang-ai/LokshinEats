@@ -274,10 +274,7 @@ class _Submitted extends StatelessWidget {
             // the first day of a job is a lie told by an empty average.
             if (details.hasRating) ...[
               const SizedBox(height: 14),
-              _RatingLine(
-                rating: details.rating,
-                count: details.ratingCount,
-              ),
+              _RatingLine(rating: details.rating, count: details.ratingCount),
             ],
 
             const SizedBox(height: 14),

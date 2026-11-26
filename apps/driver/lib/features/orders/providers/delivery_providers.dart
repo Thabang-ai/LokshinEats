@@ -211,10 +211,9 @@ double owedTotalOf(DeliveryListState state) =>
 /// The soonest kitchen cash deadline still to come, or already gone.
 DateTime? nextCashDueOf(DeliveryListState state) {
   final dues =
-      owedOf(state)
-          .map((delivery) => delivery.cashDueAt)
-          .whereType<DateTime>()
-          .toList()
+      owedOf(
+          state,
+        ).map((delivery) => delivery.cashDueAt).whereType<DateTime>().toList()
         ..sort();
   return dues.isEmpty ? null : dues.first;
 }
@@ -228,9 +227,9 @@ List<Delivery> finishedOf(DeliveryListState state) => state.deliveries
 ///
 /// What stops a driver claiming anything else: the API refuses the claim,
 /// and the board says so rather than letting them find out a tap at a time.
-List<Delivery> overdueOf(DeliveryListState state) => owedOf(state)
-    .where((delivery) => delivery.cashOverdue)
-    .toList(growable: false);
+List<Delivery> overdueOf(DeliveryListState state) => owedOf(
+  state,
+).where((delivery) => delivery.cashOverdue).toList(growable: false);
 
 /// Any of the owed money a kitchen says never reached it.
 bool anyCashDisputed(DeliveryListState state) =>

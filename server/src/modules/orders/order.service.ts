@@ -342,10 +342,23 @@ export async function listDriverOrders(
   return repository.listForDriver(caller.uid, { ...query, audience: 'driver' });
 }
 
-/** The unclaimed queue drivers pick from. */
+/**
+ * The unclaimed queue drivers pick from.
+ *
+ * Empty for a driver who is off the road. Showing them a board they are
+ * refused at the moment they tap is worse than showing them nothing: the
+ * app says "you are offline" over an empty board, which is the truth and
+ * something they can act on. An admin looking at the same endpoint sees the
+ * board itself, because they are not the one being offered the work.
+ */
 export async function listAvailableOrders(
+  caller: AuthContext,
   query: ListOrdersQuery,
 ): Promise<Page<Order>> {
+  if (caller.role === 'driver' && !(await driverService.isOnline(caller.uid))) {
+    return { items: [], nextCursor: null };
+  }
+
   return repository.listAvailableForDrivers({ ...query, audience: 'driver' });
 }
 
@@ -468,6 +481,15 @@ export async function acceptOrder(
   // Checked here rather than at sign-in: this is the moment it matters, and
   // an approval can be withdrawn while a driver has the app open.
   await driverService.assertApproved(caller.uid);
+
+  // Off the road: claiming anyway would be the switch meaning nothing. It is
+  // reachable without the board - a notification from before they went off,
+  // or two phones - so it is refused here rather than only hidden.
+  if (!(await driverService.isOnline(caller.uid))) {
+    throw ApiError.conflict(
+      'You are off the road. Go on the road to take deliveries.',
+    );
+  }
 
   // Nobody carries a second kitchen's dinner while they are late paying the
   // first. This is the half of the deadline that needs nothing to be running.
@@ -678,17 +700,19 @@ export async function previewCancellation(
 }
 
 /**
- * Tell every driver that a delivery is there to claim.
+ * Tell the drivers on the road that a delivery is there to claim.
  *
- * Every driver, because any of them may take it: the board is first come,
+ * Every one of them, because any may take it: the board is first come,
  * first served, and a notification sent only to some would quietly decide
- * who gets the work.
+ * who gets the work. The ones who have gone off the road are left out -
+ * that is the whole point of the switch, and a phone buzzing at midnight
+ * for somebody who said they had stopped is how an app gets silenced.
  */
 async function notifyDriversOfDelivery(order: Order): Promise<void> {
-  const drivers = await userRepository.list({ limit: 200, role: 'driver' });
+  const drivers = await driverService.listOnline();
 
   await notificationService.notifyDrivers({
-    driverIds: drivers.items.map((driver) => driver.id),
+    driverIds: drivers.map((driver) => driver.id),
     orderId: order.id,
     kind: 'delivery_available',
     facts: {

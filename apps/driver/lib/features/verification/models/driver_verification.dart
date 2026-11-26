@@ -45,6 +45,7 @@ class DriverVerification {
     required this.decisionReason,
     this.rating = 0,
     this.ratingCount = 0,
+    this.isOnline = true,
   });
 
   factory DriverVerification.fromJson(Map<String, dynamic> json) {
@@ -63,6 +64,10 @@ class DriverVerification {
         final num value => value.toInt(),
         _ => 0,
       },
+      // Absent reads as on. Every driver approved before the switch existed
+      // carries no such field, and reading that as "off" would take the
+      // whole fleet off the road.
+      isOnline: json['isOnline'] != false,
     );
   }
 
@@ -74,6 +79,13 @@ class DriverVerification {
 
   /// Why it was turned down, in the reviewer's words.
   final String? decisionReason;
+
+  /// Whether they are taking deliveries at the moment: their own switch.
+  ///
+  /// Not a judgement about them. A driver who is asleep, at school or out of
+  /// airtime is not a driver to send a delivery to, and an app that buzzes
+  /// them anyway is one they turn off for good.
+  final bool isOnline;
 
   /// What customers made of them, out of five.
   ///

@@ -55,6 +55,39 @@ export async function submitDetails(
   return toDriverProfile(await ref.get());
 }
 
+/** Go on or off the road. */
+export async function setAvailability(
+  uid: string,
+  online: boolean,
+): Promise<DriverProfile> {
+  const ref = collection().doc(uid);
+
+  await ref.update({
+    isOnline: online,
+    onlineChangedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return toDriverProfile(await ref.get());
+}
+
+/**
+ * Approved drivers who are on the road right now.
+ *
+ * Read in memory rather than with a `where`, for the reason that keeps
+ * coming up: every driver approved before the switch existed carries no
+ * `isOnline` field at all, and Firestore cannot match a field that is not
+ * there - a query would quietly stop telling any of them about work.
+ */
+export async function listOnline(limit = 200): Promise<DriverProfile[]> {
+  const snapshot = await collection()
+    .where('status', '==', 'approved')
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map(toDriverProfile).filter((driver) => driver.isOnline);
+}
+
 export async function decide(
   uid: string,
   input: {
