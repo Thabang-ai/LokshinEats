@@ -69,31 +69,36 @@ service cloud.firestore {
       return resource.data.get('role', '');
     }
 
-    // Users collection - users read/write their own data; admins may read any
-    // user (for the operator console). Writes remain owner-only.
+    // Whether a write leaves the role exactly as it found it.
+    function roleUnchanged() {
+      return incomingRole() == existingRole();
+    }
+
+    // Users collection - people read and write their own document; admins may
+    // read any (for the operator console).
     //
-    // Nobody may write themselves the 'admin' role. isAdmin() reads the role
-    // straight back out of this document, so without that restriction a single
-    // self-write granted admin across every rule below — including deleting
-    // any order and reading every user profile.
+    // Nobody writes a role here, their own included. The role field is the
+    // most dangerous value in the database: isAdmin() reads it straight back
+    // out, and the API believes it when a token carries no role claim. The
+    // sign-up page used to let somebody pick `vendor` or `driver` and write
+    // it from the browser, which is a role nobody granted them.
     //
-    // Split into create/update/delete rather than one `write`, because the
-    // update case has to allow an existing admin to edit their own profile:
-    // the resulting document still says 'admin', so a flat inequality check
-    // would lock every admin out of their own record.
+    // Roles are earned through the API, which writes them with the Admin SDK
+    // and is not subject to these rules: customer or driver applicant at
+    // sign-up (POST /api/v1/users/me), vendor by registering a kitchen,
+    // driver when an admin approves the application, admin out of band.
+    //
+    // A write that leaves the role exactly as it found it is fine - that is
+    // somebody editing their name or their bank details, and an admin must
+    // be able to do it on a document that still says 'admin'.
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
 
       allow create: if request.auth != null && request.auth.uid == userId &&
-        incomingRole() != 'admin';
+        !('role' in request.resource.data);
 
-      // Either the role is unchanged (so an admin can edit their name), or the
-      // new role is not admin (so vendor and driver self-assignment, which the
-      // web app's registration pages rely on, keeps working).
-      allow update: if request.auth != null && request.auth.uid == userId && (
-        incomingRole() == existingRole() ||
-        incomingRole() != 'admin'
-      );
+      allow update: if request.auth != null && request.auth.uid == userId &&
+        roleUnchanged();
 
       allow delete: if request.auth != null && request.auth.uid == userId;
     }

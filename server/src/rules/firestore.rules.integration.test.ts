@@ -256,16 +256,35 @@ describe('users', () => {
 /**
  * Privilege escalation through the user document.
  *
- * `isAdmin()` reads the role straight out of `users/{uid}`, and users may
- * write their own document — so the role field is the single most dangerous
- * value in the database. These pin the restriction that stops a self-write
- * granting admin across every other rule.
+ * `isAdmin()` reads the role straight out of `users/{uid}`, and the API
+ * believes that document when a token carries no role claim - so the role
+ * field is the single most dangerous value in the database. Nobody writes it
+ * from a browser any more: roles are earned through the API, which uses the
+ * Admin SDK and is not subject to these rules.
  */
-describe('users cannot make themselves admin', () => {
+describe('nobody writes their own role', () => {
   it('refuses an admin role on create', async () => {
     const db = as('brand-new-user');
     await assertFails(
       setDoc(doc(db, 'users', 'brand-new-user'), { role: 'admin' }),
+    );
+  });
+
+  it('refuses any role on create, including customer', async () => {
+    // POST /api/v1/users/me writes the profile and the role together.
+    const db = as('brand-new-user');
+    await assertFails(
+      setDoc(doc(db, 'users', 'brand-new-user'), {
+        displayName: 'Thabo',
+        role: 'customer',
+      }),
+    );
+  });
+
+  it('lets a brand-new account create a profile with no role in it', async () => {
+    const db = as('brand-new-user');
+    await assertSucceeds(
+      setDoc(doc(db, 'users', 'brand-new-user'), { displayName: 'Thabo' }),
     );
   });
 
@@ -274,17 +293,30 @@ describe('users cannot make themselves admin', () => {
     await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
   });
 
-  it('refuses an admin role smuggled in beside other fields', async () => {
+  it('refuses making yourself a vendor', async () => {
+    // The old sign-up and store registration pages did exactly this. A
+    // vendor is somebody whose kitchen the API registered for them.
+    const db = as(CUSTOMER);
+    await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'vendor' }));
+  });
+
+  it('refuses making yourself a driver', async () => {
+    // Being approved is what makes a driver, and an admin decides that.
+    const db = as(CUSTOMER);
+    await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'driver' }));
+  });
+
+  it('refuses a role smuggled in beside other fields', async () => {
     const db = as(CUSTOMER);
     await assertFails(
       updateDoc(doc(db, 'users', CUSTOMER), {
         displayName: 'Thabo',
-        role: 'admin',
+        role: 'vendor',
       }),
     );
   });
 
-  it('refuses a full overwrite that sets admin', async () => {
+  it('refuses a full overwrite that changes the role', async () => {
     const db = as(CUSTOMER);
     await assertFails(
       setDoc(doc(db, 'users', CUSTOMER), { role: 'admin', displayName: 'T' }),
@@ -292,30 +324,25 @@ describe('users cannot make themselves admin', () => {
   });
 
   it('leaves the caller unable to read other profiles afterwards', async () => {
-    // The escalation the old rules permitted, now proven closed end to end.
     const db = as(CUSTOMER);
     await assertFails(updateDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
     await assertFails(getDoc(doc(db, 'users', OTHER_CUSTOMER)));
   });
 
-  it('still lets a user become a vendor', async () => {
-    // The web app's store registration writes role: 'vendor' from the browser.
-    // Closing the admin hole must not break that.
+  it('still lets somebody edit their own details', async () => {
+    // The driver and vendor registration pages write contact and banking
+    // details here, which must keep working.
     const db = as(CUSTOMER);
     await assertSucceeds(
-      updateDoc(doc(db, 'users', CUSTOMER), { role: 'vendor' }),
-    );
-  });
-
-  it('still lets a user become a driver', async () => {
-    const db = as(CUSTOMER);
-    await assertSucceeds(
-      updateDoc(doc(db, 'users', CUSTOMER), { role: 'driver' }),
+      updateDoc(doc(db, 'users', CUSTOMER), {
+        displayName: 'Thabo',
+        phone: '0821234567',
+      }),
     );
   });
 
   it('still lets an existing admin edit their own profile', async () => {
-    // The resulting document still says 'admin', so a flat inequality check
+    // The resulting document still says 'admin', so a flat "no role" check
     // would have locked every admin out of their own record.
     const db = as(ADMIN);
     await assertSucceeds(
@@ -330,31 +357,11 @@ describe('users cannot make themselves admin', () => {
     );
   });
 
-  it('still denies writing to somebody else’s profile', async () => {
-    const db = as(CUSTOMER);
-    await assertFails(
-      updateDoc(doc(db, 'users', ADMIN), { displayName: 'Hijacked' }),
+  it('still lets a vendor keep their role while editing their details', async () => {
+    const db = as(VENDOR);
+    await assertSucceeds(
+      setDoc(doc(db, 'users', VENDOR), { role: 'vendor', bankName: 'Capitec' }),
     );
-  });
-
-  it('does not let a user grant admin to somebody else', async () => {
-    const db = as(CUSTOMER);
-    await assertFails(
-      updateDoc(doc(db, 'users', OTHER_CUSTOMER), { role: 'admin' }),
-    );
-  });
-
-  it('still lets a user delete their own profile', async () => {
-    // Behaviour preserved from before the fix; splitting `write` into
-    // create/update/delete could have removed it by accident.
-    const db = as(CUSTOMER);
-    await assertSucceeds(deleteDoc(doc(db, 'users', CUSTOMER)));
-  });
-
-  it('does not let deleting and recreating sneak admin in', async () => {
-    const db = as(CUSTOMER);
-    await assertSucceeds(deleteDoc(doc(db, 'users', CUSTOMER)));
-    await assertFails(setDoc(doc(db, 'users', CUSTOMER), { role: 'admin' }));
   });
 });
 

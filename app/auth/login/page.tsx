@@ -10,9 +10,9 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth, db } from '../../../firebase/config';
+import { auth } from '../../../firebase/config';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createMyProfile, fetchMyProfile, homeFor } from '../../../services/userApi';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,39 +29,30 @@ export default function LoginPage() {
       const user = userCredential.user;
       toast.success('Login successful! Welcome back 👋');
 
-      // Fetch user profile from Firestore. If it's missing (Firebase-console user,
-      // partial signup, etc.), backfill as customer so we never bounce back to signup.
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
+      // Ask the API who this is. It is the thing that decides roles, and
+      // reading the document here only to route on it was how a role
+      // somebody wrote for themselves became the one the site believed.
+      let profile = await fetchMyProfile();
 
-      let role: string;
-      if (userDoc.exists()) {
-        role = userDoc.data().role;
-      } else {
+      if (!profile) {
+        // Signed in to Firebase with no profile: a Firebase-console account,
+        // or a sign-up that fell over after the account was made. Created as
+        // a customer, the least privileged role - a role is earned, and the
+        // API would refuse anything else here anyway.
+        //
         // Same displayName gap as signup: only backfill the Auth object's
-        // displayName if it's genuinely missing (e.g. a Firebase-console
-        // user created with no name) — the app reads user.displayName as
-        // the source of truth everywhere, not the Firestore field below.
+        // displayName if it is genuinely missing — the site reads
+        // user.displayName as the source of truth everywhere.
         const fallbackName = email.split('@')[0];
         if (!user.displayName) {
           await updateProfile(user, { displayName: fallbackName });
         }
-        await setDoc(userRef, {
-          email: user.email ?? email,
+        profile = await createMyProfile({
           displayName: user.displayName ?? fallbackName,
-          role: 'customer',
-          createdAt: serverTimestamp(),
         });
-        role = 'customer';
       }
 
-      if (role === 'vendor') {
-        router.push('/vendor/dashboard');
-      } else if (role === 'driver') {
-        router.push('/driver/dashboard');
-      } else {
-        router.push('/restaurants');
-      }
+      router.push(homeFor(profile.role));
     } catch (error: any) {
       console.error('Login error:', error);
       toast.error(error.message || 'Failed to login. Please check your credentials.');

@@ -62,10 +62,14 @@ export default function DriverRegistrationPage() {
 
       // Contact and payout details stay on the person's own profile. Banking
       // details are deliberately not on the world-readable drivers document.
+      //
+      // No `role: 'driver'` here. Being approved is what makes somebody a
+      // driver — the API grants the role then, as a custom claim — and a
+      // page that wrote it for itself was claiming something no admin had
+      // agreed to.
       await setDoc(
         doc(db, 'users', auth.currentUser.uid),
         {
-          role: 'driver',
           email: formData.email,
           phone: formData.phone,
           firstName: formData.firstName,

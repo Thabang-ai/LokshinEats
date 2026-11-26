@@ -10,9 +10,10 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth, db } from '../../../firebase/config';
+import { auth } from '../../../firebase/config';
 import { useRouter } from 'next/navigation';
-import { doc, setDoc } from 'firebase/firestore';
+import { ApiError } from '../../../services/apiClient';
+import { createMyProfile } from '../../../services/userApi';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -64,13 +65,20 @@ export default function SignupPage() {
         // field below, so without this the name goes nowhere anyone sees it.
         await updateProfile(userCredential.user, { displayName: formData.name });
 
-        // Store user role in Firestore
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: formData.email,
+        // The profile goes through the API, which writes the document with
+        // the Admin SDK and sets the matching custom claim. Written from
+        // here, as it was until now, the role was whatever the browser
+        // typed - and the API believes the document when a token carries no
+        // claim, so `vendor` was one line of devtools away.
+        //
+        // Picking "vendor" here no longer makes anybody a vendor either:
+        // registering the kitchen is what does that, on the next screen. A
+        // driver is an applicant until an admin approves them, which is what
+        // grants the role the delivery routes actually ask for.
+        await createMyProfile({
           displayName: formData.name,
           phone: formData.phone,
-          role: formData.role,
-          createdAt: new Date(),
+          role: formData.role === 'driver' ? 'driver' : 'customer',
         });
       }
       
@@ -86,9 +94,18 @@ export default function SignupPage() {
       } else {
         router.push('/restaurants');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Signup error:', error);
-      toast.error(error.message || 'Failed to create account. Please try again.');
+      // The API says which field it refused and why - a phone number in the
+      // wrong shape, most often. Passing that on is the difference between a
+      // fixable form and a dead end.
+      toast.error(
+        error instanceof ApiError
+          ? error.firstFieldError ?? error.message
+          : error instanceof Error
+          ? error.message
+          : 'Failed to create account. Please try again.',
+      );
     } finally {
       setIsLoading(false);
     }
