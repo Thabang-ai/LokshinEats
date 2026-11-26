@@ -18,6 +18,7 @@ import { sumRands } from '../../lib/money';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
 import type { LedgerEntry, Wallet } from './wallet.model';
+import * as auditService from '../audit/audit.service';
 import * as userRepository from '../users/user.repository';
 import * as repository from './wallet.repository';
 
@@ -473,6 +474,23 @@ export async function manualCredit(input: {
     },
     'Manual credit paid from the platform as goodwill.',
   );
+
+  // Money an admin moved by hand. The ledger says it happened; this says who
+  // decided it should, and what they said about it.
+  const recipient = await userRepository.findById(input.recipientId);
+
+  await auditService.recordAdminAction(input.actor, {
+    action: 'wallet.credited',
+    subjectType: 'user',
+    subjectId: input.recipientId,
+    subjectName: recipient?.displayName || 'An account',
+    reason: input.description,
+    amount: input.amount,
+    facts: {
+      kind: input.type,
+      ...(input.orderId ? { orderId: input.orderId } : {}),
+    },
+  });
 
   return repository.findByOwner(input.recipientId);
 }

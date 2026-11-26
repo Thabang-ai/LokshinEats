@@ -27,6 +27,7 @@
 
 import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
+import * as auditService from '../audit/audit.service';
 import * as notificationService from '../notifications/notification.service';
 import * as userService from '../users/user.service';
 import * as walletService from '../wallets/wallet.service';
@@ -251,6 +252,20 @@ export async function resolveDispute(
     // Dismissed: they may have been suspended over this very order.
     if (outcome === 'dismiss') await reinstateIfSettled(resolved.driverId);
   }
+
+  await auditService.recordAdminAction(actor, {
+    action: 'cash.dispute_resolved',
+    subjectType: 'order',
+    subjectId: orderId,
+    subjectName: `${resolved.storeName} → ${resolved.customerName}`,
+    reason: note,
+    amount: before.cashGivenAmount ?? before.subtotal,
+    facts: {
+      outcome,
+      // Whose word was taken, in the words the console uses.
+      believed: outcome === 'uphold' ? 'the kitchen' : 'the driver',
+    },
+  });
 
   return resolved;
 }

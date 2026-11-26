@@ -9,6 +9,7 @@
 import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import type { AuthContext } from '../../middleware/auth';
+import * as auditService from '../audit/audit.service';
 import * as notificationService from '../notifications/notification.service';
 import * as userService from '../users/user.service';
 import * as userRepository from '../users/user.repository';
@@ -175,6 +176,19 @@ export async function decide(
     orderId: null,
     kind: status === 'approved' ? 'driver_approved' : 'driver_rejected',
     facts: { storeName: '', decisionReason: profile.decisionReason ?? undefined },
+  });
+
+  // The application holds no name - it is the account that has one, and the
+  // audit log is unreadable without it.
+  const account = await userRepository.findById(driverId);
+
+  await auditService.recordAdminAction(actor, {
+    action: status === 'approved' ? 'driver.approved' : 'driver.rejected',
+    subjectType: 'driver',
+    subjectId: driverId,
+    subjectName: account?.displayName || 'A driver',
+    reason: input.reason ?? null,
+    facts: { vehicle: profile.vehicleType },
   });
 
   return profile;

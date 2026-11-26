@@ -19,6 +19,7 @@ import type {
   UserProfile,
 } from './user.model';
 import * as orderRepository from '../orders/order.repository';
+import * as auditService from '../audit/audit.service';
 import * as repository from './user.repository';
 import * as storeRepository from '../stores/store.repository';
 
@@ -128,6 +129,14 @@ export async function assignRole(
     { actor: actor.uid, target: targetUid, from: current.role, to: role },
     'Role changed by admin; sessions revoked.',
   );
+
+  await auditService.recordAdminAction(actor, {
+    action: 'user.role_changed',
+    subjectType: 'user',
+    subjectId: targetUid,
+    subjectName: profile.displayName,
+    facts: { from: current.role, to: role },
+  });
   return profile;
 }
 
@@ -215,6 +224,16 @@ export async function setAccountStatus(
     { actor: actor.uid, target: targetUid, status: input.status },
     suspending ? 'Account suspended.' : 'Account reinstated.',
   );
+
+  await auditService.recordAdminAction(actor, {
+    action: suspending ? 'user.suspended' : 'user.reinstated',
+    subjectType: 'user',
+    subjectId: targetUid,
+    subjectName: profile.displayName,
+    reason: input.reason ?? null,
+    facts: { role: profile.role },
+  });
+
   return profile;
 }
 
@@ -276,6 +295,16 @@ export async function removeAccount(
     { actor: actor.uid, target: targetUid, reason },
     'Account removed from the platform.',
   );
+
+  await auditService.recordAdminAction(actor, {
+    action: 'user.removed',
+    subjectType: 'user',
+    subjectId: targetUid,
+    subjectName: profile.displayName,
+    reason,
+    facts: { role: profile.role },
+  });
+
   return profile;
 }
 

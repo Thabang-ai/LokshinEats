@@ -128,4 +128,11 @@ export const Collections = {
    * rule, so only the API can read or write them.
    */
   images: 'images',
+  /**
+   * What every admin did, and to whom.
+   *
+   * Append-only, and matching no security rule - so no client can read or
+   * write it, and nobody can quietly tidy up a decision they regret.
+   */
+  auditLog: 'auditLog',
 } as const;

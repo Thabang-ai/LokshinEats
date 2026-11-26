@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { auditRouter } from './audit/audit.routes';
 import { driverRouter } from './drivers/driver.routes';
 import { notificationRouter } from './notifications/notification.routes';
 import { cashRouter } from './orders/cash.routes';
@@ -63,3 +64,4 @@ apiRouter.use('/wallets', walletRouter);
 apiRouter.use('/notifications', notificationRouter);
 apiRouter.use('/reviews', reviewRouter);
 apiRouter.use('/reports', reportRouter);
+apiRouter.use('/audit', auditRouter);

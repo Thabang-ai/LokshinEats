@@ -11,6 +11,7 @@ import { ApiError } from '../../lib/ApiError';
 import { moduleLogger } from '../../config/logger';
 import type { Page } from '../../lib/pagination';
 import type { AuthContext } from '../../middleware/auth';
+import * as auditService from '../audit/audit.service';
 import * as userRepository from '../users/user.repository';
 import type {
   CreateStoreInput,
@@ -183,6 +184,15 @@ export async function decide(
     { storeId, decision: verification, by: actor.uid },
     'Kitchen decided.',
   );
+
+  await auditService.recordAdminAction(actor, {
+    action: input.decision === 'approve' ? 'store.approved' : 'store.rejected',
+    subjectType: 'store',
+    subjectId: store.id,
+    subjectName: store.name,
+    reason: input.reason ?? null,
+    facts: { city: store.city },
+  });
 
   return store;
 }

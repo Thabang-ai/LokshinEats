@@ -19,6 +19,7 @@ import { env } from '../../config/env';
 import { moduleLogger } from '../../config/logger';
 import { ApiError } from '../../lib/ApiError';
 import type { AuthContext } from '../../middleware/auth';
+import * as auditService from '../audit/audit.service';
 import * as paymentRepository from '../payments/payment.repository';
 import * as storeRepository from '../stores/store.repository';
 import * as walletService from '../wallets/wallet.service';
@@ -118,6 +119,25 @@ export async function cancelOrder(input: {
     },
     push: input.actor.role !== 'customer',
   });
+
+  // Only an admin's cancellations go in the audit log. A customer cancelling
+  // their own dinner is recorded on the order itself; this is the log of what
+  // the platform's operators did to other people's orders.
+  if (input.actor.role === 'admin') {
+    await auditService.recordAdminAction(input.actor, {
+      action: 'order.cancelled',
+      subjectType: 'order',
+      subjectId: order.id,
+      subjectName: `${order.storeName} → ${order.customerName}`,
+      reason: input.reason ?? null,
+      amount: plan.customerRefund,
+      facts: {
+        stage: plan.stage,
+        vendorPaid: plan.vendorPay.toFixed(2),
+        driverPaid: plan.driverPay.toFixed(2),
+      },
+    });
+  }
 
   return order;
 }

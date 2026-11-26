@@ -155,6 +155,10 @@ describe('collections the API owns are closed to clients', () => {
     'payments',
     'sandboxPayments',
     'orderSecrets',
+    // What every admin did. Readable through GET /api/v1/audit by an admin,
+    // and by nobody at all through Firestore - least of all editable, which
+    // would make it evidence of nothing.
+    'auditLog',
   ];
 
   beforeEach(async () => {
@@ -180,6 +184,11 @@ describe('collections the API owns are closed to clients', () => {
       await setDoc(doc(db, 'orderSecrets', 'order-1'), {
         orderId: 'order-1',
         code: '482913',
+      });
+      await setDoc(doc(db, 'auditLog', 'entry-1'), {
+        action: 'store.approved',
+        actorId: ADMIN,
+        subjectId: 'store-1',
       });
     });
   });
